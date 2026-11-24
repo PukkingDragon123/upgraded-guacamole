@@ -52,6 +52,7 @@ import { drawIcon3D, has3D } from '../gfx/icons3d.js';
 import { iconFrame } from '../gfx/bigicons.js';
 import { drawPop3D, text3dCanvas } from '../ui/pop3d.js';
 import { mix, shade, rgba } from '../core/color.js';
+import { filtered } from '../core/canvas.js'; // [perf27]
 import { unlockByProp } from '../game/hotbar.js'; // [hot26]
 import { drawEggChip, fmtClock } from '../ui/gemui.js'; // [cur26] egg timer chips
 import { eggSkipCost, eggSkip } from '../game/skips.js'; // [cur26]
@@ -1816,10 +1817,12 @@ export class Aquarium {
         const s = 0.5 * (pop < 1 ? 1 + Math.sin(pop * Math.PI) * 0.25 : 1);
         const w = ic.width * s, h = ic.height * s;
         const bob = hov && !c.locked ? Math.sin(this.t * 6) * 1 : 0;
-        const prevF = ctx.filter, prevA = ctx.globalAlpha;
-        if (sealK > 0) { ctx.filter = `saturate(${(1 - sealK * 0.55).toFixed(2)}) brightness(${(1 - sealK * 0.12).toFixed(2)})`; ctx.globalAlpha = prevA * (1 - sealK * 0.15); }
-        ctx.drawImage(ic, Math.round((x + c.B / 2 - w / 2) * 2) / 2, Math.round((c.y + c.B / 2 - h / 2 + lift + bob) * 2) / 2, w, h);
-        ctx.filter = prevF || 'none'; ctx.globalAlpha = prevA;
+        const prevA = ctx.globalAlpha;
+        if (sealK > 0) ctx.globalAlpha = prevA * (1 - sealK * 0.15);
+        // [perf27] the sealed food's dimmed icon is a cached filtered copy (no per-frame ctx.filter)
+        const icf = sealK > 0 ? filtered(ic, `saturate(${(1 - sealK * 0.55).toFixed(2)}) brightness(${(1 - sealK * 0.12).toFixed(2)})`) : ic;
+        ctx.drawImage(icf, Math.round((x + c.B / 2 - w / 2) * 2) / 2, Math.round((c.y + c.B / 2 - h / 2 + lift + bob) * 2) / 2, w, h);
+        ctx.globalAlpha = prevA;
       }
       if (sealK > 0) {
         const prevA = ctx.globalAlpha;

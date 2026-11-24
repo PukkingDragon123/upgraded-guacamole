@@ -642,6 +642,73 @@ export class Game {
     const ocean = this.ocean;
     const view = this.state.view;
     const cam = this.camera;
+    // [perf27] under a big modal panel the world is redrawn every 2nd / 4th frame and re-blitted from a snapshot between
+    const thr = this.worldThrottle(W, H);
+    if (thr === 'reuse') {
+      ctx.globalCompositeOperation = 'copy';
+      ctx.drawImage(this.worldSnap.canvas, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+    } else {
+      this.drawScene(ctx, dt);
+      if (thr === 'snap') {
+        const S = this.worldSnap;
+        if (S.w !== W || S.h !== H) resizeLayer(S, W, H);
+        S.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        S.ctx.globalAlpha = 1;
+        S.ctx.globalCompositeOperation = 'copy';
+        S.ctx.drawImage(this.screen.canvas, 0, 0);
+        S.ctx.globalCompositeOperation = 'source-over';
+        S.ok = true;
+      }
+    }
+    { const ctx = uctx0 || this.screen.ctx; // [phase9:ui] HUD, panels, toasts, UI particles and the cursor draw at full resolution
+      if (view === 'aquarium') try { this.aquarium.drawUi(ctx); } catch (e) { if (!this.aqUiErr) { this.aqUiErr = true; console.error(e); } } // [phase10] tank HUD, food, fx
+      this.hud.draw(ctx); // [phase4:shell] hotbar, gear pod, location chip
+      try { this.quests?.drawHud?.(ctx, dt); } catch (e) { if (!this.questDrawErr) { this.questDrawErr = true; console.error(e); } } // [phase6:lab] quest tracker + banners
+      this.fishing.drawHud(ctx);
+      try { this.build?.drawUi?.(ctx); } catch (e) { if (!this.buildUiErr) { this.buildUiErr = true; console.error(e); } }
+      this.ui.drawHud(ctx, dt);
+      cam.drawBars(ctx);
+      this.fishing.drawCinematicHud?.(ctx);
+      ocean.drawTitleCard(ctx, dt);
+      this.ui.drawPanels(ctx, dt);
+      this.tutorial.drawUi?.(ctx);
+      this.particles.draw(ctx, 'ui', this.time);
+      this.ui.drawToasts(ctx);
+      this.hud.drawTooltip(ctx, this.input);
+      this.ui.drawTip(ctx);
+      cam.drawFlash(ctx);
+      if (this.paused) drawText(ctx, 'PAUSED (P)', W / 2, 8, { align: 'center', color: '#ffffff', shadow: '#0a3e74' });
+      if (this.state.settings.showFps) drawText(ctx, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : '2d'}`, 4, H - 36, { font: 'small', color: '#ffffff', outline: '#000' });
+      this.drawCursor(ctx);
+    }
+  }
+
+  // [perf27] 'snap' = draw the world and keep a copy, 'reuse' = blit that copy, null = draw it as usual. Only while a
+  // big modal window (Lab, Wardrobe, FishDex, Satchel ...) has finished opening and covers at least half the screen,
+  // in the plain ocean / tank (no voyage, dock scene, tutorial, fish on the line or cinematic): the world under it is
+  // redrawn every 2nd frame (every 4th when the window hides 85 % of it) and re-blitted in between.
+  worldThrottle(W, H) {
+    const ui = this.ui, a = ui.active, r = a?.rect;
+    const cover = r ? (Math.max(0, Math.min(W, r.x + r.w) - Math.max(0, r.x)) * Math.max(0, Math.min(H, r.y + r.h) - Math.max(0, r.y))) / (W * H) : 0;
+    const ok = !!(ui.blocking && a && !a.cinematic && cover >= 0.5 && (a.anim ?? 1) >= 1)
+      && !this.ocean.travelState && !this.dest?.active && !this.dest?.phase && !this.tutorial.active && !this.tutorial.intro
+      && !this.fishing.busy && !this.fishing.cine && !this.paused && !ui.ghosts?.length;
+    if (!ok) { if (this.worldSnap) this.worldSnap.ok = false; return null; }
+    const S = this.worldSnap;
+    if (S?.ok && S.w === W && S.h === H && S.view === this.state.view && ++S.n < (cover >= 0.85 ? 4 : 2)) return 'reuse';
+    this.worldSnap ||= makeLayer(W, H);
+    this.worldSnap.n = 0;
+    this.worldSnap.view = this.state.view;
+    return 'snap';
+  }
+
+  // The world under the HUD: ocean / tank scene, boat, lighting, near fish, fishing line, voyage, tank window, docks.
+  drawScene(ctx, dt) {
+    const W = this.screen.W, H = this.screen.H;
+    const ocean = this.ocean;
+    const view = this.state.view;
+    const cam = this.camera;
     if (view === 'ocean') { ctx.fillStyle = '#0b1622'; ctx.fillRect(0, 0, W, H); }
     const voyLive = !ocean.travelState || !!ocean.travelState.live; // [travel17] the voyage's departure / arrival render live
     const liveOcean = view === 'ocean' && voyLive && ocean.reveal >= 1;
@@ -727,27 +794,6 @@ export class Game {
     this.tutorial.drawWorld?.(ctx);
     this.aquarium.drawWindow?.(ctx, dt);
     try { this.prog?.draw?.(ctx, dt); } catch (e) { if (!this.progDrawErr) { this.progDrawErr = true; console.error(e); } } // [phase8:prog] destination scene
-    { const ctx = uctx0 || this.screen.ctx; // [phase9:ui] HUD, panels, toasts, UI particles and the cursor draw at full resolution
-      if (view === 'aquarium') try { this.aquarium.drawUi(ctx); } catch (e) { if (!this.aqUiErr) { this.aqUiErr = true; console.error(e); } } // [phase10] tank HUD, food, fx
-      this.hud.draw(ctx); // [phase4:shell] hotbar, gear pod, location chip
-      try { this.quests?.drawHud?.(ctx, dt); } catch (e) { if (!this.questDrawErr) { this.questDrawErr = true; console.error(e); } } // [phase6:lab] quest tracker + banners
-      this.fishing.drawHud(ctx);
-      try { this.build?.drawUi?.(ctx); } catch (e) { if (!this.buildUiErr) { this.buildUiErr = true; console.error(e); } }
-      this.ui.drawHud(ctx, dt);
-      cam.drawBars(ctx);
-      this.fishing.drawCinematicHud?.(ctx);
-      ocean.drawTitleCard(ctx, dt);
-      this.ui.drawPanels(ctx, dt);
-      this.tutorial.drawUi?.(ctx);
-      this.particles.draw(ctx, 'ui', this.time);
-      this.ui.drawToasts(ctx);
-      this.hud.drawTooltip(ctx, this.input);
-      this.ui.drawTip(ctx);
-      cam.drawFlash(ctx);
-      if (this.paused) drawText(ctx, 'PAUSED (P)', W / 2, 8, { align: 'center', color: '#ffffff', shadow: '#0a3e74' });
-      if (this.state.settings.showFps) drawText(ctx, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : '2d'}`, 4, H - 36, { font: 'small', color: '#ffffff', outline: '#000' });
-      this.drawCursor(ctx);
-    }
   }
 
   drawBuildings(ctx, env, band) {

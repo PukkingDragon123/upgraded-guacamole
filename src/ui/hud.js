@@ -33,7 +33,7 @@
 
 import { clamp, damp, dist, ease, rectContains } from '../core/math.js';
 import { rgba, mix, shade } from '../core/color.js';
-import { tinted } from '../core/canvas.js';
+import { tinted, filtered } from '../core/canvas.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { getBigIcon, iconFrame, iconSpinMode, rodIcon } from '../gfx/bigicons.js';
@@ -50,6 +50,10 @@ import { openStore } from '../store/index.js';
 import { ensureHotbar, hotbarLock, HOTBAR_UNLOCKS } from '../game/hotbar.js'; // [hot26] locked hotbar slots, unlocked by building
 import { padlockTex } from './labtree.js'; // [hot26] the Lab's gold padlock on locked slots
 import { drawPop3D } from './pop3d.js'; // [hot26] the 3D "NEW BUTTON" words
+
+// [perf27] a locked hotbar slot's icon: a cached greyed copy instead of a ctx.filter pass per frame
+const GREY = 'grayscale(1) brightness(0.92) contrast(0.8)';
+const greyed = (src) => filtered(src, GREY);
 
 export const HUD_ITEMS = [
   { id: 'lab', label: 'The Lab', key: 'L', tint: '#6ee04a', icon: 'lab', alias: 'skills', group: 0 },
@@ -603,21 +607,22 @@ export class Hud {
     ctx.fillRect(R(it.x + B / 2 - sw / 2), R(it.y + B + 1), sw, R(2 * k));
     const lock = this.locked(it); // [hot26] a dim slate tile, greyed icon, gold padlock
     draw(tile(B, lock ? '#7d8eae' : it.tint, !lock && (hov > 0.5 || active))); // [phase8:ui] pixel tile instead of a glass bubble
-    const fPrev = ctx.filter, aPrev = ctx.globalAlpha;
-    if (lock) { ctx.filter = 'grayscale(1) brightness(0.92) contrast(0.8)'; ctx.globalAlpha = aPrev * 0.55; }
+    const aPrev = ctx.globalAlpha;
+    if (lock) ctx.globalAlpha = aPrev * 0.55;
     // the 3D icon: wobbles / spins while hovered, hops on pop
     const hop = it.pop > 0 ? -R(Math.sin(it.pop * Math.PI) * 4 * k) : 0;
     const iconHop = hop - R(hov * 2 * k);
     let f = null;
     try { f = iconFrame(it.icon, m.icon, it.turn); } catch { f = null; }
-    if (f) draw(f.canvas, iconHop, f.ox, f.oy);
+    const gr = (c) => (lock ? greyed(c) : c); // [perf27] the greyed icon is cached instead of a per-frame ctx.filter
+    if (f) draw(gr(f.canvas), iconHop, f.ox, f.oy);
     else {
       let spr = null;
       try { spr = getBigIcon(it.icon, { size: m.icon }); } catch { spr = null; }
-      if (spr) draw(spr.canvas, iconHop);
+      if (spr) draw(gr(spr.canvas), iconHop);
     }
     if (lock) {
-      ctx.filter = fPrev || 'none'; ctx.globalAlpha = aPrev;
+      ctx.globalAlpha = aPrev;
       const lk = padlockTex(R(B * 0.84));
       const wig = hov > 0.3 && !calm ? Math.sin(t * 14) * 1.2 * hov : 0;
       ctx.drawImage(lk, R(cx + B * 0.22 - lk.width / 2 + wig), R(cy + B * 0.2 - (lk.cy ?? lk.height / 2)));

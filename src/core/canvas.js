@@ -46,6 +46,28 @@ export function tinted(src, color) {
   return c;
 }
 
+// [perf27] A sprite seen through a CSS colour filter (grayscale / brightness / saturate ...), cached per sprite and
+// filter string (the last few per sprite). Drawing with ctx.filter set makes the browser filter a canvas-sized layer
+// for every drawImage, which is very slow; per-pixel colour filters give the same pixels on the cached copy, and the
+// copy keeps the sprite's `.hi` twin (filtered too) for the full-res UI layer.
+const filterCache = new WeakMap();
+export function filtered(src, filter) {
+  if (!src || !filter || filter === 'none') return src;
+  let m = filterCache.get(src);
+  if (!m) filterCache.set(src, (m = new Map()));
+  let c = m.get(filter);
+  if (c) { m.delete(filter); m.set(filter, c); return c; }
+  c = makeCanvas(src.width, src.height);
+  const g = ctxOf(c);
+  g.filter = filter;
+  g.drawImage(src, 0, 0);
+  g.filter = 'none';
+  if ('hi' in src) Object.defineProperty(c, 'hi', { configurable: true, get: () => (src.hi ? filtered(src.hi, filter) : undefined) });
+  m.set(filter, c);
+  if (m.size > 4) m.delete(m.keys().next().value);
+  return c;
+}
+
 // Scratch canvas used for per-sprite effects (fog, darkness, flashes).
 let scratch = null;
 export function scratchCanvas(w, h) {

@@ -122,6 +122,7 @@ function glowDisc(r, hex, core = null) {
   }
   g.putImageData(id, 0, 0);
   GLOWS.set(key, c);
+  if (GLOWS.size > 300) GLOWS.delete(GLOWS.keys().next().value); // [perf27] bounded
   return c;
 }
 

@@ -258,6 +258,7 @@ export function ramp7(hex, contrast = 1) {
   if (!r) {
     r = RAMP_STEPS.map((a) => (a === 0 ? hex : shade(hex, a * contrast)));
     rampCache.set(key, r);
+    if (rampCache.size > 4096) rampCache.delete(rampCache.keys().next().value); // [perf27] bounded
   }
   return r;
 }

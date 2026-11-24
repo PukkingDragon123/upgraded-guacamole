@@ -691,7 +691,7 @@ const pkCache = new Map();
 function pk(hex, a = 255) {
   const k = hex + a;
   let v = pkCache.get(k);
-  if (v === undefined) pkCache.set(k, (v = pack(hex, a)));
+  if (v === undefined) { pkCache.set(k, (v = pack(hex, a))); if (pkCache.size > 4096) pkCache.delete(pkCache.keys().next().value); } // [perf27] bounded
   return v;
 }
 

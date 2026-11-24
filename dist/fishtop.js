@@ -60,6 +60,26 @@
     }
     return c;
   }
+  function filtered(src, filter) {
+    if (!src || !filter || filter === "none") return src;
+    let m = filterCache.get(src);
+    if (!m) filterCache.set(src, m = /* @__PURE__ */ new Map());
+    let c = m.get(filter);
+    if (c) {
+      m.delete(filter);
+      m.set(filter, c);
+      return c;
+    }
+    c = makeCanvas(src.width, src.height);
+    const g = ctxOf(c);
+    g.filter = filter;
+    g.drawImage(src, 0, 0);
+    g.filter = "none";
+    if ("hi" in src) Object.defineProperty(c, "hi", { configurable: true, get: () => src.hi ? filtered(src.hi, filter) : void 0 });
+    m.set(filter, c);
+    if (m.size > 4) m.delete(m.keys().next().value);
+    return c;
+  }
   function scratchCanvas(w, h) {
     if (!scratch) scratch = makeLayer(64, 64);
     if (scratch.w < w || scratch.h < h) resizeLayer(scratch, Math.max(scratch.w, w), Math.max(scratch.h, h));
@@ -83,10 +103,11 @@
     s.ctx.globalCompositeOperation = "source-over";
     ctx3.drawImage(s.canvas, 0, 0, sw, sh, dx, dy, dw, dh);
   }
-  var tintCache, scratch;
+  var tintCache, filterCache, scratch;
   var init_canvas = __esm({
     "src/core/canvas.js"() {
       tintCache = /* @__PURE__ */ new WeakMap();
+      filterCache = /* @__PURE__ */ new WeakMap();
       scratch = null;
     }
   });
@@ -4491,6 +4512,7 @@
     const n2 = parseInt(h.slice(0, 6), 16);
     c = [n2 >> 16 & 255, n2 >> 8 & 255, n2 & 255];
     rgbCache.set(hex7, c);
+    if (rgbCache.size > 8192) rgbCache.delete(rgbCache.keys().next().value);
     return c;
   }
   function rgbToHsl(r, g, b) {
@@ -6604,17 +6626,17 @@ void main() {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.useProgram(prog);
   }
-  function copyOut(out, W11, H8, ox = 0, oy = 0) {
+  function copyOut(out, W11, H8, ox = 0, oy = 0, sx2 = 0, sy2 = 0) {
     const mode = copyMode === "pixels" ? "pixels" : "draw";
     const g = out.getContext("2d");
     if (mode === "draw") {
-      g.drawImage(glCanvas, 0, 0, W11, H8, ox, oy, W11, H8);
+      g.drawImage(glCanvas, sx2, sy2, W11, H8, ox, oy, W11, H8);
       return;
     }
     const n2 = W11 * H8 * 4;
     if (!pixBuf || pixBuf.length < n2) pixBuf = new Uint8Array(n2);
     const ta = tnow();
-    gl.readPixels(0, GLH - H8, W11, H8, gl.RGBA, gl.UNSIGNED_BYTE, pixBuf);
+    gl.readPixels(sx2, GLH - sy2 - H8, W11, H8, gl.RGBA, gl.UNSIGNED_BYTE, pixBuf);
     T.rp += tnow() - ta;
     const img = g.createImageData(W11, H8);
     const d = img.data, row3 = W11 * 4;
@@ -6704,6 +6726,39 @@ void main() {
     T.copy += tnow() - t1;
     T.n++;
     return out;
+  }
+  function sheetLayout(n2, o = {}) {
+    const w = Math.max(1, Math.round(o.w || 64)), h = Math.max(1, Math.round(o.h || 64));
+    const cols = Math.max(1, Math.min(n2, o.cols || n2, Math.floor(MAX_GL / w)));
+    const rows = Math.ceil(n2 / cols);
+    return { w, h, cols, W: cols * w, H: Math.min(MAX_GL, rows * h) };
+  }
+  function renderSheetPart(cells, o, i0, i1, out) {
+    if (!cells.length || !init2()) return false;
+    const { w, h, cols, W: W11, H: H8 } = sheetLayout(cells.length, o);
+    const t02 = tnow();
+    ensureSize(W11, H8);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.enable(gl.CULL_FACE);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(prog);
+    const done = [];
+    for (let i = i0; i < Math.min(i1, cells.length); i++) {
+      const x = i % cols * w, y = Math.floor(i / cols) * h;
+      if (y + h > MAX_GL) break;
+      region(x, y, w, h);
+      drawCell(cells[i], { ...o, ...cells[i] }, w, h);
+      done.push([x, y]);
+    }
+    finish2();
+    const t1 = tnow();
+    for (const [x, y] of done) copyOut(out, w, h, (o.outX || 0) + x, (o.outY || 0) + y, x, y);
+    T.draw += t1 - t02;
+    T.copy += tnow() - t1;
+    T.n++;
+    return true;
   }
   function lpProject(p, o = {}, mesh = null) {
     const w = Math.max(1, Math.round(o.w || 64)), h = Math.max(1, Math.round(o.h || 64));
@@ -11740,10 +11795,10 @@ void main() {
                 const x = x0 + Math.sin(ph * TAU + i * 1.9 + t * 5) * (1.5 + c.k) * t + (x0 - ox) * t * 0.15;
                 const y = oy + H8 * 0.05 + k;
                 const al = Math.round(clamp(a + 40 - t * 150, 40, 255));
-                const dot4 = (k + i * 3) % Math.max(4, Math.round(5 * c.k * 0.5)) === 0;
-                const col2 = withA(dot4 ? F3[4] : F3[t > 0.6 ? 3 : 2], dot4 ? Math.min(255, al + 60) : al);
+                const dot5 = (k + i * 3) % Math.max(4, Math.round(5 * c.k * 0.5)) === 0;
+                const col2 = withA(dot5 ? F3[4] : F3[t > 0.6 ? 3 : 2], dot5 ? Math.min(255, al + 60) : al);
                 buf.line(lx, ly, x, y, col2);
-                if (glowOn && dot4) glow2.set(Math.round(x), Math.round(y), F3[4]);
+                if (glowOn && dot5) glow2.set(Math.round(x), Math.round(y), F3[4]);
                 lx = x;
                 ly = y;
               }
@@ -19877,11 +19932,12 @@ void main() {
     }
     g.putImageData(img, 0, 0);
   }
-  function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
+  function sheetStart(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
     const t02 = now3();
     const Sb = bucketScale(sb);
+    const sws = only || [0, 1, 2, 3, 4, 5, 6, 7];
     const frames = [];
-    for (const sw of only || [0, 1, 2, 3, 4, 5, 6, 7]) frames.push(poseOf(c, sw, infl, mouth, LP_SWIM, hi));
+    for (const sw of sws) frames.push(poseOf(c, sw, infl, mouth, LP_SWIM, hi));
     const roll = frames[0].flatRoll || 0;
     const V2 = viewMatrix(yawI * YAW_STEP, roll, tilt);
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, R22 = 0;
@@ -19908,25 +19964,56 @@ void main() {
     const o = { w, h, scale: Sb, matrix: V2, center, radius, light: [-0.42, 0.82, 0.62], ambient: VIVID.ambient, vivid: VIVID.vivid, rimColor: "#c8f6ff", sky: "#f2fdff", ground: "#2a6a9a" };
     const cells = frames.map((f) => ({ parts: f.parts.map((pt) => ({ ...pt })) }));
     const cols = Math.max(1, Math.min(LP_SWIM, Math.floor(4096 / w)));
-    const tg = now3();
-    const canvas = renderSheet(cells, { ...o, cols });
-    stat.glMs += now3() - tg;
+    const gcells = c.glow ? frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== "fins" && p.key !== "finrays" && p.key !== "glass").map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) })) : null;
+    const go = { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 };
+    const ms = now3() - t02;
+    spent += ms;
+    return { c, infl, mouth, hi, frames, cells, gcells, o: { ...o, cols }, go, w, h, Sb, blur, cols, i: 0, canvas: null, raw: null, ms, yawI, sb, tilt };
+  }
+  function sheetStep(J2, deadline) {
+    const t02 = now3();
+    const n2 = J2.cells.length;
+    if (J2.i === 0 && !J2.canvas) {
+      const L4 = sheetLayout(n2, J2.o);
+      J2.canvas = makeCanvas(L4.W, L4.H);
+      if (J2.gcells) J2.raw = makeCanvas(L4.W, L4.H);
+    }
+    while (J2.i < n2) {
+      const tg = now3();
+      if (!renderSheetPart(J2.cells, J2.o, J2.i, J2.i + 1, J2.canvas)) {
+        J2.canvas = renderSheet(J2.cells, J2.o);
+        J2.raw = J2.gcells ? renderSheet(J2.gcells, J2.go) : null;
+        J2.i = n2;
+        stat.glMs += now3() - tg;
+        break;
+      }
+      if (J2.gcells) renderSheetPart(J2.gcells, J2.go, J2.i, J2.i + 1, J2.raw);
+      stat.glMs += now3() - tg;
+      J2.i++;
+      if (now3() >= deadline) break;
+    }
+    const dt = now3() - t02;
+    J2.ms += dt;
+    spent += dt;
+    return J2.i >= n2;
+  }
+  function sheetFinish(J2) {
+    const t02 = now3();
+    const { c, frames, w, h, cols, o, Sb, blur } = J2;
+    const canvas = J2.canvas;
     if (!canvas) return null;
     outlineSheet(canvas, cols, w, h);
     let glow2 = null;
-    if (c.glow) {
-      const gcells = frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== "fins" && p.key !== "finrays" && p.key !== "glass").map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) }));
-      const raw = renderSheet(gcells, { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 });
-      if (raw) {
-        glow2 = makeCanvas(raw.width, raw.height);
-        const g = glow2.getContext("2d");
-        g.filter = `blur(${blur.toFixed(1)}px)`;
-        g.drawImage(raw, 0, 0);
-        g.filter = "none";
-        g.globalCompositeOperation = "lighter";
-        g.globalAlpha = 0.3;
-        g.drawImage(raw, 0, 0);
-      }
+    const raw = J2.raw;
+    if (c.glow && raw) {
+      glow2 = makeCanvas(raw.width, raw.height);
+      const g = glow2.getContext("2d");
+      g.filter = `blur(${blur.toFixed(1)}px)`;
+      g.drawImage(raw, 0, 0);
+      g.filter = "none";
+      g.globalCompositeOperation = "lighter";
+      g.globalAlpha = 0.3;
+      g.drawImage(raw, 0, 0);
     }
     for (const f of frames) for (const pt of f.parts) pt.mesh.release?.();
     const proj = (p) => lpProject(p, o);
@@ -19943,13 +20030,20 @@ void main() {
       });
       return { anchors, eyes };
     });
-    const sh = { canvas, glow: glow2, w, h, cols, ax, ay, Sb, meta, vid: vidOf(c), px: canvas.width * canvas.height * (glow2 ? 2 : 1), yawI, sb, infl, mouth, tilt, lo: !VOXEL && !hi && (c.L || 30) * Sb > 300 && c.real?.plan === "fish" };
+    const sh = { canvas, glow: glow2, w, h, cols, ax, ay, Sb, meta, vid: vidOf(c), px: canvas.width * canvas.height * (glow2 ? 2 : 1), yawI: J2.yawI, sb: J2.sb, infl: J2.infl, mouth: J2.mouth, tilt: J2.tilt, lo: !VOXEL && !J2.hi && (c.L || 30) * Sb > 300 && c.real?.plan === "fish" };
     const dt = now3() - t02;
+    J2.ms += dt;
     spent += dt;
-    stat.ms += dt;
+    stat.ms += J2.ms;
     stat.sheets++;
     stat.renders += LP_SWIM;
     return sh;
+  }
+  function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
+    const J2 = sheetStart(c, sb, yawI, infl, mouth, tilt, hi, only);
+    if (!J2) return null;
+    sheetStep(J2, Infinity);
+    return sheetFinish(J2);
   }
   function storeSheet(key, sh) {
     sheets.set(key, sh);
@@ -19993,7 +20087,18 @@ void main() {
       poseOf(c, sw, infl, mouth, LP_SWIM, hi);
     }
     if (now3() > deadline && deadline !== Infinity) return null;
-    return buildSheet(c, sb, yawI, infl, mouth, tilt, hi);
+    const jk = sheetKeyOf(vidOf(c), sb, yawI, infl, mouth, tilt) + (hi ? "|hi" : "");
+    let J2 = sheetJobs.get(jk);
+    if (!J2) {
+      J2 = sheetStart(c, sb, yawI, infl, mouth, tilt, hi);
+      if (!J2) return null;
+      sheetJobs.set(jk, J2);
+      if (sheetJobs.size > SHEET_JOBS_MAX) sheetJobs.delete(sheetJobs.keys().next().value);
+      if (now3() > deadline) return null;
+    }
+    if (!sheetStep(J2, deadline)) return null;
+    sheetJobs.delete(jk);
+    return sheetFinish(J2);
   }
   function lpFrame(c, req) {
     if (!lpCanRender()) return null;
@@ -20309,7 +20414,7 @@ void main() {
     if (tubes.size > 400) tubes.delete(tubes.keys().next().value);
     return b;
   }
-  var LP_SWIM, TAU3, DEG4, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp013, smooth2, now3, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC, R_GLASS2, QV, spow, CREATURES, creatureC, TURTLE_SP, T_C0, T_RF, T_RS, T_RB, T_HD, T_HB, T_RIM, T_RM, tOutline, tRimY, tDome, tmix, tsc, tclampC, TTpl, turtleTpl, poses, poseKey, poseBytes, POSE_BYTES, poseSize, VOXEL, sheets, byVid, sheetPx, scaleBucket, bucketScale, OUTLINE_INK, VIVID, stills, crabLooks, icons, meshCache, orbs, tubes;
+  var LP_SWIM, TAU3, DEG4, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp013, smooth2, now3, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC, R_GLASS2, QV, spow, CREATURES, creatureC, TURTLE_SP, T_C0, T_RF, T_RS, T_RB, T_HD, T_HB, T_RIM, T_RM, tOutline, tRimY, tDome, tmix, tsc, tclampC, TTpl, turtleTpl, poses, poseKey, poseBytes, POSE_BYTES, poseSize, VOXEL, sheets, byVid, sheetPx, scaleBucket, bucketScale, OUTLINE_INK, VIVID, sheetJobs, SHEET_JOBS_MAX, stills, crabLooks, icons, meshCache, orbs, tubes;
   var init_lowpolyfish = __esm({
     "src/fish/lowpolyfish.js"() {
       init_lowpoly();
@@ -20620,6 +20725,8 @@ void main() {
       bucketScale = (b) => Math.pow(SCALE_STEP, b);
       OUTLINE_INK = [10, 14, 26];
       VIVID = { ambient: 0.54, vivid: 1 };
+      sheetJobs = /* @__PURE__ */ new Map();
+      SHEET_JOBS_MAX = 6;
       stills = /* @__PURE__ */ new Map();
       crabLooks = /* @__PURE__ */ new Map();
       icons = /* @__PURE__ */ new Map();
@@ -21907,9 +22014,9 @@ void main() {
       if (/recycle|trash/i.test(n2)) return { icon: "trash", type: "trash", label: "", state: "" };
       return { icon: "folder", type: "folder", label: "", state: "" };
     }
-    const dot4 = n2.lastIndexOf(".");
-    const ext2 = dot4 > 0 ? n2.slice(dot4 + 1).toLowerCase() : "";
-    const base = dot4 > 0 ? n2.slice(0, dot4) : n2;
+    const dot5 = n2.lastIndexOf(".");
+    const ext2 = dot5 > 0 ? n2.slice(dot5 + 1).toLowerCase() : "";
+    const base = dot5 > 0 ? n2.slice(0, dot5) : n2;
     if (ext2 === "lnk" || ext2 === "desktop" || ext2 === "alias") {
       const inner = fileTypeInfo(base, false);
       return { ...inner, state: "shortcut" };
@@ -22524,6 +22631,7 @@ void main() {
     if (!r) {
       r = RAMP_STEPS.map((a) => a === 0 ? hex7 : shade(hex7, a * contrast));
       rampCache.set(key, r);
+      if (rampCache.size > 4096) rampCache.delete(rampCache.keys().next().value);
     }
     return r;
   }
@@ -23971,10 +24079,10 @@ void main() {
       const body = (x / 6.5) ** 2 + (y / 3.6) ** 2;
       const fish = body < 1 && x > -6.5;
       const tail = x <= -5 && x >= -8 && Math.abs(y) <= (-5 - x) * 1.3 + 0.6;
-      const dot4 = x === 3 && y === 1;
+      const dot5 = x === 3 && y === 1;
       if (fish || tail) {
         m.set(cxr + x, 22 + y, F3, 0);
-        m.set(cxr + x, 22 + y, F3 - 1, dot4 ? C6.groove : C6.rune);
+        m.set(cxr + x, 22 + y, F3 - 1, dot5 ? C6.groove : C6.rune);
       }
     }
     for (let w = 0; w < 3; w++) for (let x = -7; x <= 7; x++) {
@@ -25486,6 +25594,7 @@ void main() {
     if (!v) {
       v = hexToRgb(hex7);
       rgbCache2.set(hex7, v);
+      if (rgbCache2.size > 4096) rgbCache2.delete(rgbCache2.keys().next().value);
     }
     return v;
   }
@@ -31101,6 +31210,7 @@ void main() {
     if (!c) {
       c = rgbaOf(hex7);
       rgbaCache2.set(hex7, c);
+      if (rgbaCache2.size > 4096) rgbaCache2.delete(rgbaCache2.keys().next().value);
     }
     return c;
   }
@@ -33519,6 +33629,7 @@ kmlmk..
       return q <= 0 ? 0 : packRGB(cr2, cg, cb, Math.round(Math.min(1, q) * 255));
     });
     glowCache.set(key, c);
+    if (glowCache.size > 600) glowCache.delete(glowCache.keys().next().value);
     return c;
   }
   function drawGlow(ctx3, x, y, r, color, a = 1, opts) {
@@ -33552,6 +33663,50 @@ kmlmk..
     }
     ctx3.globalAlpha = pa;
   }
+  function paintCaustic(g, pat, mask, sx2, rr4) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = "source-over";
+    g.clearRect(rr4.x, rr4.y, rr4.w, rr4.h);
+    g.drawImage(mask, rr4.x, rr4.y, rr4.w, rr4.h, rr4.x, rr4.y, rr4.w, rr4.h);
+    g.globalCompositeOperation = "source-atop";
+    g.translate(sx2, 0);
+    g.fillStyle = pat;
+    g.fillRect(rr4.x - sx2, rr4.y, rr4.w, rr4.h);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = "source-over";
+  }
+  function visibleSrc(ctx3, X, Y, R9, sw, sh) {
+    let m;
+    try {
+      m = ctx3.getTransform();
+    } catch {
+      return { x: 0, y: 0, w: sw, h: sh };
+    }
+    const cw = ctx3.canvas?.width, ch = ctx3.canvas?.height, det = m.a * m.d - m.b * m.c;
+    if (!cw || !ch || !det) return { x: 0, y: 0, w: sw, h: sh };
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let k = 0; k < 4; k++) {
+      const px3 = (k & 1 ? cw : 0) - m.e, py = (k & 2 ? ch : 0) - m.f;
+      const wx = (m.d * px3 - m.c * py) / det, wy = (m.a * py - m.b * px3) / det;
+      if (wx < x0) x0 = wx;
+      if (wx > x1) x1 = wx;
+      if (wy < y0) y0 = wy;
+      if (wy > y1) y1 = wy;
+    }
+    const sx0 = Math.max(0, Math.floor((x0 - X) * R9) - 2 * R9), sy0 = Math.max(0, Math.floor((y0 - Y) * R9) - 2 * R9);
+    const sx1 = Math.min(sw, Math.ceil((x1 - X) * R9) + 2 * R9), sy1 = Math.min(sh, Math.ceil((y1 - Y) * R9) + 2 * R9);
+    const ax = sx0 - sx0 % R9, ay = sy0 - sy0 % R9;
+    if (sx1 <= ax || sy1 <= ay) return null;
+    return { x: ax, y: ay, w: sx1 - ax, h: sy1 - ay };
+  }
+  function padSrc(r, pad, sw, sh) {
+    const x = Math.max(0, r.x - pad), y = Math.max(0, r.y - pad);
+    return { x, y, w: Math.min(sw, r.x + r.w + pad) - x, h: Math.min(sh, r.y + r.h + pad) - y };
+  }
+  function rectIn(a, b) {
+    return !!b && a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h;
+  }
   function lumaMask(src, opts = {}) {
     const out = lumaMaskRaw(src, opts);
     out.__luma = { src, opts };
@@ -33570,7 +33725,7 @@ kmlmk..
           if (!a) continue;
           const l = (s[i * 4] * 0.3 + s[i * 4 + 1] * 0.55 + s[i * 4 + 2] * 0.15) / 255;
           const v = clamp012(Math.pow(l, gamma) * gain) * (a / 255) * k;
-          if (v > 0.02) d[i] = packRGB(255, 255, 255, Math.round(v * 255));
+          if (v > 0.02) d[i] = packRGB(0, 0, 0, Math.round(v * 255));
         }
       }
     });
@@ -33610,6 +33765,7 @@ kmlmk..
     if (r >= 2) g.fillRect(r - Math.ceil(r / 2), r - Math.ceil(r / 2), 1, 1);
     if (r >= 4) g.fillRect(r - Math.ceil(r / 2) + 1, r - Math.ceil(r / 2), 1, 1);
     bubbleSprites.set(key, c);
+    if (bubbleSprites.size > 300) bubbleSprites.delete(bubbleSprites.keys().next().value);
     return c;
   }
   function ridge(w, base, amp, freq, seed, oct = 4, sharp = 0) {
@@ -33942,38 +34098,103 @@ kmlmk..
           }
           this.draw1(ctx3, mask, mx2, my, t, alpha, opts);
         }
+        // [perf27] painted in DEVICE space: a canvas-sized layer gets the mask and the pattern drawn through the very
+        // transform the old 2x / 3x layer was composited with, so every screen pixel samples the same mask texel and the
+        // same pattern texel as before (the same pixels), but only the on-screen pixels are painted (the old layer was a
+        // whole band at 3x: ~3x the pixels of the screen per pass). Repainted when the frame, drift or camera changes.
         drawHi(ctx3, mask, mx2, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}, R9 = 2) {
           var _a6;
           if (!this.hiLayers) this.hiLayers = /* @__PURE__ */ new Map();
+          const cw = ctx3.canvas?.width, ch = ctx3.canvas?.height;
+          let m;
+          try {
+            m = ctx3.getTransform();
+          } catch {
+            m = null;
+          }
+          if (!m || !cw || !ch) return this.drawHiLayer(ctx3, mask, mx2, my, t, alpha, { fps, drift, offset }, R9);
+          const X = Math.round(mx2), Y = Math.round(my), dw = mask.width / R9, dh = mask.height / R9;
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          for (let k = 0; k < 4; k++) {
+            const wx = X + (k & 1 ? dw : 0), wy = Y + (k & 2 ? dh : 0);
+            const px3 = m.a * wx + m.c * wy + m.e, py = m.b * wx + m.d * wy + m.f;
+            if (px3 < x0) x0 = px3;
+            if (px3 > x1) x1 = px3;
+            if (py < y0) y0 = py;
+            if (py > y1) y1 = py;
+          }
+          const D2 = { x: Math.max(0, Math.floor(x0)), y: Math.max(0, Math.floor(y0)) };
+          D2.w = Math.min(cw, Math.ceil(x1)) - D2.x;
+          D2.h = Math.min(ch, Math.ceil(y1)) - D2.y;
+          if (D2.w <= 0 || D2.h <= 0) return;
           let L4 = this.hiLayers.get(mask);
           if (!L4) {
-            L4 = makeLayer(mask.width, mask.height);
+            L4 = makeLayer(cw, ch);
             L4.pats = [];
             this.hiLayers.set(mask, L4);
+          }
+          if (L4.w !== cw || L4.h !== ch) {
+            resizeLayer(L4, cw, ch);
+            L4.ck = null;
           }
           const g = L4.ctx;
           const fi = (Math.floor(t * fps) + offset) % this.frames.length;
           const sx2 = Math.round(t * drift % this.tw) * R9;
-          const ck = fi * 1e5 + sx2;
+          const ck = fi + "|" + sx2 + "|" + X + "|" + Y + "|" + m.a + "|" + m.b + "|" + m.c + "|" + m.d + "|" + m.e + "|" + m.f;
           if (L4.ck !== ck) {
             L4.ck = ck;
             (_a6 = L4.pats)[fi] || (_a6[fi] = g.createPattern(this.hiFrame(fi, R9), "repeat"));
-            g.globalCompositeOperation = "source-over";
+            g.setTransform(1, 0, 0, 1, 0, 0);
             g.globalAlpha = 1;
-            g.clearRect(0, 0, L4.w, L4.h);
-            g.save();
-            g.translate(sx2, 0);
-            g.fillStyle = L4.pats[fi];
-            g.fillRect(-sx2, 0, L4.w, L4.h);
-            g.restore();
-            g.globalCompositeOperation = "destination-in";
-            g.drawImage(mask, 0, 0);
             g.globalCompositeOperation = "source-over";
+            g.clearRect(D2.x, D2.y, D2.w, D2.h);
+            g.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+            g.drawImage(mask, 0, 0, mask.width, mask.height, X, Y, dw, dh);
+            g.translate(X, Y);
+            g.scale(1 / R9, 1 / R9);
+            g.translate(sx2, 0);
+            g.globalCompositeOperation = "source-atop";
+            g.fillStyle = L4.pats[fi];
+            g.fillRect(-sx2, 0, mask.width, mask.height);
+            g.setTransform(1, 0, 0, 1, 0, 0);
+            g.globalCompositeOperation = "source-over";
+          }
+          const po = ctx3.globalCompositeOperation, pa = ctx3.globalAlpha;
+          ctx3.setTransform(1, 0, 0, 1, 0, 0);
+          ctx3.globalCompositeOperation = "lighter";
+          ctx3.globalAlpha = clamp012(alpha);
+          ctx3.drawImage(L4.canvas, D2.x, D2.y, D2.w, D2.h, D2.x, D2.y, D2.w, D2.h);
+          ctx3.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+          ctx3.globalCompositeOperation = po;
+          ctx3.globalAlpha = pa;
+        }
+        // the texel-space layer (contexts without getTransform): a whole band at R x, the visible part repainted
+        drawHiLayer(ctx3, mask, mx2, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}, R9 = 2) {
+          var _a6;
+          if (!this.hiTexLayers) this.hiTexLayers = /* @__PURE__ */ new Map();
+          let L4 = this.hiTexLayers.get(mask);
+          if (!L4) {
+            L4 = makeLayer(mask.width, mask.height);
+            L4.pats = [];
+            this.hiTexLayers.set(mask, L4);
+          }
+          const X = Math.round(mx2), Y = Math.round(my);
+          const vr = visibleSrc(ctx3, X, Y, R9, mask.width, mask.height);
+          if (!vr) return;
+          const g = L4.ctx;
+          const fi = (Math.floor(t * fps) + offset) % this.frames.length;
+          const sx2 = Math.round(t * drift % this.tw) * R9;
+          const ck = fi * 1e5 + sx2;
+          if (L4.ck !== ck || !rectIn(vr, L4.rr)) {
+            L4.ck = ck;
+            const rr4 = L4.rr = padSrc(vr, 48 * R9, mask.width, mask.height);
+            (_a6 = L4.pats)[fi] || (_a6[fi] = g.createPattern(this.hiFrame(fi, R9), "repeat"));
+            paintCaustic(g, L4.pats[fi], mask, sx2, rr4);
           }
           const po = ctx3.globalCompositeOperation, pa = ctx3.globalAlpha;
           ctx3.globalCompositeOperation = "lighter";
           ctx3.globalAlpha = clamp012(alpha);
-          ctx3.drawImage(L4.canvas, 0, 0, mask.width, mask.height, Math.round(mx2), Math.round(my), mask.width / R9, mask.height / R9);
+          ctx3.drawImage(L4.canvas, 0, 0, mask.width, mask.height, X, Y, mask.width / R9, mask.height / R9);
           ctx3.globalCompositeOperation = po;
           ctx3.globalAlpha = pa;
         }
@@ -33985,28 +34206,21 @@ kmlmk..
             L4.pats = this.frames.map((c) => L4.ctx.createPattern(c, "repeat"));
             this.layers.set(mask, L4);
           }
+          const X = Math.round(mx2), Y = Math.round(my);
+          const vr = visibleSrc(ctx3, X, Y, 1, mask.width, mask.height);
+          if (!vr) return;
           const g = L4.ctx;
           const fi = (Math.floor(t * fps) + offset) % this.frames.length;
           const sx2 = Math.round(t * drift % this.tw);
           const ck = fi * 1e3 + sx2;
-          if (L4.ck !== ck) {
+          if (L4.ck !== ck || !rectIn(vr, L4.rr)) {
             L4.ck = ck;
-            g.globalCompositeOperation = "source-over";
-            g.globalAlpha = 1;
-            g.clearRect(0, 0, L4.w, L4.h);
-            g.save();
-            g.translate(sx2, 0);
-            g.fillStyle = L4.pats[fi];
-            g.fillRect(-sx2, 0, L4.w, L4.h);
-            g.restore();
-            g.globalCompositeOperation = "destination-in";
-            g.drawImage(mask, 0, 0);
-            g.globalCompositeOperation = "source-over";
+            paintCaustic(g, L4.pats[fi], mask, sx2, L4.rr = padSrc(vr, 48, mask.width, mask.height));
           }
           const po = ctx3.globalCompositeOperation, pa = ctx3.globalAlpha;
           ctx3.globalCompositeOperation = "lighter";
           ctx3.globalAlpha = clamp012(alpha);
-          ctx3.drawImage(L4.canvas, Math.round(mx2), Math.round(my));
+          ctx3.drawImage(L4.canvas, X, Y);
           ctx3.globalCompositeOperation = po;
           ctx3.globalAlpha = pa;
         }
@@ -35657,17 +35871,17 @@ kmlmk..
     m.recolor((x, y, z, p) => set.has(p) ? pick4(x, y, z) : null);
     m.recolor((x, y, z, p) => set.has(p) && m.exposed(x, y, z) && h35(x, y, z, seed + 1) < 0.03 ? idx[2] : null);
   }
-  function starfish(m, cx, cy, cz, R9, col2, dot4, rot3 = 0) {
+  function starfish(m, cx, cy, cz, R9, col2, dot5, rot3 = 0) {
     for (let k = 0; k < 5; k++) {
       const a = rot3 + k / 5 * Math.PI * 2;
       for (let t = 0; t <= R9; t += 0.5) {
         const r = 1.9 * (1 - t / R9) + 0.6;
         const x = cx + Math.cos(a) * t, z = cz + Math.sin(a) * t;
-        m.cylinder(x, z, cy, cy + (t < R9 * 0.5 ? 1 : 0), r, (xx, yy, zz) => h35(xx, yy, zz, 1) < 0.18 ? dot4 : col2);
+        m.cylinder(x, z, cy, cy + (t < R9 * 0.5 ? 1 : 0), r, (xx, yy, zz) => h35(xx, yy, zz, 1) < 0.18 ? dot5 : col2);
       }
     }
     m.cylinder(cx, cz, cy, cy + 1, 2.6, col2);
-    m.set(Math.floor(cx), cy + 2, Math.floor(cz), dot4);
+    m.set(Math.floor(cx), cy + 2, Math.floor(cz), dot5);
   }
   function rustify(m, on, rust, seed, amount = 0.5, freq = 0.13) {
     const set = new Set(on);
@@ -41202,9 +41416,9 @@ kmlmk..
       m.color(cols[2], { jitter: 0.1, spec: 0.25, coral: true, hi: true }),
       m.color(cols[3], { jitter: 0.06, spec: 0.4, emissive: glowTips ? 0.25 : 0, tip: true })
     ];
-    const dot4 = m.color(mix(cols[2], cols[3], 0.6), { jitter: 0.05 });
+    const dot5 = m.color(mix(cols[2], cols[3], 0.6), { jitter: 0.05 });
     const dark = m.color(shade(cols[0], -0.25), { jitter: 0.05 });
-    const P7 = { c, dot: dot4, dark, hex: cols };
+    const P7 = { c, dot: dot5, dark, hex: cols };
     m._pals.set(key, P7);
     return P7;
   }
@@ -41911,7 +42125,7 @@ kmlmk..
       const m = new VoxelModel(Math.ceil(20 * K2), Math.ceil(11 * K2), Math.ceil(13 * K2));
       const C6 = (c, o = {}) => m.color(c, { jitter: 0.06, ...o });
       const shell = C6(body), top = C6(mix(body, "#ffd8a8", 0.3), { spec: 0.5 }), under = C6(mix(body, "#4a1028", 0.4)), leg = C6(mix(body, "#5a1430", 0.25)), legHi = C6(mix(body, "#ffe0c0", 0.25));
-      const claw2 = C6(mix(body, "#ffffff", 0.1), { spec: 0.4 }), tipC = C6(mix(body, "#2a0a10", 0.6)), eye2 = C6("#120c14", { spec: 0.9 }), dot4 = C6(mix(body, "#fff0d8", 0.55));
+      const claw2 = C6(mix(body, "#ffffff", 0.1), { spec: 0.4 }), tipC = C6(mix(body, "#2a0a10", 0.6)), eye2 = C6("#120c14", { spec: 0.9 }), dot5 = C6(mix(body, "#fff0d8", 0.55));
       const cx = 10 * K2, cz = 6 * K2;
       const L4 = (x0, y0, z0, x1, y1, z1, c, rr4) => m.line(x0 * K2, y0 * K2, z0 * K2, x1 * K2, y1 * K2, z1 * K2, c, rr4 * K2);
       for (let i = 0; i < 4; i++) for (const side of [-1, 1]) {
@@ -41920,7 +42134,7 @@ kmlmk..
         L4(10 + side * 4, 3, kz, 10 + side * 7, 4.6, kz + o * 0.4, leg, 0.45);
         L4(10 + side * 7, 4.6, kz + o * 0.4, 10 + side * (8.6 + (o > 0 ? 0.8 : 0)), 0, kz + o * 0.8, i % 2 ? legHi : leg, 0.4);
       }
-      m.ellipsoid(cx, 3.6 * K2, cz, 4.8 * K2, 2.3 * K2, 3.5 * K2, (x, y, z) => y >= 5 * K2 ? hash3(x, y, z, 3) < 0.18 ? dot4 : top : y <= 2 * K2 ? under : shell);
+      m.ellipsoid(cx, 3.6 * K2, cz, 4.8 * K2, 2.3 * K2, 3.5 * K2, (x, y, z) => y >= 5 * K2 ? hash3(x, y, z, 3) < 0.18 ? dot5 : top : y <= 2 * K2 ? under : shell);
       const cy = f === 0 ? 6.2 : 5;
       for (const side of [-1, 1]) {
         L4(10 + side * 3, 3, 9, 10 + side * 5.2, cy - 1, 11, shell, 0.55);
@@ -51532,7 +51746,9 @@ kmlmk..
             yield;
           }
           yield;
-          this.crabSpr = [lpCrabFrames("#e0502e"), lpCrabFrames("#f09a3a")];
+          const crabA = lpCrabFrames("#e0502e");
+          yield;
+          this.crabSpr = [crabA, lpCrabFrames("#f09a3a")];
           yield;
           this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W11, z, dir: i % 2 ? -1 : 1, state: "walk", t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
           yield;
@@ -65218,7 +65434,10 @@ kmlmk..
   function pk3(hex7, a = 255) {
     const k = hex7 + a;
     let v = pkCache.get(k);
-    if (v === void 0) pkCache.set(k, v = pack(hex7, a));
+    if (v === void 0) {
+      pkCache.set(k, v = pack(hex7, a));
+      if (pkCache.size > 4096) pkCache.delete(pkCache.keys().next().value);
+    }
     return v;
   }
   function outlineFn(n2) {
@@ -74992,6 +75211,7 @@ kmlmk..
     }
     g.putImageData(id2, 0, 0);
     GLOWS.set(key, c);
+    if (GLOWS.size > 300) GLOWS.delete(GLOWS.keys().next().value);
     return c;
   }
   function islandModel(kind2, seed) {
@@ -76828,7 +77048,7 @@ kmlmk..
         onResize() {
           this.top = _Ocean.topFor(this.H);
           this.env.top = this.top;
-          for (const b of Object.values(this.cache)) b.build(this.W, this.H);
+          for (const b of Object.values(this.cache)) if (b.W !== this.W || b.H !== this.H || b.ready === false) b.build(this.W, this.H);
           resizeLayer(this.light, this.W, this.H);
         }
         // ------------------------------------------------------------- environment
@@ -84128,6 +84348,13 @@ Water-droplet money from fish and your tank.`;
     SHAKERS.set(tilt, c);
     return c;
   }
+  function dot4(ctx3, flt, col2, x, y, n2) {
+    const pf = ctx3.filter;
+    if (flt) ctx3.filter = flt;
+    ctx3.fillStyle = col2;
+    ctx3.fillRect(x, y, n2, n2);
+    if (flt) ctx3.filter = pf || "none";
+  }
   var FOODS, KICKS, FOOD_IDS, RENDER2, shadeHex2, h39, rotX, rotY, rotZ, mul2, KRILL_PAL, SPR4, budgetT, budgetN, ICONS2, SHAKERS, FoodSim;
   var init_food = __esm({
     "src/aquarium/food.js"() {
@@ -84360,15 +84587,13 @@ Water-droplet money from fish and your tank.`;
         draw(ctx3, cam, o = {}) {
           const S15 = this.aq.scene;
           const half = 0.5;
-          const prevF = ctx3.filter;
-          if (o.dark > 0.05) ctx3.filter = `brightness(${(1 - o.dark * 0.5).toFixed(2)}) saturate(${(1 - o.dark * 0.3).toFixed(2)})`;
+          const flt = o.dark > 0.05 ? `brightness(${(1 - o.dark * 0.5).toFixed(2)}) saturate(${(1 - o.dark * 0.3).toFixed(2)})` : null;
           for (const c of this.crumbs) {
-            const s = sprite2("crumb", c.col, Math.floor(c.frame) % 4, 1);
+            const s = filtered(sprite2("crumb", c.col, Math.floor(c.frame) % 4, 1), flt);
             const q = S15.proj(c.p[0], c.p[1], c.p[2], cam);
             const a = clamp012((c.life - c.t) / 0.6);
             if (!s) {
-              ctx3.fillStyle = c.col;
-              ctx3.fillRect(Math.round(q.x), Math.round(q.y), 1, 1);
+              dot4(ctx3, flt, c.col, Math.round(q.x), Math.round(q.y), 1);
               continue;
             }
             ctx3.globalAlpha = a;
@@ -84395,11 +84620,10 @@ Water-droplet money from fish and your tank.`;
               const hop = p.hopT < 0.25 ? 1 : 0;
               frame2 = (Math.floor(p.t * 3 + p.ph) + hop * 2) % fr;
             }
-            const s = sprite2(p.type, v, frame2, size);
+            const s = filtered(sprite2(p.type, v, frame2, size), flt);
             const q = S15.proj(p.p[0], p.p[1], p.p[2], cam);
             if (!s) {
-              ctx3.fillStyle = F3.cols[0];
-              ctx3.fillRect(Math.round(q.x) - 1, Math.round(q.y) - 1, 2, 2);
+              dot4(ctx3, flt, F3.cols[0], Math.round(q.x) - 1, Math.round(q.y) - 1, 2);
               continue;
             }
             const w = s.width * half, h = s.height * half;
@@ -84415,7 +84639,6 @@ Water-droplet money from fish and your tank.`;
             } else ctx3.drawImage(s, x, y, w, h);
             ctx3.globalAlpha = 1;
           }
-          ctx3.filter = prevF || "none";
         }
       };
       FoodSim.prototype.sheet = function sheet2() {
@@ -87591,6 +87814,7 @@ Water-droplet money from fish and your tank.`;
       g.fillStyle = gr;
       g.fillRect(0, 0, r * 2, r * 2);
       glowCache3.set(key, c);
+      if (glowCache3.size > 300) glowCache3.delete(glowCache3.keys().next().value);
     }
     return c;
   }
@@ -92641,7 +92865,7 @@ Water-droplet money from fish and your tank.`;
   }
   function buildGlowrock(f) {
     const m = new VoxelModel(70, 34, 30), C6 = palette3(m);
-    const rock = C6("#2a2448", { spec: 0.6 }), rockL = C6("#3e3666"), cap1 = C6(f % 2 ? "#5af0ff" : "#3ad8f0", { emissive: 0.9, jitter: 0 }), cap2 = C6(f % 2 ? "#c87aff" : "#b05aff", { emissive: 0.9, jitter: 0 }), dot4 = C6("#ffffff", { emissive: 1, jitter: 0 }), stalk = C6("#d8f0ff", { emissive: 0.3 }), crys = C6("#8affd8", { emissive: 0.7, spec: 1.5 });
+    const rock = C6("#2a2448", { spec: 0.6 }), rockL = C6("#3e3666"), cap1 = C6(f % 2 ? "#5af0ff" : "#3ad8f0", { emissive: 0.9, jitter: 0 }), cap2 = C6(f % 2 ? "#c87aff" : "#b05aff", { emissive: 0.9, jitter: 0 }), dot5 = C6("#ffffff", { emissive: 1, jitter: 0 }), stalk = C6("#d8f0ff", { emissive: 0.3 }), crys = C6("#8affd8", { emissive: 0.7, spec: 1.5 });
     for (let y = 0; y <= 10; y++) for (let z = 0; z < 30; z++) for (let x = 0; x < 70; x++) {
       const s = y > 6 ? 1 - (y - 6) * 0.13 : 1;
       if (slabOutline(x + 0.5, z + 0.5, 35, 15, 31 * s, 13 * s, 8) && hash3(x >> 2, y, z >> 2) < 0.94) m.set(x, y, z, y > 8 || hash3(x, y, z) < 0.2 ? rockL : rock);
@@ -92650,14 +92874,14 @@ Water-droplet money from fish and your tank.`;
     for (const [x, z, h, c] of shrooms) {
       m.cylinder(x, z, 9, 9 + h, 0.9, stalk);
       m.ellipsoid(x, 10 + h, z, 3.4, 1.6, 3.4, c);
-      m.set(x - 1, 11 + h, z + 2, dot4);
-      m.set(x + 2, 11 + h, z, dot4);
+      m.set(x - 1, 11 + h, z + 2, dot5);
+      m.set(x + 2, 11 + h, z, dot5);
     }
     for (let i = 0; i < 4; i++) m.line(28 + i * 2, 10, 10 + i, 26 + i * 3, 20 + i * 2, 10 + i, crys, 1);
     for (let i = 0; i < 9; i++) {
       const x = 6 + i * 7, z = 22 + i % 3;
       m.line(x, 9, z, x + Math.sin(i + f) * 1.5, 13, z, cap2, 0.4);
-      m.set(x, 14, z, dot4);
+      m.set(x, 14, z, dot5);
     }
     return { m, sink: 4, anchors: { stage: [32, 11, 15], top: [36, 28, 15] } };
   }
@@ -120602,7 +120826,7 @@ void main() {
         b.data[y * D2 + x] = px2(c[0], c[1], c[2]);
       }
       const ink = hx("#2a1830");
-      const dot4 = (x, y, c = ink) => {
+      const dot5 = (x, y, c = ink) => {
         x = Math.round(x);
         y = Math.round(y);
         if (x >= 0 && y >= 0 && x < D2 && y < D2) b.data[y * D2 + x] = px2(c[0], c[1], c[2]);
@@ -120610,43 +120834,43 @@ void main() {
       const ex = R9 * 0.38, ey = -R9 * 0.12;
       if (mood === "love") {
         const red = hx("#e0304c");
-        for (const s of [-1, 1]) for (const [hx0, hy0] of [[-1, 0], [1, 0], [-2, -1], [-1, -1], [1, -1], [2, -1], [-2, -2], [-1, -2], [1, -2], [2, -2], [0, 0], [0, 1], [-1, 0], [0, -1]]) dot4(cx + s * ex + hx0, cx + ey + hy0 + 1, red);
+        for (const s of [-1, 1]) for (const [hx0, hy0] of [[-1, 0], [1, 0], [-2, -1], [-1, -1], [1, -1], [2, -1], [-2, -2], [-1, -2], [1, -2], [2, -2], [0, 0], [0, 1], [-1, 0], [0, -1]]) dot5(cx + s * ex + hx0, cx + ey + hy0 + 1, red);
       } else if (mood === "sad") {
         for (const s of [-1, 1]) {
-          dot4(cx + s * ex, cx + ey);
-          dot4(cx + s * ex, cx + ey + 1);
-          dot4(cx + s * ex - s, cx + ey - 2);
-          dot4(cx + s * ex - s * 2, cx + ey - 2);
+          dot5(cx + s * ex, cx + ey);
+          dot5(cx + s * ex, cx + ey + 1);
+          dot5(cx + s * ex - s, cx + ey - 2);
+          dot5(cx + s * ex - s * 2, cx + ey - 2);
         }
         const blue = hx("#4aa8f0");
-        dot4(cx + ex + 1, cx + ey + 3, blue);
-        dot4(cx + ex + 1, cx + ey + 4, blue);
-        dot4(cx + ex + 2, cx + ey + 4, blue);
+        dot5(cx + ex + 1, cx + ey + 3, blue);
+        dot5(cx + ex + 1, cx + ey + 4, blue);
+        dot5(cx + ex + 2, cx + ey + 4, blue);
       } else {
         for (const s of [-1, 1]) {
-          for (const [a, c] of [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]]) dot4(cx + s * ex - 1 + a, cx + ey - 1 + c);
-          dot4(cx + s * ex - 1, cx + ey - 1, hx("#ffffff"));
+          for (const [a, c] of [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]]) dot5(cx + s * ex - 1 + a, cx + ey - 1 + c);
+          dot5(cx + s * ex - 1, cx + ey - 1, hx("#ffffff"));
         }
       }
       const my = cx + R9 * 0.36;
-      if (mood === "happy" || mood === "love") for (let i = -4; i <= 4; i++) dot4(cx + i, my + Math.round((16 - i * i) / 8) - 1);
-      else if (mood === "ok") for (let i = -3; i <= 3; i++) dot4(cx + i, my + (Math.abs(i) > 2 ? 0 : 1));
-      else if (mood === "sad") for (let i = -3; i <= 3; i++) dot4(cx + i, my + 2 - Math.round((9 - i * i) / 5));
+      if (mood === "happy" || mood === "love") for (let i = -4; i <= 4; i++) dot5(cx + i, my + Math.round((16 - i * i) / 8) - 1);
+      else if (mood === "ok") for (let i = -3; i <= 3; i++) dot5(cx + i, my + (Math.abs(i) > 2 ? 0 : 1));
+      else if (mood === "sad") for (let i = -3; i <= 3; i++) dot5(cx + i, my + 2 - Math.round((9 - i * i) / 5));
       else {
-        for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) if (x * x + y * y <= 5) dot4(cx + x, my + y, x * x + y * y > 2 ? ink : hx("#c8344c"));
-        dot4(cx + 3, my + 3, hx("#7fdcfa"));
+        for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) if (x * x + y * y <= 5) dot5(cx + x, my + y, x * x + y * y > 2 ? ink : hx("#c8344c"));
+        dot5(cx + 3, my + 3, hx("#7fdcfa"));
       }
       if (mood === "happy" || mood === "love") {
         const pk4 = hx("#ff8aa8");
         for (const s of [-1, 1]) {
-          dot4(cx + s * R9 * 0.62, my - 1, pk4);
-          dot4(cx + s * R9 * 0.62 + s, my - 1, pk4);
+          dot5(cx + s * R9 * 0.62, my - 1, pk4);
+          dot5(cx + s * R9 * 0.62 + s, my - 1, pk4);
         }
       }
       const g = hx("#ffffff");
-      dot4(cx - R9 * 0.45, cx - R9 * 0.55, g);
-      dot4(cx - R9 * 0.45 + 1, cx - R9 * 0.55, g);
-      dot4(cx - R9 * 0.45, cx - R9 * 0.55 + 1, g);
+      dot5(cx - R9 * 0.45, cx - R9 * 0.55, g);
+      dot5(cx - R9 * 0.45 + 1, cx - R9 * 0.55, g);
+      dot5(cx - R9 * 0.45, cx - R9 * 0.55 + 1, g);
       return hiFromBuffer(b);
     });
   }
@@ -125076,6 +125300,7 @@ Build it to unlock ${HOTBAR_UNLOCKS[o.unlock].label}!` : ""}`);
       init_bigicons();
       init_pop3d();
       init_color();
+      init_canvas();
       init_hotbar();
       init_gemui();
       init_skips();
@@ -127266,13 +127491,10 @@ ${hearts} ${status}
               const s = 0.5 * (pop < 1 ? 1 + Math.sin(pop * Math.PI) * 0.25 : 1);
               const w = ic.width * s, h = ic.height * s;
               const bob = hov && !c.locked ? Math.sin(this.t * 6) * 1 : 0;
-              const prevF = ctx3.filter, prevA = ctx3.globalAlpha;
-              if (sealK > 0) {
-                ctx3.filter = `saturate(${(1 - sealK * 0.55).toFixed(2)}) brightness(${(1 - sealK * 0.12).toFixed(2)})`;
-                ctx3.globalAlpha = prevA * (1 - sealK * 0.15);
-              }
-              ctx3.drawImage(ic, Math.round((x + c.B / 2 - w / 2) * 2) / 2, Math.round((c.y + c.B / 2 - h / 2 + lift + bob) * 2) / 2, w, h);
-              ctx3.filter = prevF || "none";
+              const prevA = ctx3.globalAlpha;
+              if (sealK > 0) ctx3.globalAlpha = prevA * (1 - sealK * 0.15);
+              const icf = sealK > 0 ? filtered(ic, `saturate(${(1 - sealK * 0.55).toFixed(2)}) brightness(${(1 - sealK * 0.12).toFixed(2)})`) : ic;
+              ctx3.drawImage(icf, Math.round((x + c.B / 2 - w / 2) * 2) / 2, Math.round((c.y + c.B / 2 - h / 2 + lift + bob) * 2) / 2, w, h);
               ctx3.globalAlpha = prevA;
             }
             if (sealK > 0) {
@@ -128982,7 +129204,7 @@ ${hearts} ${status}
     drawText(ctx3, key, R8(x + w / 2), R8(y + (h - ch) / 2), { align: "center", font, color: AERO.ink });
     return { w, h };
   }
-  var HUD_ITEMS, ALIAS4, BIOME_TINT, R8, tile2, toneShadow, Hud;
+  var GREY, greyed, HUD_ITEMS, ALIAS4, BIOME_TINT, R8, tile2, toneShadow, Hud;
   var init_hud2 = __esm({
     "src/ui/hud.js"() {
       init_math();
@@ -129001,6 +129223,8 @@ ${hearts} ${status}
       init_hotbar();
       init_labtree();
       init_pop3d();
+      GREY = "grayscale(1) brightness(0.92) contrast(0.8)";
+      greyed = (src) => filtered(src, GREY);
       HUD_ITEMS = [
         { id: "lab", label: "The Lab", key: "L", tint: "#6ee04a", icon: "lab", alias: "skills", group: 0 },
         { id: "quests", label: "Quests", key: "Q", tint: "#ffc23a", icon: "quests", group: 0 },
@@ -129619,11 +129843,8 @@ ${hearts} ${status}
           ctx3.fillRect(R8(it2.x + B2 / 2 - sw / 2), R8(it2.y + B2 + 1), sw, R8(2 * k));
           const lock = this.locked(it2);
           draw(tile2(B2, lock ? "#7d8eae" : it2.tint, !lock && (hov > 0.5 || active)));
-          const fPrev = ctx3.filter, aPrev = ctx3.globalAlpha;
-          if (lock) {
-            ctx3.filter = "grayscale(1) brightness(0.92) contrast(0.8)";
-            ctx3.globalAlpha = aPrev * 0.55;
-          }
+          const aPrev = ctx3.globalAlpha;
+          if (lock) ctx3.globalAlpha = aPrev * 0.55;
           const hop = it2.pop > 0 ? -R8(Math.sin(it2.pop * Math.PI) * 4 * k) : 0;
           const iconHop = hop - R8(hov * 2 * k);
           let f = null;
@@ -129632,7 +129853,8 @@ ${hearts} ${status}
           } catch {
             f = null;
           }
-          if (f) draw(f.canvas, iconHop, f.ox, f.oy);
+          const gr = (c) => lock ? greyed(c) : c;
+          if (f) draw(gr(f.canvas), iconHop, f.ox, f.oy);
           else {
             let spr4 = null;
             try {
@@ -129640,10 +129862,9 @@ ${hearts} ${status}
             } catch {
               spr4 = null;
             }
-            if (spr4) draw(spr4.canvas, iconHop);
+            if (spr4) draw(gr(spr4.canvas), iconHop);
           }
           if (lock) {
-            ctx3.filter = fPrev || "none";
             ctx3.globalAlpha = aPrev;
             const lk = padlockTex(R8(B2 * 0.84));
             const wig = hov > 0.3 && !calm ? Math.sin(t * 14) * 1.2 * hov : 0;
@@ -130916,6 +131137,93 @@ ${hearts} ${status}
           const ocean2 = this.ocean;
           const view = this.state.view;
           const cam = this.camera;
+          const thr = this.worldThrottle(W11, H8);
+          if (thr === "reuse") {
+            ctx3.globalCompositeOperation = "copy";
+            ctx3.drawImage(this.worldSnap.canvas, 0, 0);
+            ctx3.globalCompositeOperation = "source-over";
+          } else {
+            this.drawScene(ctx3, dt);
+            if (thr === "snap") {
+              const S15 = this.worldSnap;
+              if (S15.w !== W11 || S15.h !== H8) resizeLayer(S15, W11, H8);
+              S15.ctx.setTransform(1, 0, 0, 1, 0, 0);
+              S15.ctx.globalAlpha = 1;
+              S15.ctx.globalCompositeOperation = "copy";
+              S15.ctx.drawImage(this.screen.canvas, 0, 0);
+              S15.ctx.globalCompositeOperation = "source-over";
+              S15.ok = true;
+            }
+          }
+          {
+            const ctx4 = uctx0 || this.screen.ctx;
+            if (view === "aquarium") try {
+              this.aquarium.drawUi(ctx4);
+            } catch (e) {
+              if (!this.aqUiErr) {
+                this.aqUiErr = true;
+                console.error(e);
+              }
+            }
+            this.hud.draw(ctx4);
+            try {
+              this.quests?.drawHud?.(ctx4, dt);
+            } catch (e) {
+              if (!this.questDrawErr) {
+                this.questDrawErr = true;
+                console.error(e);
+              }
+            }
+            this.fishing.drawHud(ctx4);
+            try {
+              this.build?.drawUi?.(ctx4);
+            } catch (e) {
+              if (!this.buildUiErr) {
+                this.buildUiErr = true;
+                console.error(e);
+              }
+            }
+            this.ui.drawHud(ctx4, dt);
+            cam.drawBars(ctx4);
+            this.fishing.drawCinematicHud?.(ctx4);
+            ocean2.drawTitleCard(ctx4, dt);
+            this.ui.drawPanels(ctx4, dt);
+            this.tutorial.drawUi?.(ctx4);
+            this.particles.draw(ctx4, "ui", this.time);
+            this.ui.drawToasts(ctx4);
+            this.hud.drawTooltip(ctx4, this.input);
+            this.ui.drawTip(ctx4);
+            cam.drawFlash(ctx4);
+            if (this.paused) drawText(ctx4, "PAUSED (P)", W11 / 2, 8, { align: "center", color: "#ffffff", shadow: "#0a3e74" });
+            if (this.state.settings.showFps) drawText(ctx4, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : "2d"}`, 4, H8 - 36, { font: "small", color: "#ffffff", outline: "#000" });
+            this.drawCursor(ctx4);
+          }
+        }
+        // [perf27] 'snap' = draw the world and keep a copy, 'reuse' = blit that copy, null = draw it as usual. Only while a
+        // big modal window (Lab, Wardrobe, FishDex, Satchel ...) has finished opening and covers at least half the screen,
+        // in the plain ocean / tank (no voyage, dock scene, tutorial, fish on the line or cinematic): the world under it is
+        // redrawn every 2nd frame (every 4th when the window hides 85 % of it) and re-blitted in between.
+        worldThrottle(W11, H8) {
+          const ui = this.ui, a = ui.active, r = a?.rect;
+          const cover = r ? Math.max(0, Math.min(W11, r.x + r.w) - Math.max(0, r.x)) * Math.max(0, Math.min(H8, r.y + r.h) - Math.max(0, r.y)) / (W11 * H8) : 0;
+          const ok = !!(ui.blocking && a && !a.cinematic && cover >= 0.5 && (a.anim ?? 1) >= 1) && !this.ocean.travelState && !this.dest?.active && !this.dest?.phase && !this.tutorial.active && !this.tutorial.intro && !this.fishing.busy && !this.fishing.cine && !this.paused && !ui.ghosts?.length;
+          if (!ok) {
+            if (this.worldSnap) this.worldSnap.ok = false;
+            return null;
+          }
+          const S15 = this.worldSnap;
+          if (S15?.ok && S15.w === W11 && S15.h === H8 && S15.view === this.state.view && ++S15.n < (cover >= 0.85 ? 4 : 2)) return "reuse";
+          this.worldSnap || (this.worldSnap = makeLayer(W11, H8));
+          this.worldSnap.n = 0;
+          this.worldSnap.view = this.state.view;
+          return "snap";
+        }
+        // The world under the HUD: ocean / tank scene, boat, lighting, near fish, fishing line, voyage, tank window, docks.
+        drawScene(ctx3, dt) {
+          const W11 = this.screen.W, H8 = this.screen.H;
+          const ocean2 = this.ocean;
+          const view = this.state.view;
+          const cam = this.camera;
           if (view === "ocean") {
             ctx3.fillStyle = "#0b1622";
             ctx3.fillRect(0, 0, W11, H8);
@@ -131020,49 +131328,6 @@ ${hearts} ${status}
               this.progDrawErr = true;
               console.error(e);
             }
-          }
-          {
-            const ctx4 = uctx0 || this.screen.ctx;
-            if (view === "aquarium") try {
-              this.aquarium.drawUi(ctx4);
-            } catch (e) {
-              if (!this.aqUiErr) {
-                this.aqUiErr = true;
-                console.error(e);
-              }
-            }
-            this.hud.draw(ctx4);
-            try {
-              this.quests?.drawHud?.(ctx4, dt);
-            } catch (e) {
-              if (!this.questDrawErr) {
-                this.questDrawErr = true;
-                console.error(e);
-              }
-            }
-            this.fishing.drawHud(ctx4);
-            try {
-              this.build?.drawUi?.(ctx4);
-            } catch (e) {
-              if (!this.buildUiErr) {
-                this.buildUiErr = true;
-                console.error(e);
-              }
-            }
-            this.ui.drawHud(ctx4, dt);
-            cam.drawBars(ctx4);
-            this.fishing.drawCinematicHud?.(ctx4);
-            ocean2.drawTitleCard(ctx4, dt);
-            this.ui.drawPanels(ctx4, dt);
-            this.tutorial.drawUi?.(ctx4);
-            this.particles.draw(ctx4, "ui", this.time);
-            this.ui.drawToasts(ctx4);
-            this.hud.drawTooltip(ctx4, this.input);
-            this.ui.drawTip(ctx4);
-            cam.drawFlash(ctx4);
-            if (this.paused) drawText(ctx4, "PAUSED (P)", W11 / 2, 8, { align: "center", color: "#ffffff", shadow: "#0a3e74" });
-            if (this.state.settings.showFps) drawText(ctx4, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : "2d"}`, 4, H8 - 36, { font: "small", color: "#ffffff", outline: "#000" });
-            this.drawCursor(ctx4);
           }
         }
         drawBuildings(ctx3, env, band) {

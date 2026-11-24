@@ -428,7 +428,9 @@ export class ShallowsBiome extends Biome {
     for (const [xf, z, pal] of [[0.125, 0.1, 'red'], [0.548, 0.28, 'orange'], [0.745, 0.32, 'pink'], [0.43, 0.58, 'cream'], [0.99, 0.08, 'purple'], [0.3, 0.86, 'yellow']]) { life('soft', 7 + Math.round(xf * 30), 12, z, Math.round(xf * W), pal); yield; }
     yield;
     // critters
-    this.crabSpr = [lpCrabFrames('#e0502e'), lpCrabFrames('#f09a3a')]; // [phase6:creatures] low-poly crabs
+    const crabA = lpCrabFrames('#e0502e'); // [perf27] one crab colour per step (each is 3 forced creature frames)
+    yield;
+    this.crabSpr = [crabA, lpCrabFrames('#f09a3a')]; // [phase6:creatures] low-poly crabs
     yield;
     this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W, z, dir: i % 2 ? -1 : 1, state: 'walk', t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
     yield;

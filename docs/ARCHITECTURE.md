@@ -859,3 +859,37 @@ mimics" and "make your strings have max length too, need to upgrade".
   Deep ambience (`src/world/deepsea.js`, `depthzones.js`): darker zones, more watching eyes, passing silhouettes,
   pitched-down sample rumbles, bioluminescent plankton wake behind the hook. Reaching deep zones needs line upgrades
   ([crate26]).
+
+## Performance pass [perf27]
+- Profiling: `PW_PATH=/opt/node-tools/node_modules/playwright node tools/perf.mjs [--secs 6] [--only ocean,lab] [--profile]
+  [--json out.json]` boots `dist/index.html?fresh&skipintro` headless, skips the chapter-1 cutscene and measures the
+  scenarios ocean, fight (a hooked fish, mouse circling the gear), tank, lab, wardrobe, voyage (oscean -> shallows),
+  cutscene (Quest Log replay of ch1), deep / deep2 (camera at the abyss floor): rAF fps and frame intervals, the game's
+  own CPU per frame (update + draw), long tasks (> 50 ms), main-thread task time per frame (CDP Performance metrics:
+  script + canvas raster, the honest number for software rendering) and the JS heap after a GC. `--profile` adds a CDP
+  CPU profile per scenario (top self time, native canvas / GL calls by JS caller; `PERF_INCL=n` inclusive times,
+  `PERF_SPIKES=ms` the functions behind each long frame, `PERF_CALLERS=fn` call paths). `PERF_JS=<file>` serves another
+  bundle (A/B against a saved baseline), `PERF_SETTLE=ms` waits for background builds, `PERF_EVAL=<js>` runs an
+  experiment, `PERF_Q=&watergl=0` adds query flags. Headless Chromium rasterises canvases in software: compare runs
+  relative to each other.
+- Locked hotbar slots drew their icon through `ctx.filter` (grayscale) every frame; a canvas filter makes the browser
+  filter a canvas-sized layer per draw, which was the single biggest cost of every scene. `filtered(src, filter)`
+  (`src/core/canvas.js`) caches a filtered copy per sprite (+ `.hi` twin); the hotbar, the sealed food chips and the
+  dark-tank food use it. Never set `ctx.filter` on a per-frame draw.
+- Caustics (`Caustics.drawHi`, scenery.js) are painted in DEVICE space: a canvas-sized layer gets the mask and the
+  pattern drawn through the transform the old 2x / 3x band layer was composited with, so only on-screen pixels are
+  painted (the old layer was a whole band at 3x); repainted when the frame, drift or camera change. Luma masks are
+  black with the light in alpha and the pattern lands with 'source-atop' (bounded ops: no hidden full-area layer).
+  The fallback / 1x path only repaints the visible part of its layer.
+- Big modal windows (`game.worldThrottle`): while a finished-opening modal panel covers >= 50 % of the screen (Lab,
+  FishDex, Satchel ...; not during voyages, dock scenes, the tutorial, fish on the line, cinematics) the world under
+  it is drawn every 2nd frame (every 4th at >= 85 % cover) into `game.worldSnap` and blitted in between
+  (`drawScene` is the world part of `draw`). Updates still run every frame.
+- Fish sprite sheets (`lowpolyfish.js`) build in parts: `sheetStart` (poses, bounds) / `sheetStep` (one swim cell per
+  call under the frame budget; `renderSheetPart` in lowpoly.js draws each cell where `renderSheet` would and reads it
+  back on its own, so the pixels are identical) / `sheetFinish` (outline, glow, anchors). Forced builds still finish
+  at once. This removed the 50-200 ms hitches when a new fish, giant or deep creature appeared.
+- Boot: `Ocean.onResize` no longer rebuilds a biome already built at that size (the constructor built the first
+  ocean twice: ~0.5 s less to the first frame).
+- Bounded caches: colour / ramp / pack caches keyed by blended colours and the glow / bubble sprite caches now evict
+  their oldest entries past a cap.

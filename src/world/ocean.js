@@ -75,7 +75,9 @@ export class Ocean {
   onResize() {
     this.top = Ocean.topFor(this.H);
     this.env.top = this.top;
-    for (const b of Object.values(this.cache)) b.build(this.W, this.H);
+    // [perf27] builds are deterministic per size: a biome already built at this size (the boot calls onResize right
+    // after setBiome built it) is kept instead of being rebuilt from scratch
+    for (const b of Object.values(this.cache)) if (b.W !== this.W || b.H !== this.H || b.ready === false) b.build(this.W, this.H);
     resizeLayer(this.light, this.W, this.H);
   }
 

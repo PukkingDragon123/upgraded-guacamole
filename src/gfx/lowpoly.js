@@ -476,14 +476,15 @@ const finish = () => gl.disable(gl.SCISSOR_TEST);
 // readback; fast with software GL), 'draw' = drawImage (GPU-to-GPU on hardware GL).
 export function lpCopyMode(m) { copyMode = m; }
 let pixBuf = null;
-function copyOut(out, W, H, ox = 0, oy = 0) {
+// (sx, sy) = top-left of the copied rectangle in the GL canvas ([perf27] renderSheetPart copies single cells)
+function copyOut(out, W, H, ox = 0, oy = 0, sx = 0, sy = 0) {
   const mode = copyMode === 'pixels' ? 'pixels' : 'draw';
   const g = out.getContext('2d');
-  if (mode === 'draw') { g.drawImage(glCanvas, 0, 0, W, H, ox, oy, W, H); return; }
+  if (mode === 'draw') { g.drawImage(glCanvas, sx, sy, W, H, ox, oy, W, H); return; }
   const n = W * H * 4;
   if (!pixBuf || pixBuf.length < n) pixBuf = new Uint8Array(n);
   const ta = tnow();
-  gl.readPixels(0, GLH - H, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pixBuf);
+  gl.readPixels(sx, GLH - sy - H, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pixBuf);
   T.rp += tnow() - ta;
   const img = g.createImageData(W, H);
   const d = img.data, row = W * 4;
@@ -576,6 +577,48 @@ export function renderSheet(cells, o = {}) {
   copyOut(out, W, H, o.outX || 0, o.outY || 0);
   T.draw += t1 - t0; T.copy += tnow() - t1; T.n++;
   return out;
+}
+
+/**
+ * [perf27] The sheet layout renderSheet uses for n cells: {w, h, cols, W, H} (the canvas renderSheet returns is W x H).
+ */
+export function sheetLayout(n, o = {}) {
+  const w = Math.max(1, Math.round(o.w || 64)), h = Math.max(1, Math.round(o.h || 64));
+  const cols = Math.max(1, Math.min(n, o.cols || n, Math.floor(MAX_GL / w)));
+  const rows = Math.ceil(n / cols);
+  return { w, h, cols, W: cols * w, H: Math.min(MAX_GL, rows * h) };
+}
+
+/**
+ * [perf27] Render cells [i0, i1) of a sheet into `out` (a W x H canvas, see sheetLayout) at their sheet positions,
+ * so a big sheet can be built a few cells per frame. Each cell is drawn in the same place of a W x H GL canvas as in
+ * renderSheet and read back on its own, so the pixels are exactly the ones renderSheet gives. Returns false without
+ * GL (the caller renders the whole sheet with renderSheet, which has the software fallback).
+ */
+export function renderSheetPart(cells, o, i0, i1, out) {
+  if (!cells.length || !init()) return false;
+  const { w, h, cols, W, H } = sheetLayout(cells.length, o);
+  const t0 = tnow();
+  ensureSize(W, H);
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthFunc(gl.LEQUAL);
+  gl.enable(gl.CULL_FACE);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(prog);
+  const done = [];
+  for (let i = i0; i < Math.min(i1, cells.length); i++) {
+    const x = (i % cols) * w, y = Math.floor(i / cols) * h;
+    if (y + h > MAX_GL) break;
+    region(x, y, w, h);
+    drawCell(cells[i], { ...o, ...cells[i] }, w, h);
+    done.push([x, y]);
+  }
+  finish();
+  const t1 = tnow();
+  for (const [x, y] of done) copyOut(out, w, h, (o.outX || 0) + x, (o.outY || 0) + y, x, y);
+  T.draw += t1 - t0; T.copy += tnow() - t1; T.n++;
+  return true;
 }
 
 /** Pixel position (top-left origin) of model point p in a w x h sprite rendered with options o. */

@@ -20,7 +20,7 @@
 //   shakerSprite(tilt) -> canvas     the voxel food shaker shown at the cursor while feeding (device px)
 
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
-import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { makeCanvas, ctxOf, filtered } from '../core/canvas.js';
 import { clamp, clamp01, TAU } from '../core/math.js';
 import { rng } from '../core/rng.js';
 
@@ -394,13 +394,13 @@ export class FoodSim {
   draw(ctx, cam, o = {}) {
     const S = this.aq.scene;
     const half = 0.5; // sprites are authored in device px (2 per voxel): half that in logical px
-    const prevF = ctx.filter;
-    if (o.dark > 0.05) ctx.filter = `brightness(${(1 - o.dark * 0.5).toFixed(2)}) saturate(${(1 - o.dark * 0.3).toFixed(2)})`;
+    // [perf27] a dark tank dims the food through cached filtered copies of the sprites (no per-draw ctx.filter)
+    const flt = o.dark > 0.05 ? `brightness(${(1 - o.dark * 0.5).toFixed(2)}) saturate(${(1 - o.dark * 0.3).toFixed(2)})` : null;
     for (const c of this.crumbs) {
-      const s = sprite('crumb', c.col, Math.floor(c.frame) % 4, 1);
+      const s = filtered(sprite('crumb', c.col, Math.floor(c.frame) % 4, 1), flt);
       const q = S.proj(c.p[0], c.p[1], c.p[2], cam);
       const a = clamp01((c.life - c.t) / 0.6);
-      if (!s) { ctx.fillStyle = c.col; ctx.fillRect(Math.round(q.x), Math.round(q.y), 1, 1); continue; }
+      if (!s) { dot(ctx, flt, c.col, Math.round(q.x), Math.round(q.y), 1); continue; }
       ctx.globalAlpha = a;
       ctx.drawImage(s, Math.round((q.x - s.width * half / 2) * 2) / 2, Math.round((q.y - s.height * half / 2) * 2) / 2, s.width * half, s.height * half);
       ctx.globalAlpha = 1;
@@ -414,9 +414,9 @@ export class FoodSim {
       else if (p.type === 'pellets') { v = p.v % 3; size = p.bites >= 2 ? 2 : 1; frame = ((Math.floor((p.rot / TAU) * fr) % fr) + fr) % fr; }
       else if (p.type === 'worms') { size = clamp(p.bites, 1, 3); frame = Math.floor((p.t * (p.rest > 0 ? 4 : 9) + p.ph) % fr); }
       else { size = p.bites >= 2 ? 2 : 1; const hop = p.hopT < 0.25 ? 1 : 0; frame = (Math.floor(p.t * 3 + p.ph) + hop * 2) % fr; }
-      const s = sprite(p.type, v, frame, size);
+      const s = filtered(sprite(p.type, v, frame, size), flt);
       const q = S.proj(p.p[0], p.p[1], p.p[2], cam);
-      if (!s) { ctx.fillStyle = F.cols[0]; ctx.fillRect(Math.round(q.x) - 1, Math.round(q.y) - 1, 2, 2); continue; }
+      if (!s) { dot(ctx, flt, F.cols[0], Math.round(q.x) - 1, Math.round(q.y) - 1, 2); continue; }
       const w = s.width * half, h = s.height * half;
       if (p.alpha < 1) ctx.globalAlpha = p.alpha;
       const flip = (p.type === 'worms' || KICKS.has(p.type)) && p.dir < 0;
@@ -425,8 +425,16 @@ export class FoodSim {
       else ctx.drawImage(s, x, y, w, h);
       ctx.globalAlpha = 1;
     }
-    ctx.filter = prevF || 'none';
   }
+}
+
+// a placeholder dot while a sprite is still missing (dimmed like the sprites in a dark tank)
+function dot(ctx, flt, col, x, y, n) {
+  const pf = ctx.filter;
+  if (flt) ctx.filter = flt;
+  ctx.fillStyle = col;
+  ctx.fillRect(x, y, n, n);
+  if (flt) ctx.filter = pf || 'none';
 }
 
 // a contact sheet of every food frame (debug / art review): FISHTOP.aquarium.feed.sheet()

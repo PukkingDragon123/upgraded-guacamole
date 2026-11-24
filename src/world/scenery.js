@@ -236,6 +236,7 @@ export function glowSprite(r, color, { steps = 5, pow = 1.8, alpha = 1 } = {}) {
     return q <= 0 ? 0 : packRGB(cr, cg, cb, Math.round(Math.min(1, q) * 255));
   });
   glowCache.set(key, c);
+  if (glowCache.size > 600) glowCache.delete(glowCache.keys().next().value); // [perf27] bounded (oldest first)
   return c;
 }
 
@@ -360,33 +361,86 @@ export class Caustics {
     this.draw1(ctx, mask, mx, my, t, alpha, opts);
   }
 
+  // [perf27] painted in DEVICE space: a canvas-sized layer gets the mask and the pattern drawn through the very
+  // transform the old 2x / 3x layer was composited with, so every screen pixel samples the same mask texel and the
+  // same pattern texel as before (the same pixels), but only the on-screen pixels are painted (the old layer was a
+  // whole band at 3x: ~3x the pixels of the screen per pass). Repainted when the frame, drift or camera changes.
   drawHi(ctx, mask, mx, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}, R = 2) {
     if (!this.hiLayers) this.hiLayers = new Map();
+    const cw = ctx.canvas?.width, ch = ctx.canvas?.height;
+    let m;
+    try { m = ctx.getTransform(); } catch { m = null; }
+    if (!m || !cw || !ch) return this.drawHiLayer(ctx, mask, mx, my, t, alpha, { fps, drift, offset }, R);
+    const X = Math.round(mx), Y = Math.round(my), dw = mask.width / R, dh = mask.height / R;
+    // device bounding box of the mask's destination rect, on the canvas
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let k = 0; k < 4; k++) {
+      const wx = X + (k & 1 ? dw : 0), wy = Y + (k & 2 ? dh : 0);
+      const px = m.a * wx + m.c * wy + m.e, py = m.b * wx + m.d * wy + m.f;
+      if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py;
+    }
+    const D = { x: Math.max(0, Math.floor(x0)), y: Math.max(0, Math.floor(y0)) };
+    D.w = Math.min(cw, Math.ceil(x1)) - D.x; D.h = Math.min(ch, Math.ceil(y1)) - D.y;
+    if (D.w <= 0 || D.h <= 0) return;
     let L = this.hiLayers.get(mask);
-    if (!L) { L = makeLayer(mask.width, mask.height); L.pats = []; this.hiLayers.set(mask, L); }
+    if (!L) { L = makeLayer(cw, ch); L.pats = []; this.hiLayers.set(mask, L); }
+    if (L.w !== cw || L.h !== ch) { resizeLayer(L, cw, ch); L.ck = null; }
+    const g = L.ctx;
+    const fi = (Math.floor(t * fps) + offset) % this.frames.length;
+    const sx = Math.round((t * drift) % this.tw) * R;
+    const ck = fi + '|' + sx + '|' + X + '|' + Y + '|' + m.a + '|' + m.b + '|' + m.c + '|' + m.d + '|' + m.e + '|' + m.f;
+    if (L.ck !== ck) {
+      L.ck = ck;
+      L.pats[fi] ||= g.createPattern(this.hiFrame(fi, R), 'repeat');
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = 'source-over';
+      g.clearRect(D.x, D.y, D.w, D.h);
+      // the mask exactly as the old composite sampled its layer (same matrix, same source and destination rects)
+      g.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+      g.drawImage(mask, 0, 0, mask.width, mask.height, X, Y, dw, dh);
+      // the pattern in the layer's texel space (offset by the drift), landing on the mask's alpha
+      g.translate(X, Y);
+      g.scale(1 / R, 1 / R);
+      g.translate(sx, 0);
+      g.globalCompositeOperation = 'source-atop';
+      g.fillStyle = L.pats[fi];
+      g.fillRect(-sx, 0, mask.width, mask.height);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalCompositeOperation = 'source-over';
+    }
+    const po = ctx.globalCompositeOperation, pa = ctx.globalAlpha;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = clamp01(alpha);
+    ctx.drawImage(L.canvas, D.x, D.y, D.w, D.h, D.x, D.y, D.w, D.h);
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.globalCompositeOperation = po;
+    ctx.globalAlpha = pa;
+  }
+
+  // the texel-space layer (contexts without getTransform): a whole band at R x, the visible part repainted
+  drawHiLayer(ctx, mask, mx, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}, R = 2) {
+    if (!this.hiTexLayers) this.hiTexLayers = new Map();
+    let L = this.hiTexLayers.get(mask);
+    if (!L) { L = makeLayer(mask.width, mask.height); L.pats = []; this.hiTexLayers.set(mask, L); }
+    const X = Math.round(mx), Y = Math.round(my);
+    const vr = visibleSrc(ctx, X, Y, R, mask.width, mask.height);
+    if (!vr) return;
     const g = L.ctx;
     const fi = (Math.floor(t * fps) + offset) % this.frames.length;
     const sx = Math.round((t * drift) % this.tw) * R;
     const ck = fi * 100000 + sx;
-    if (L.ck !== ck) {
+    if (L.ck !== ck || !rectIn(vr, L.rr)) {
       L.ck = ck;
+      const rr = L.rr = padSrc(vr, 48 * R, mask.width, mask.height);
       L.pats[fi] ||= g.createPattern(this.hiFrame(fi, R), 'repeat');
-      g.globalCompositeOperation = 'source-over';
-      g.globalAlpha = 1;
-      g.clearRect(0, 0, L.w, L.h);
-      g.save();
-      g.translate(sx, 0);
-      g.fillStyle = L.pats[fi];
-      g.fillRect(-sx, 0, L.w, L.h);
-      g.restore();
-      g.globalCompositeOperation = 'destination-in';
-      g.drawImage(mask, 0, 0);
-      g.globalCompositeOperation = 'source-over';
+      paintCaustic(g, L.pats[fi], mask, sx, rr);
     }
     const po = ctx.globalCompositeOperation, pa = ctx.globalAlpha;
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = clamp01(alpha);
-    ctx.drawImage(L.canvas, 0, 0, mask.width, mask.height, Math.round(mx), Math.round(my), mask.width / R, mask.height / R);
+    ctx.drawImage(L.canvas, 0, 0, mask.width, mask.height, X, Y, mask.width / R, mask.height / R);
     ctx.globalCompositeOperation = po;
     ctx.globalAlpha = pa;
   }
@@ -395,32 +449,66 @@ export class Caustics {
     if (!this.layers) this.layers = new Map();
     let L = this.layers.get(mask);
     if (!L) { L = makeLayer(mask.width, mask.height); L.pats = this.frames.map((c) => L.ctx.createPattern(c, 'repeat')); this.layers.set(mask, L); }
+    const X = Math.round(mx), Y = Math.round(my);
+    const vr = visibleSrc(ctx, X, Y, 1, mask.width, mask.height);
+    if (!vr) return;
     const g = L.ctx;
     const fi = (Math.floor(t * fps) + offset) % this.frames.length;
     const sx = Math.round((t * drift) % this.tw);
     const ck = fi * 1000 + sx;
-    if (L.ck !== ck) {
-    L.ck = ck;
-    g.globalCompositeOperation = 'source-over';
-    g.globalAlpha = 1;
-    g.clearRect(0, 0, L.w, L.h);
-    g.save();
-    g.translate(sx, 0);
-    g.fillStyle = L.pats[fi];
-    g.fillRect(-sx, 0, L.w, L.h);
-    g.restore();
-    g.globalCompositeOperation = 'destination-in';
-    g.drawImage(mask, 0, 0);
-    g.globalCompositeOperation = 'source-over';
+    if (L.ck !== ck || !rectIn(vr, L.rr)) {
+      L.ck = ck;
+      paintCaustic(g, L.pats[fi], mask, sx, L.rr = padSrc(vr, 48, mask.width, mask.height));
     }
     const po = ctx.globalCompositeOperation, pa = ctx.globalAlpha;
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = clamp01(alpha);
-    ctx.drawImage(L.canvas, Math.round(mx), Math.round(my));
+    ctx.drawImage(L.canvas, X, Y);
     ctx.globalCompositeOperation = po;
     ctx.globalAlpha = pa;
   }
 }
+
+// [perf27] caustic layer helpers. Only rr is repainted (pixels outside it are never shown). The masks are BLACK
+// with the luminance in alpha, so the pattern lands on them with 'source-atop' (premultiplied colour = pattern x mask
+// alpha, the same light 'destination-in' gave) and every op stays bounded: no clip and no hidden full-area layer.
+function paintCaustic(g, pat, mask, sx, rr) {
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(rr.x, rr.y, rr.w, rr.h);
+  g.drawImage(mask, rr.x, rr.y, rr.w, rr.h, rr.x, rr.y, rr.w, rr.h);
+  g.globalCompositeOperation = 'source-atop';
+  g.translate(sx, 0);
+  g.fillStyle = pat;
+  g.fillRect(rr.x - sx, rr.y, rr.w, rr.h);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'source-over';
+}
+// The source rect (in mask px, R mask px per world unit, drawn at X, Y) that the context's canvas can show, or null.
+function visibleSrc(ctx, X, Y, R, sw, sh) {
+  let m;
+  try { m = ctx.getTransform(); } catch { return { x: 0, y: 0, w: sw, h: sh }; }
+  const cw = ctx.canvas?.width, ch = ctx.canvas?.height, det = m.a * m.d - m.b * m.c;
+  if (!cw || !ch || !det) return { x: 0, y: 0, w: sw, h: sh };
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let k = 0; k < 4; k++) {
+    const px = (k & 1 ? cw : 0) - m.e, py = (k & 2 ? ch : 0) - m.f;
+    const wx = (m.d * px - m.c * py) / det, wy = (m.a * py - m.b * px) / det;
+    if (wx < x0) x0 = wx; if (wx > x1) x1 = wx; if (wy < y0) y0 = wy; if (wy > y1) y1 = wy;
+  }
+  // a few px of slack so nearest sampling at the edge of the screen never reads past the rect
+  const sx0 = Math.max(0, Math.floor((x0 - X) * R) - 2 * R), sy0 = Math.max(0, Math.floor((y0 - Y) * R) - 2 * R);
+  const sx1 = Math.min(sw, Math.ceil((x1 - X) * R) + 2 * R), sy1 = Math.min(sh, Math.ceil((y1 - Y) * R) + 2 * R);
+  const ax = sx0 - (sx0 % R), ay = sy0 - (sy0 % R);
+  if (sx1 <= ax || sy1 <= ay) return null;
+  return { x: ax, y: ay, w: sx1 - ax, h: sy1 - ay };
+}
+function padSrc(r, pad, sw, sh) {
+  const x = Math.max(0, r.x - pad), y = Math.max(0, r.y - pad);
+  return { x, y, w: Math.min(sw, r.x + r.w + pad) - x, h: Math.min(sh, r.y + r.h + pad) - y };
+}
+function rectIn(a, b) { return !!b && a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h; }
 
 // Luminance-weighted alpha mask of a canvas (bright, lit surfaces receive more caustic light).
 export function lumaMask(src, opts = {}) {
@@ -441,7 +529,7 @@ function lumaMaskRaw(src, { gamma = 1.6, gain = 1.4, fadeTop = 0, fadeBottom = 0
         if (!a) continue;
         const l = (s[i * 4] * 0.3 + s[i * 4 + 1] * 0.55 + s[i * 4 + 2] * 0.15) / 255;
         const v = clamp01(Math.pow(l, gamma) * gain) * (a / 255) * k;
-        if (v > 0.02) d[i] = packRGB(255, 255, 255, Math.round(v * 255));
+        if (v > 0.02) d[i] = packRGB(0, 0, 0, Math.round(v * 255)); // [perf27] black: only the alpha is used (see paintCaustic)
       }
     }
   });
@@ -755,6 +843,7 @@ export function bubbleSprite(r, rim = '#e6fbff', fill = 'rgba(170,235,255,0.22)'
   if (r >= 2) g.fillRect(r - Math.ceil(r / 2), r - Math.ceil(r / 2), 1, 1);
   if (r >= 4) g.fillRect(r - Math.ceil(r / 2) + 1, r - Math.ceil(r / 2), 1, 1);
   bubbleSprites.set(key, c);
+  if (bubbleSprites.size > 300) bubbleSprites.delete(bubbleSprites.keys().next().value); // [perf27] bounded
   return c;
 }
 

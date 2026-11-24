@@ -164,6 +164,7 @@
     const n2 = parseInt(h.slice(0, 6), 16);
     c = [n2 >> 16 & 255, n2 >> 8 & 255, n2 & 255];
     rgbCache.set(hex4, c);
+    if (rgbCache.size > 8192) rgbCache.delete(rgbCache.keys().next().value);
     return c;
   }
   function rgbToHsl(r, g, b) {
@@ -4415,6 +4416,7 @@
     if (!r) {
       r = RAMP_STEPS.map((a) => a === 0 ? hex4 : shade(hex4, a * contrast));
       rampCache.set(key, r);
+      if (rampCache.size > 4096) rampCache.delete(rampCache.keys().next().value);
     }
     return r;
   }
@@ -6183,6 +6185,7 @@
     if (!v) {
       v = hexToRgb(hex4);
       rgbCache2.set(hex4, v);
+      if (rgbCache2.size > 4096) rgbCache2.delete(rgbCache2.keys().next().value);
     }
     return v;
   }
@@ -7963,17 +7966,17 @@ void main() {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.useProgram(prog);
   }
-  function copyOut(out, W4, H, ox = 0, oy = 0) {
+  function copyOut(out, W4, H, ox = 0, oy = 0, sx = 0, sy = 0) {
     const mode = copyMode === "pixels" ? "pixels" : "draw";
     const g = out.getContext("2d");
     if (mode === "draw") {
-      g.drawImage(glCanvas, 0, 0, W4, H, ox, oy, W4, H);
+      g.drawImage(glCanvas, sx, sy, W4, H, ox, oy, W4, H);
       return;
     }
     const n2 = W4 * H * 4;
     if (!pixBuf || pixBuf.length < n2) pixBuf = new Uint8Array(n2);
     const ta = tnow();
-    gl.readPixels(0, GLH - H, W4, H, gl.RGBA, gl.UNSIGNED_BYTE, pixBuf);
+    gl.readPixels(sx, GLH - sy - H, W4, H, gl.RGBA, gl.UNSIGNED_BYTE, pixBuf);
     T.rp += tnow() - ta;
     const img = g.createImageData(W4, H);
     const d = img.data, row2 = W4 * 4;
@@ -8063,6 +8066,39 @@ void main() {
     T.copy += tnow() - t1;
     T.n++;
     return out;
+  }
+  function sheetLayout(n2, o = {}) {
+    const w = Math.max(1, Math.round(o.w || 64)), h = Math.max(1, Math.round(o.h || 64));
+    const cols = Math.max(1, Math.min(n2, o.cols || n2, Math.floor(MAX_GL / w)));
+    const rows = Math.ceil(n2 / cols);
+    return { w, h, cols, W: cols * w, H: Math.min(MAX_GL, rows * h) };
+  }
+  function renderSheetPart(cells, o, i0, i1, out) {
+    if (!cells.length || !init2()) return false;
+    const { w, h, cols, W: W4, H } = sheetLayout(cells.length, o);
+    const t0 = tnow();
+    ensureSize(W4, H);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.enable(gl.CULL_FACE);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(prog);
+    const done = [];
+    for (let i = i0; i < Math.min(i1, cells.length); i++) {
+      const x = i % cols * w, y = Math.floor(i / cols) * h;
+      if (y + h > MAX_GL) break;
+      region(x, y, w, h);
+      drawCell(cells[i], { ...o, ...cells[i] }, w, h);
+      done.push([x, y]);
+    }
+    finish2();
+    const t1 = tnow();
+    for (const [x, y] of done) copyOut(out, w, h, (o.outX || 0) + x, (o.outY || 0) + y, x, y);
+    T.draw += t1 - t0;
+    T.copy += tnow() - t1;
+    T.n++;
+    return true;
   }
   function lpProject(p, o = {}, mesh = null) {
     const w = Math.max(1, Math.round(o.w || 64)), h = Math.max(1, Math.round(o.h || 64));
@@ -21100,11 +21136,12 @@ void main() {
     }
     g.putImageData(img, 0, 0);
   }
-  function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
+  function sheetStart(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
     const t0 = now3();
     const Sb = bucketScale(sb);
+    const sws = only || [0, 1, 2, 3, 4, 5, 6, 7];
     const frames = [];
-    for (const sw of only || [0, 1, 2, 3, 4, 5, 6, 7]) frames.push(poseOf(c, sw, infl, mouth, LP_SWIM, hi));
+    for (const sw of sws) frames.push(poseOf(c, sw, infl, mouth, LP_SWIM, hi));
     const roll = frames[0].flatRoll || 0;
     const V2 = viewMatrix(yawI * YAW_STEP, roll, tilt);
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, R22 = 0;
@@ -21131,25 +21168,56 @@ void main() {
     const o = { w, h, scale: Sb, matrix: V2, center, radius, light: [-0.42, 0.82, 0.62], ambient: VIVID.ambient, vivid: VIVID.vivid, rimColor: "#c8f6ff", sky: "#f2fdff", ground: "#2a6a9a" };
     const cells = frames.map((f) => ({ parts: f.parts.map((pt) => ({ ...pt })) }));
     const cols = Math.max(1, Math.min(LP_SWIM, Math.floor(4096 / w)));
-    const tg = now3();
-    const canvas = renderSheet(cells, { ...o, cols });
-    stat.glMs += now3() - tg;
+    const gcells = c.glow ? frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== "fins" && p.key !== "finrays" && p.key !== "glass").map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) })) : null;
+    const go = { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 };
+    const ms = now3() - t0;
+    spent += ms;
+    return { c, infl, mouth, hi, frames, cells, gcells, o: { ...o, cols }, go, w, h, Sb, blur, cols, i: 0, canvas: null, raw: null, ms, yawI, sb, tilt };
+  }
+  function sheetStep(J2, deadline) {
+    const t0 = now3();
+    const n2 = J2.cells.length;
+    if (J2.i === 0 && !J2.canvas) {
+      const L2 = sheetLayout(n2, J2.o);
+      J2.canvas = makeCanvas(L2.W, L2.H);
+      if (J2.gcells) J2.raw = makeCanvas(L2.W, L2.H);
+    }
+    while (J2.i < n2) {
+      const tg = now3();
+      if (!renderSheetPart(J2.cells, J2.o, J2.i, J2.i + 1, J2.canvas)) {
+        J2.canvas = renderSheet(J2.cells, J2.o);
+        J2.raw = J2.gcells ? renderSheet(J2.gcells, J2.go) : null;
+        J2.i = n2;
+        stat.glMs += now3() - tg;
+        break;
+      }
+      if (J2.gcells) renderSheetPart(J2.gcells, J2.go, J2.i, J2.i + 1, J2.raw);
+      stat.glMs += now3() - tg;
+      J2.i++;
+      if (now3() >= deadline) break;
+    }
+    const dt = now3() - t0;
+    J2.ms += dt;
+    spent += dt;
+    return J2.i >= n2;
+  }
+  function sheetFinish(J2) {
+    const t0 = now3();
+    const { c, frames, w, h, cols, o, Sb, blur } = J2;
+    const canvas = J2.canvas;
     if (!canvas) return null;
     outlineSheet(canvas, cols, w, h);
     let glow2 = null;
-    if (c.glow) {
-      const gcells = frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== "fins" && p.key !== "finrays" && p.key !== "glass").map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) }));
-      const raw = renderSheet(gcells, { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 });
-      if (raw) {
-        glow2 = makeCanvas(raw.width, raw.height);
-        const g = glow2.getContext("2d");
-        g.filter = `blur(${blur.toFixed(1)}px)`;
-        g.drawImage(raw, 0, 0);
-        g.filter = "none";
-        g.globalCompositeOperation = "lighter";
-        g.globalAlpha = 0.3;
-        g.drawImage(raw, 0, 0);
-      }
+    const raw = J2.raw;
+    if (c.glow && raw) {
+      glow2 = makeCanvas(raw.width, raw.height);
+      const g = glow2.getContext("2d");
+      g.filter = `blur(${blur.toFixed(1)}px)`;
+      g.drawImage(raw, 0, 0);
+      g.filter = "none";
+      g.globalCompositeOperation = "lighter";
+      g.globalAlpha = 0.3;
+      g.drawImage(raw, 0, 0);
     }
     for (const f of frames) for (const pt of f.parts) pt.mesh.release?.();
     const proj = (p) => lpProject(p, o);
@@ -21166,13 +21234,20 @@ void main() {
       });
       return { anchors, eyes };
     });
-    const sh = { canvas, glow: glow2, w, h, cols, ax, ay, Sb, meta, vid: vidOf(c), px: canvas.width * canvas.height * (glow2 ? 2 : 1), yawI, sb, infl, mouth, tilt, lo: !VOXEL && !hi && (c.L || 30) * Sb > 300 && c.real?.plan === "fish" };
+    const sh = { canvas, glow: glow2, w, h, cols, ax, ay, Sb, meta, vid: vidOf(c), px: canvas.width * canvas.height * (glow2 ? 2 : 1), yawI: J2.yawI, sb: J2.sb, infl: J2.infl, mouth: J2.mouth, tilt: J2.tilt, lo: !VOXEL && !J2.hi && (c.L || 30) * Sb > 300 && c.real?.plan === "fish" };
     const dt = now3() - t0;
+    J2.ms += dt;
     spent += dt;
-    stat.ms += dt;
+    stat.ms += J2.ms;
     stat.sheets++;
     stat.renders += LP_SWIM;
     return sh;
+  }
+  function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
+    const J2 = sheetStart(c, sb, yawI, infl, mouth, tilt, hi, only);
+    if (!J2) return null;
+    sheetStep(J2, Infinity);
+    return sheetFinish(J2);
   }
   function storeSheet(key, sh) {
     sheets2.set(key, sh);
@@ -21216,7 +21291,18 @@ void main() {
       poseOf(c, sw, infl, mouth, LP_SWIM, hi);
     }
     if (now3() > deadline && deadline !== Infinity) return null;
-    return buildSheet(c, sb, yawI, infl, mouth, tilt, hi);
+    const jk = sheetKeyOf(vidOf(c), sb, yawI, infl, mouth, tilt) + (hi ? "|hi" : "");
+    let J2 = sheetJobs.get(jk);
+    if (!J2) {
+      J2 = sheetStart(c, sb, yawI, infl, mouth, tilt, hi);
+      if (!J2) return null;
+      sheetJobs.set(jk, J2);
+      if (sheetJobs.size > SHEET_JOBS_MAX) sheetJobs.delete(sheetJobs.keys().next().value);
+      if (now3() > deadline) return null;
+    }
+    if (!sheetStep(J2, deadline)) return null;
+    sheetJobs.delete(jk);
+    return sheetFinish(J2);
   }
   function lpFrame(c, req) {
     if (!lpCanRender()) return null;
@@ -21310,6 +21396,7 @@ void main() {
     return { canvas: sh.canvas, sx: 0, sy: 0, w: sh.w, h: sh.h, ax: sh.ax, ay: sh.ay, k: (req.S || 1) / sh.Sb, anchors: m.anchors, eyes: m.eyes, sheet: sh };
   }
   function clearLowpolyCache() {
+    sheetJobs.clear();
     sheets2.clear();
     byVid.clear();
     sheetPx = 0;
@@ -21456,7 +21543,7 @@ void main() {
     if (tubes.size > 400) tubes.delete(tubes.keys().next().value);
     return b;
   }
-  var LP_SWIM, TAU3, DEG5, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp013, smooth2, now3, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC, R_GLASS2, QV, spow, CREATURES, creatureC, TURTLE_SP, T_C0, T_RF, T_RS, T_RB, T_HD, T_HB, T_RIM, T_RM, tOutline, tRimY, tDome, tmix, tsc, tclampC, TTpl, turtleTpl, poses, poseKey, poseBytes, POSE_BYTES, poseSize, VOXEL, sheets2, byVid, sheetPx, scaleBucket, bucketScale, OUTLINE_INK, VIVID, stills, crabLooks, icons, meshCache, orbs, tubes;
+  var LP_SWIM, TAU3, DEG5, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp013, smooth2, now3, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC, R_GLASS2, QV, spow, CREATURES, creatureC, TURTLE_SP, T_C0, T_RF, T_RS, T_RB, T_HD, T_HB, T_RIM, T_RM, tOutline, tRimY, tDome, tmix, tsc, tclampC, TTpl, turtleTpl, poses, poseKey, poseBytes, POSE_BYTES, poseSize, VOXEL, sheets2, byVid, sheetPx, scaleBucket, bucketScale, OUTLINE_INK, VIVID, sheetJobs, SHEET_JOBS_MAX, stills, crabLooks, icons, meshCache, orbs, tubes;
   var init_lowpolyfish = __esm({
     "src/fish/lowpolyfish.js"() {
       init_lowpoly();
@@ -21767,6 +21854,8 @@ void main() {
       bucketScale = (b) => Math.pow(SCALE_STEP, b);
       OUTLINE_INK = [10, 14, 26];
       VIVID = { ambient: 0.54, vivid: 1 };
+      sheetJobs = /* @__PURE__ */ new Map();
+      SHEET_JOBS_MAX = 6;
       stills = /* @__PURE__ */ new Map();
       crabLooks = /* @__PURE__ */ new Map();
       icons = /* @__PURE__ */ new Map();
@@ -26056,6 +26145,7 @@ void main() {
     if (!c) {
       c = rgbaOf(hex4);
       rgbaCache2.set(hex4, c);
+      if (rgbaCache2.size > 4096) rgbaCache2.delete(rgbaCache2.keys().next().value);
     }
     return c;
   }
@@ -28001,7 +28091,10 @@ void main() {
   function pk2(hex4, a = 255) {
     const k = hex4 + a;
     let v = pkCache.get(k);
-    if (v === void 0) pkCache.set(k, v = pack(hex4, a));
+    if (v === void 0) {
+      pkCache.set(k, v = pack(hex4, a));
+      if (pkCache.size > 4096) pkCache.delete(pkCache.keys().next().value);
+    }
     return v;
   }
   function outlineFn(n2) {
@@ -42791,6 +42884,7 @@ kmlmk..
       return q <= 0 ? 0 : packRGB(cr2, cg, cb, Math.round(Math.min(1, q) * 255));
     });
     glowCache2.set(key, c);
+    if (glowCache2.size > 600) glowCache2.delete(glowCache2.keys().next().value);
     return c;
   }
   function drawGlow2(ctx2, x, y, r, color, a = 1, opts) {
@@ -42824,6 +42918,50 @@ kmlmk..
     }
     ctx2.globalAlpha = pa;
   }
+  function paintCaustic(g, pat, mask, sx, rr2) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = "source-over";
+    g.clearRect(rr2.x, rr2.y, rr2.w, rr2.h);
+    g.drawImage(mask, rr2.x, rr2.y, rr2.w, rr2.h, rr2.x, rr2.y, rr2.w, rr2.h);
+    g.globalCompositeOperation = "source-atop";
+    g.translate(sx, 0);
+    g.fillStyle = pat;
+    g.fillRect(rr2.x - sx, rr2.y, rr2.w, rr2.h);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = "source-over";
+  }
+  function visibleSrc(ctx2, X, Y, R3, sw, sh) {
+    let m;
+    try {
+      m = ctx2.getTransform();
+    } catch {
+      return { x: 0, y: 0, w: sw, h: sh };
+    }
+    const cw = ctx2.canvas?.width, ch = ctx2.canvas?.height, det = m.a * m.d - m.b * m.c;
+    if (!cw || !ch || !det) return { x: 0, y: 0, w: sw, h: sh };
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let k = 0; k < 4; k++) {
+      const px2 = (k & 1 ? cw : 0) - m.e, py = (k & 2 ? ch : 0) - m.f;
+      const wx = (m.d * px2 - m.c * py) / det, wy = (m.a * py - m.b * px2) / det;
+      if (wx < x0) x0 = wx;
+      if (wx > x1) x1 = wx;
+      if (wy < y0) y0 = wy;
+      if (wy > y1) y1 = wy;
+    }
+    const sx0 = Math.max(0, Math.floor((x0 - X) * R3) - 2 * R3), sy0 = Math.max(0, Math.floor((y0 - Y) * R3) - 2 * R3);
+    const sx1 = Math.min(sw, Math.ceil((x1 - X) * R3) + 2 * R3), sy1 = Math.min(sh, Math.ceil((y1 - Y) * R3) + 2 * R3);
+    const ax = sx0 - sx0 % R3, ay = sy0 - sy0 % R3;
+    if (sx1 <= ax || sy1 <= ay) return null;
+    return { x: ax, y: ay, w: sx1 - ax, h: sy1 - ay };
+  }
+  function padSrc(r, pad, sw, sh) {
+    const x = Math.max(0, r.x - pad), y = Math.max(0, r.y - pad);
+    return { x, y, w: Math.min(sw, r.x + r.w + pad) - x, h: Math.min(sh, r.y + r.h + pad) - y };
+  }
+  function rectIn(a, b) {
+    return !!b && a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h;
+  }
   function lumaMask(src, opts = {}) {
     const out = lumaMaskRaw(src, opts);
     out.__luma = { src, opts };
@@ -42842,7 +42980,7 @@ kmlmk..
           if (!a) continue;
           const l = (s[i * 4] * 0.3 + s[i * 4 + 1] * 0.55 + s[i * 4 + 2] * 0.15) / 255;
           const v = clamp01(Math.pow(l, gamma) * gain) * (a / 255) * k;
-          if (v > 0.02) d[i] = packRGB(255, 255, 255, Math.round(v * 255));
+          if (v > 0.02) d[i] = packRGB(0, 0, 0, Math.round(v * 255));
         }
       }
     });
@@ -42882,6 +43020,7 @@ kmlmk..
     if (r >= 2) g.fillRect(r - Math.ceil(r / 2), r - Math.ceil(r / 2), 1, 1);
     if (r >= 4) g.fillRect(r - Math.ceil(r / 2) + 1, r - Math.ceil(r / 2), 1, 1);
     bubbleSprites.set(key, c);
+    if (bubbleSprites.size > 300) bubbleSprites.delete(bubbleSprites.keys().next().value);
     return c;
   }
   function ridge(w, base, amp, freq, seed, oct = 4, sharp = 0) {
@@ -43214,38 +43353,103 @@ kmlmk..
           }
           this.draw1(ctx2, mask, mx2, my, t, alpha, opts);
         }
+        // [perf27] painted in DEVICE space: a canvas-sized layer gets the mask and the pattern drawn through the very
+        // transform the old 2x / 3x layer was composited with, so every screen pixel samples the same mask texel and the
+        // same pattern texel as before (the same pixels), but only the on-screen pixels are painted (the old layer was a
+        // whole band at 3x: ~3x the pixels of the screen per pass). Repainted when the frame, drift or camera changes.
         drawHi(ctx2, mask, mx2, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}, R3 = 2) {
           var _a3;
           if (!this.hiLayers) this.hiLayers = /* @__PURE__ */ new Map();
+          const cw = ctx2.canvas?.width, ch = ctx2.canvas?.height;
+          let m;
+          try {
+            m = ctx2.getTransform();
+          } catch {
+            m = null;
+          }
+          if (!m || !cw || !ch) return this.drawHiLayer(ctx2, mask, mx2, my, t, alpha, { fps, drift, offset }, R3);
+          const X = Math.round(mx2), Y = Math.round(my), dw = mask.width / R3, dh = mask.height / R3;
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          for (let k = 0; k < 4; k++) {
+            const wx = X + (k & 1 ? dw : 0), wy = Y + (k & 2 ? dh : 0);
+            const px2 = m.a * wx + m.c * wy + m.e, py = m.b * wx + m.d * wy + m.f;
+            if (px2 < x0) x0 = px2;
+            if (px2 > x1) x1 = px2;
+            if (py < y0) y0 = py;
+            if (py > y1) y1 = py;
+          }
+          const D2 = { x: Math.max(0, Math.floor(x0)), y: Math.max(0, Math.floor(y0)) };
+          D2.w = Math.min(cw, Math.ceil(x1)) - D2.x;
+          D2.h = Math.min(ch, Math.ceil(y1)) - D2.y;
+          if (D2.w <= 0 || D2.h <= 0) return;
           let L2 = this.hiLayers.get(mask);
           if (!L2) {
-            L2 = makeLayer(mask.width, mask.height);
+            L2 = makeLayer(cw, ch);
             L2.pats = [];
             this.hiLayers.set(mask, L2);
+          }
+          if (L2.w !== cw || L2.h !== ch) {
+            resizeLayer(L2, cw, ch);
+            L2.ck = null;
           }
           const g = L2.ctx;
           const fi = (Math.floor(t * fps) + offset) % this.frames.length;
           const sx = Math.round(t * drift % this.tw) * R3;
-          const ck = fi * 1e5 + sx;
+          const ck = fi + "|" + sx + "|" + X + "|" + Y + "|" + m.a + "|" + m.b + "|" + m.c + "|" + m.d + "|" + m.e + "|" + m.f;
           if (L2.ck !== ck) {
             L2.ck = ck;
             (_a3 = L2.pats)[fi] || (_a3[fi] = g.createPattern(this.hiFrame(fi, R3), "repeat"));
-            g.globalCompositeOperation = "source-over";
+            g.setTransform(1, 0, 0, 1, 0, 0);
             g.globalAlpha = 1;
-            g.clearRect(0, 0, L2.w, L2.h);
-            g.save();
-            g.translate(sx, 0);
-            g.fillStyle = L2.pats[fi];
-            g.fillRect(-sx, 0, L2.w, L2.h);
-            g.restore();
-            g.globalCompositeOperation = "destination-in";
-            g.drawImage(mask, 0, 0);
             g.globalCompositeOperation = "source-over";
+            g.clearRect(D2.x, D2.y, D2.w, D2.h);
+            g.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+            g.drawImage(mask, 0, 0, mask.width, mask.height, X, Y, dw, dh);
+            g.translate(X, Y);
+            g.scale(1 / R3, 1 / R3);
+            g.translate(sx, 0);
+            g.globalCompositeOperation = "source-atop";
+            g.fillStyle = L2.pats[fi];
+            g.fillRect(-sx, 0, mask.width, mask.height);
+            g.setTransform(1, 0, 0, 1, 0, 0);
+            g.globalCompositeOperation = "source-over";
+          }
+          const po = ctx2.globalCompositeOperation, pa = ctx2.globalAlpha;
+          ctx2.setTransform(1, 0, 0, 1, 0, 0);
+          ctx2.globalCompositeOperation = "lighter";
+          ctx2.globalAlpha = clamp01(alpha);
+          ctx2.drawImage(L2.canvas, D2.x, D2.y, D2.w, D2.h, D2.x, D2.y, D2.w, D2.h);
+          ctx2.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+          ctx2.globalCompositeOperation = po;
+          ctx2.globalAlpha = pa;
+        }
+        // the texel-space layer (contexts without getTransform): a whole band at R x, the visible part repainted
+        drawHiLayer(ctx2, mask, mx2, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}, R3 = 2) {
+          var _a3;
+          if (!this.hiTexLayers) this.hiTexLayers = /* @__PURE__ */ new Map();
+          let L2 = this.hiTexLayers.get(mask);
+          if (!L2) {
+            L2 = makeLayer(mask.width, mask.height);
+            L2.pats = [];
+            this.hiTexLayers.set(mask, L2);
+          }
+          const X = Math.round(mx2), Y = Math.round(my);
+          const vr = visibleSrc(ctx2, X, Y, R3, mask.width, mask.height);
+          if (!vr) return;
+          const g = L2.ctx;
+          const fi = (Math.floor(t * fps) + offset) % this.frames.length;
+          const sx = Math.round(t * drift % this.tw) * R3;
+          const ck = fi * 1e5 + sx;
+          if (L2.ck !== ck || !rectIn(vr, L2.rr)) {
+            L2.ck = ck;
+            const rr2 = L2.rr = padSrc(vr, 48 * R3, mask.width, mask.height);
+            (_a3 = L2.pats)[fi] || (_a3[fi] = g.createPattern(this.hiFrame(fi, R3), "repeat"));
+            paintCaustic(g, L2.pats[fi], mask, sx, rr2);
           }
           const po = ctx2.globalCompositeOperation, pa = ctx2.globalAlpha;
           ctx2.globalCompositeOperation = "lighter";
           ctx2.globalAlpha = clamp01(alpha);
-          ctx2.drawImage(L2.canvas, 0, 0, mask.width, mask.height, Math.round(mx2), Math.round(my), mask.width / R3, mask.height / R3);
+          ctx2.drawImage(L2.canvas, 0, 0, mask.width, mask.height, X, Y, mask.width / R3, mask.height / R3);
           ctx2.globalCompositeOperation = po;
           ctx2.globalAlpha = pa;
         }
@@ -43257,28 +43461,21 @@ kmlmk..
             L2.pats = this.frames.map((c) => L2.ctx.createPattern(c, "repeat"));
             this.layers.set(mask, L2);
           }
+          const X = Math.round(mx2), Y = Math.round(my);
+          const vr = visibleSrc(ctx2, X, Y, 1, mask.width, mask.height);
+          if (!vr) return;
           const g = L2.ctx;
           const fi = (Math.floor(t * fps) + offset) % this.frames.length;
           const sx = Math.round(t * drift % this.tw);
           const ck = fi * 1e3 + sx;
-          if (L2.ck !== ck) {
+          if (L2.ck !== ck || !rectIn(vr, L2.rr)) {
             L2.ck = ck;
-            g.globalCompositeOperation = "source-over";
-            g.globalAlpha = 1;
-            g.clearRect(0, 0, L2.w, L2.h);
-            g.save();
-            g.translate(sx, 0);
-            g.fillStyle = L2.pats[fi];
-            g.fillRect(-sx, 0, L2.w, L2.h);
-            g.restore();
-            g.globalCompositeOperation = "destination-in";
-            g.drawImage(mask, 0, 0);
-            g.globalCompositeOperation = "source-over";
+            paintCaustic(g, L2.pats[fi], mask, sx, L2.rr = padSrc(vr, 48, mask.width, mask.height));
           }
           const po = ctx2.globalCompositeOperation, pa = ctx2.globalAlpha;
           ctx2.globalCompositeOperation = "lighter";
           ctx2.globalAlpha = clamp01(alpha);
-          ctx2.drawImage(L2.canvas, Math.round(mx2), Math.round(my));
+          ctx2.drawImage(L2.canvas, X, Y);
           ctx2.globalCompositeOperation = po;
           ctx2.globalAlpha = pa;
         }
@@ -50868,7 +51065,9 @@ kmlmk..
             yield;
           }
           yield;
-          this.crabSpr = [lpCrabFrames("#e0502e"), lpCrabFrames("#f09a3a")];
+          const crabA = lpCrabFrames("#e0502e");
+          yield;
+          this.crabSpr = [crabA, lpCrabFrames("#f09a3a")];
           yield;
           this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W4, z, dir: i % 2 ? -1 : 1, state: "walk", t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
           yield;

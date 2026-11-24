@@ -124,7 +124,7 @@ export function aeroCached(key, build, limit = 600) {
 const rgbCache = new Map();
 function rgbOf(hex) {
   let v = rgbCache.get(hex);
-  if (!v) { v = hexToRgb(hex); rgbCache.set(hex, v); }
+  if (!v) { v = hexToRgb(hex); rgbCache.set(hex, v); if (rgbCache.size > 4096) rgbCache.delete(rgbCache.keys().next().value); } // [perf27] bounded
   return v;
 }
 

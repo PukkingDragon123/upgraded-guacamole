@@ -603,6 +603,7 @@ function glowDot(col, r) {
     gr.addColorStop(0, rgba(col, 0.9)); gr.addColorStop(0.35, rgba(col, 0.35)); gr.addColorStop(1, rgba(col, 0));
     g.fillStyle = gr; g.fillRect(0, 0, r * 2, r * 2);
     glowCache.set(key, c);
+    if (glowCache.size > 300) glowCache.delete(glowCache.keys().next().value); // [perf27] bounded
   }
   return c;
 }

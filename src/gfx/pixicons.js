@@ -42,7 +42,7 @@ function rgbaOf(hex) {
   return [r, g, b, a];
 }
 const rgbaCache = new Map();
-function col(hex) { let c = rgbaCache.get(hex); if (!c) { c = rgbaOf(hex); rgbaCache.set(hex, c); } return c; }
+function col(hex) { let c = rgbaCache.get(hex); if (!c) { c = rgbaOf(hex); rgbaCache.set(hex, c); if (rgbaCache.size > 4096) rgbaCache.delete(rgbaCache.keys().next().value); } return c; } // [perf27] bounded
 
 // resolve a def: {base, map, pal, rot, flip} derive from another sprite's rows
 function rowsOf(def, depth = 0) {

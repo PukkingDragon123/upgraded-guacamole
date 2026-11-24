@@ -53,7 +53,7 @@
 // Fallback: without WebGL2, sprites render through lowpoly.js's Canvas2D software path (flat-shaded, slower, cached
 // the same way; fewer swim frames are worth it there). 3D meshes (fishMesh) need WebGL2.
 
-import { MeshBuilder, LPMesh, renderSheet, lpAvailable, lpCanRender, lpProject, M4, lpFreeTexture } from '../gfx/lowpoly.js';
+import { MeshBuilder, LPMesh, renderSheet, renderSheetPart, sheetLayout, lpAvailable, lpCanRender, lpProject, M4, lpFreeTexture } from '../gfx/lowpoly.js';
 import { fishModel, realLayoutJob, solidPose, finHeightFn, hexRGB } from './realvox.js';
 import { resolveReal } from './anatomy.js';
 import { compiled } from '../gfx/spritecache.js';
@@ -1966,11 +1966,15 @@ function outlineSheet(canvas, cols, w, h) {
   g.putImageData(img, 0, 0);
 }
 
-function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
+// A sheet build in three parts so it can be spread over frames ([perf27]): sheetStart (poses, projected bounds, cell
+// size), sheetStep (renders the swim cells, a cell or more per call, each read back on its own; see renderSheetPart)
+// and sheetFinish (outline, glow halo, anchors). buildSheet runs all three at once, as before.
+function sheetStart(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
   const t0 = now();
   const Sb = bucketScale(sb);
+  const sws = only || [0, 1, 2, 3, 4, 5, 6, 7];
   const frames = [];
-  for (const sw of only || [0, 1, 2, 3, 4, 5, 6, 7]) frames.push(poseOf(c, sw, infl, mouth, LP_SWIM, hi));
+  for (const sw of sws) frames.push(poseOf(c, sw, infl, mouth, LP_SWIM, hi));
   const roll = frames[0].flatRoll || 0;
   const V = viewMatrix(yawI * YAW_STEP, roll, tilt);
   // projected bounds over every frame
@@ -1995,27 +1999,62 @@ function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
   const o = { w, h, scale: Sb, matrix: V, center, radius, light: [-0.42, 0.82, 0.62], ambient: VIVID.ambient, vivid: VIVID.vivid, rimColor: '#c8f6ff', sky: '#f2fdff', ground: '#2a6a9a' };
   const cells = frames.map((f) => ({ parts: f.parts.map((pt) => ({ ...pt })) }));
   const cols = Math.max(1, Math.min(LP_SWIM, Math.floor(4096 / w)));
-  const tg = now();
-  const canvas = renderSheet(cells, { ...o, cols });
-  stat.glMs += now() - tg;
+  const gcells = c.glow ? frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== 'fins' && p.key !== 'finrays' && p.key !== 'glass').map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) })) : null;
+  const go = { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 };
+  const ms = now() - t0;
+  spent += ms;
+  return { c, infl, mouth, hi, frames, cells, gcells, o: { ...o, cols }, go, w, h, Sb, blur, cols, i: 0, canvas: null, raw: null, ms, yawI, sb, tilt };
+}
+
+// Render more cells of the sheet until `deadline` (at least one). Returns true when every cell is done.
+function sheetStep(J, deadline) {
+  const t0 = now();
+  const n = J.cells.length;
+  if (J.i === 0 && !J.canvas) {
+    const L = sheetLayout(n, J.o);
+    J.canvas = makeCanvas(L.W, L.H);
+    if (J.gcells) J.raw = makeCanvas(L.W, L.H);
+  }
+  while (J.i < n) {
+    // (a pose evicted from the pose cache meanwhile only lost its GL buffer: drawing uploads it again)
+    const tg = now();
+    if (!renderSheetPart(J.cells, J.o, J.i, J.i + 1, J.canvas)) {
+      // no GL: the whole sheet at once through renderSheet (software fallback)
+      J.canvas = renderSheet(J.cells, J.o);
+      J.raw = J.gcells ? renderSheet(J.gcells, J.go) : null;
+      J.i = n;
+      stat.glMs += now() - tg;
+      break;
+    }
+    if (J.gcells) renderSheetPart(J.gcells, J.go, J.i, J.i + 1, J.raw);
+    stat.glMs += now() - tg;
+    J.i++;
+    if (now() >= deadline) break;
+  }
+  const dt = now() - t0;
+  J.ms += dt; spent += dt;
+  return J.i >= n;
+}
+
+function sheetFinish(J) {
+  const t0 = now();
+  const { c, frames, w, h, cols, o, Sb, blur } = J;
+  const canvas = J.canvas;
   // voxel poses keep only their compact face lists between sheet builds
   if (!canvas) return null;
   outlineSheet(canvas, cols, w, h);
   // glow pass: emissive parts only (the rest renders black), blurred into a soft additive halo
   let glow = null;
-  if (c.glow) {
-    const gcells = frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== 'fins' && p.key !== 'finrays' && p.key !== 'glass').map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) }));
-    const raw = renderSheet(gcells, { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 });
-    if (raw) {
-      glow = makeCanvas(raw.width, raw.height);
-      const g = glow.getContext('2d');
-      g.filter = `blur(${blur.toFixed(1)}px)`;
-      g.drawImage(raw, 0, 0);
-      g.filter = 'none';
-      g.globalCompositeOperation = 'lighter';
-      g.globalAlpha = 0.3;
-      g.drawImage(raw, 0, 0);
-    }
+  const raw = J.raw;
+  if (c.glow && raw) {
+    glow = makeCanvas(raw.width, raw.height);
+    const g = glow.getContext('2d');
+    g.filter = `blur(${blur.toFixed(1)}px)`;
+    g.drawImage(raw, 0, 0);
+    g.filter = 'none';
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = 0.3;
+    g.drawImage(raw, 0, 0);
   }
   for (const f of frames) for (const pt of f.parts) pt.mesh.release?.();
   const proj = (p) => lpProject(p, o);
@@ -2026,11 +2065,22 @@ function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
     const eyes = f.eyes.map((e) => { const q = proj(e.p); return { x: q[0] - ax, y: q[1] - ay, r: e.r * Sb }; });
     return { anchors, eyes };
   });
-  const sh = { canvas, glow, w, h, cols, ax, ay, Sb, meta, vid: vidOf(c), px: canvas.width * canvas.height * (glow ? 2 : 1), yawI, sb, infl, mouth, tilt, lo: !VOXEL && !hi && (c.L || 30) * Sb > 300 && c.real?.plan === 'fish' };
+  const sh = { canvas, glow, w, h, cols, ax, ay, Sb, meta, vid: vidOf(c), px: canvas.width * canvas.height * (glow ? 2 : 1), yawI: J.yawI, sb: J.sb, infl: J.infl, mouth: J.mouth, tilt: J.tilt, lo: !VOXEL && !J.hi && (c.L || 30) * Sb > 300 && c.real?.plan === 'fish' };
   const dt = now() - t0;
-  spent += dt; stat.ms += dt; stat.sheets++; stat.renders += LP_SWIM;
+  J.ms += dt; spent += dt; stat.ms += J.ms; stat.sheets++; stat.renders += LP_SWIM;
   return sh;
 }
+
+function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
+  const J = sheetStart(c, sb, yawI, infl, mouth, tilt, hi, only);
+  if (!J) return null;
+  sheetStep(J, Infinity);
+  return sheetFinish(J);
+}
+
+// [perf27] unfinished sheet builds, by sheet key (+ hi); the oldest are dropped past a few
+const sheetJobs = new Map();
+const SHEET_JOBS_MAX = 6;
 
 function storeSheet(key, sh) {
   sheets.set(key, sh);
@@ -2074,7 +2124,20 @@ function progress(c, sb, yawI, infl, mouth, tilt, deadline) {
     poseOf(c, sw, infl, mouth, LP_SWIM, hi);
   }
   if (now() > deadline && deadline !== Infinity) return null;
-  return buildSheet(c, sb, yawI, infl, mouth, tilt, hi);
+  // [perf27] the GL pass is spread over calls: a cell (or more, until the deadline) per call; a forced build
+  // (deadline Infinity) still finishes at once
+  const jk = sheetKeyOf(vidOf(c), sb, yawI, infl, mouth, tilt) + (hi ? '|hi' : '');
+  let J = sheetJobs.get(jk);
+  if (!J) {
+    J = sheetStart(c, sb, yawI, infl, mouth, tilt, hi);
+    if (!J) return null;
+    sheetJobs.set(jk, J);
+    if (sheetJobs.size > SHEET_JOBS_MAX) sheetJobs.delete(sheetJobs.keys().next().value);
+    if (now() > deadline) return null;
+  }
+  if (!sheetStep(J, deadline)) return null;
+  sheetJobs.delete(jk);
+  return sheetFinish(J);
 }
 
 /**
@@ -2158,6 +2221,7 @@ export function lpStill(c, req) {
 export function warmFish(c, S, yaw = 15) { return lpFrame(c, { S, yaw, sw: 0, force: true }); }
 
 export function clearLowpolyCache() {
+  sheetJobs.clear();
   sheets.clear(); byVid.clear(); sheetPx = 0; stills.clear?.();
   for (const p of poses.values()) for (const pt of p.parts) pt.mesh.dispose();
   poses.clear(); poseBytes = 0;

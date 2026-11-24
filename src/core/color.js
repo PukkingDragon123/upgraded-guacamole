@@ -12,6 +12,7 @@ export function hexToRgb(hex) {
   const n = parseInt(h.slice(0, 6), 16);
   c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   rgbCache.set(hex, c);
+  if (rgbCache.size > 8192) rgbCache.delete(rgbCache.keys().next().value); // [perf27] blended colours are endless: bounded
   return c;
 }
 
