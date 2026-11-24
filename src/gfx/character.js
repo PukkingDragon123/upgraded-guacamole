@@ -1685,8 +1685,8 @@ const EYE_ART = {
     5: ['..+..', '.+o+.', '+++++', '.+++.', '.+.+.'],
     8: ['...+...', '..+o+..', '+++++++', '.+++++.', '..+++..', '.++.++.', '.+...+.'],
   },
-  swirl: { 5: ['#####', '#....', '#.###', '#...#', '#####'] },
-  led: { 3: ['++'], 5: ['+++', '+++'], 8: ['.++++.', '++++++', '++++++', '.++++.'] },
+  swirl: { 5: ['#####', '#....', '#.###', '#...#', '#####'], 8: ['#######', '......#', '#####.#', '#...#.#', '#.###.#', '#.....#', '#######'] },
+  led: { 3: ['++'], 5: ['+++', '+++'], 8: ['.++++.', '++++++', '++++++', '++++++', '.++++.'], 10: ['.+++++.', '+++++++', '+++++++', '+++++++', '+++++++', '.+++++.'] },
 };
 const EYE_COL = { '#': INK, o: '#ffffff', '-': '#7fd8ff' };
 const STYLE_COL = { heart: '#ff3a7a', star: '#ffcc2a', anime: '#2bb878', led: '#3fe0ff' };
@@ -1944,7 +1944,7 @@ export function drawFaceLayer(ctx, face, X, Y, o) {
     if (k === 'eyeL' || k === 'eyeR') {
       const [gu, gv] = localDir(f, st.gx, st.gy);
       const gl = Math.min(1, Math.hypot(st.gx, st.gy));
-      const E = { style: eyes, gu: gu * gl, gv: gv * gl, lid, blink, wide: md.wide && !blink, mood: o.mood, t: o.t || 0, side: k === 'eyeL' ? 1 : -1, inner: Math.sign(F.mid.x - f.x) || 1, px, mode: blink ? null : p.eyeMode };
+      const E = { style: eyes, gu: gu * gl, gv: gv * gl, lid, blink, wide: md.wide && !blink, mood: o.mood, t: o.t || 0, side: k === 'eyeL' ? 1 : -1, inner: Math.sign((F.mid || F[k === 'eyeL' ? 'eyeR' : 'eyeL'] || f).x - f.x) || 1, px, mode: blink ? null : p.eyeMode };
       drawEye(ctx, X, Y, f, E, face.mask);
     } else if (k === 'mouth') {
       const mpx = Math.hypot(f.ax, f.ay);

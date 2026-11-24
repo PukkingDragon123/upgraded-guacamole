@@ -75,7 +75,7 @@ const blank = new WeakMap();
 function agentIcon(name) {
   let c = null;
   try { c = getUiIcon(name); } catch { c = null; }
-  if (!c || !c.width) return null;
+  if (!c || !c.width || c.__icon3d) return null; // a 3D render is not the hand-drawn pixel icon we want here
   let e = blank.get(c);
   if (e === undefined) {
     e = true;

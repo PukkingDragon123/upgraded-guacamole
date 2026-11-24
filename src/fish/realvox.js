@@ -1556,6 +1556,8 @@ function natEye(sol, c, rad, n, iris = '#c8a050', o = {}) {
     const up = vnorm(-g[0] * g[1], 1 - g[1] * g[1], -g[2] * g[1]);
     sol.ell(add3(add3(pc, g, pr * 0.72), up, pr * 0.45), [pr * 0.32, pr * 0.32, pr * 0.32], { col: P('#f4fbff') });
   }
+  // [deep26] eyeshine: a reflective tapetum that glows back at any light in the dark
+  if (o.shine) sol.ell(add3(pc, g, pr * 0.5), [pr * 0.55, pr * 0.55, pr * 0.55], { col: P(o.shine), glow: true });
 }
 
 // ---- builders: each returns {sol, anchors, eyes, roll} for animation phase ph (0..1), in lp (L = body length)
@@ -1681,6 +1683,20 @@ SOLIDS.crab = (S, L, ph) => {
       return pts;
     };
     sol.tube(fing(fb, -0.12, fl, -0.35), (k) => L * 0.032 * Math.sqrt(ck) * (1 - 0.82 * k) + L * 0.004, { col: fingerCol });
+    // [deep26] setae: the yeti crab's silky hair along the arms and palms (it farms bacteria in it)
+    if (S.setae) {
+      const hc = P(S.setae), hc2 = shadeP(S.setae, -0.12);
+      const along = [shoulder, elbow, wrist, pc];
+      for (let k = 0; k < 30; k++) {
+        const t = (k + 0.5) / 30 * 3, i = Math.min(2, Math.floor(t)), f = t - i;
+        const b = lerp3(along[i], along[i + 1], f);
+        const h1 = hash2(k, sd > 0 ? 3 : 7, 41), h2 = hash2(k, 11, 43);
+        const dir = vnorm(-0.3 + 0.6 * h1, -1 + 0.5 * h2, sd * (0.5 + 0.5 * h1));
+        const ln = L * (0.06 + 0.05 * h2) * Math.sqrt(ck);
+        const sway = 0.15 * Math.sin(TAU * ph + k);
+        sol.cap(add3(b, dir, L * 0.025), add3(b, [dir[0] + sway, dir[1], dir[2]], ln), L * 0.007, L * 0.0035, { col: k % 3 ? hc : hc2 });
+      }
+    }
     const db = add3(add3(pc, e0, pl * 0.6), e1, ph2 * 0.45);
     sol.tube(fing(db, snap, fl * 1.08, 0.45), (k) => L * 0.03 * Math.sqrt(ck) * (1 - 0.8 * k) + L * 0.004, { col: fingerCol });
   }
@@ -1832,7 +1848,7 @@ function webUmbrella(sol, o) {
   const scal = o.scallop ?? 0.32;
   // the web: half an ellipsoid shell, its open rim cut into scallops between the arms
   sol.ell(cen, [len, rim, rim], {
-    axes: [e0, e1, e2], shell: o.shell ?? 0.1, cut: { x1: 0 },
+    axes: [e0, e1, e2], shell: o.shell ?? 0.1, cut: { x1: 0 }, role: o.role,
     col: (q, x, y, z) => {
       const a = Math.atan2(q[2], q[1]) - rot;
       const da = Math.abs((((a % (2 * seg)) + 4 * seg) % (2 * seg)) - seg) / seg; // 1 at an arm .. 0 midway
@@ -1860,7 +1876,7 @@ function webUmbrella(sol, o) {
       const dir = add3(e0.map((v) => v * Math.cos(curl)), rd.map((v) => v * -Math.sin(curl) * 0.6 + v * 0.4));
       pts.push(add3(base, dir, len * (o.tip ?? 0.3) * t2));
     }
-    sol.tube(pts, (t) => L * (o.armR ?? 0.03) * (1 - 0.6 * t) + L * 0.006, { col: (q, x, y, z) => packRGB(tone3(mix3(o3, arm, armTip, smoothstep(0.75, 0.92, q[2])), (grain(x, y, z, L / 50, 9) - 0.5) * 0.1)) });
+    sol.tube(pts, (t) => L * (o.armR ?? 0.03) * (1 - 0.6 * t) + L * 0.006, { role: o.armRole, col: (q, x, y, z) => packRGB(tone3(mix3(o3, arm, armTip, smoothstep(0.75, 0.92, q[2])), (grain(x, y, z, L / 50, 9) - 0.5) * 0.1)) });
   }
   return e0;
 }
@@ -1945,6 +1961,148 @@ SOLIDS.squid = (S, L, ph) => {
   return { sol, anchors: { mouth: [L * 0.5, 0, 0], top: [0, L * 0.25, 0], bottom: [0, -L * 0.25, 0], tail: [-L * 0.48, 0, 0] }, eyes: eyes.slice(0, 1), yawBase: 18 };
 };
 
+
+// [deep26] Bigfin squid (Magnapinna): a small pale mantle with two huge round fins, and ten impossibly long, thin
+// arms that stick out sideways from the head, bend at sharp 'elbows' and then hang straight down like a spider's
+// legs (several body lengths), drifting. Hovers upright, the mantle tipped up and back.
+SOLIDS.bigfin = (S, L, ph) => {
+  const sol = new Solid();
+  const C = S.col;
+  const o3 = [0, 0, 0];
+  const body = hexRGB(C.back), side = hexRGB(C.flank), under = hexRGB(C.belly), finC = hexRGB(C.fin || C.flank);
+  const P2 = TAU * ph;
+  const skin = (q, x, y, z) => { mix3(o3, under, side, smoothstep(-0.8, -0.1, q[1])); mix3(o3, o3, body, smoothstep(0.1, 0.8, q[1])); tone3(o3, (grain(x, y, z, L / 50, 4) - 0.5) * 0.1 + (grain(x, y, z, L / 18, 8) > 0.86 ? -0.1 : 0)); return packRGB(o3); };
+  // mantle: a rounded cone tipped up and back
+  const md = vnorm(-0.45, 1, 0);
+  const mc = [-L * 0.06, L * 0.3, 0];
+  sol.ell(mc, [L * 0.27, L * 0.13, L * 0.13], { axes: frameOf(md, [1, 0, 0]), col: skin, warp: (q) => [q[0], q[1] * (1 - 0.3 * Math.max(0, q[0])), q[2] * (1 - 0.3 * Math.max(0, q[0]))] });
+  // the big fins: two broad round lobes on the mantle, rowing slowly
+  for (const sd of [1, -1]) {
+    const a = 0.25 * Math.sin(P2) + 0.15;
+    const out = vnorm(0.3, -0.15 + a, sd * 1.1);
+    const root = add3(mc, md, L * 0.12);
+    const ax = frameOf(out, md);
+    sol.ell(add3(root, out, L * 0.16), [L * 0.2, L * 0.2, L * 0.025], { axes: [ax[0], ax[1], ax[2]], col: (q, x, y, z) => packRGB(tone3(mix3(o3, finC, body, 0.25 + 0.3 * Math.max(0, q[1])), (grain(x, y, z, L / 50, 6) - 0.5) * 0.08 + (Math.hypot(q[0], q[1]) > 0.9 ? -0.1 : 0))), role: R_GLASS });
+  }
+  // head + natural eyes with a red eyeshine
+  const hc = [L * 0.05, L * 0.06, 0];
+  sol.ell(hc, [L * 0.12, L * 0.1, L * 0.11], { col: skin });
+  const eyes = [];
+  for (const sd of [1, -1]) {
+    const e = [L * 0.09, L * 0.08, sd * L * 0.085];
+    natEye(sol, e, L * 0.04, [0.45, 0.1, sd * 0.9], C.eye || '#1a1020', { pupil: 0.72, shine: S.photo ? '#ff9a7a' : null });
+    eyes.push([...e, L * 0.04]);
+  }
+  // ten arms: out sideways from the head, a sharp elbow, then hanging straight down (swaying)
+  const armC = (q, x, y, z) => packRGB(tone3(mix3(o3, side, under, 0.3 + 0.4 * q[2]), (grain(x, y, z, L / 60, 9) - 0.5) * 0.08 + (q[2] > 0.92 ? 0.1 : 0)));
+  const hang = L * (S.armLen ?? 1.7);
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * TAU + 0.3;
+    const rd = [Math.cos(a), 0, Math.sin(a) * 0.8];
+    const base = add3(hc, [rd[0] * L * 0.07, -L * 0.06, rd[2] * L * 0.07]);
+    const reach = L * (0.2 + 0.06 * hash2(i, 2, 5));
+    const elbow = add3(base, [rd[0] * reach, -L * 0.04, rd[2] * reach]);
+    const pts = [base, elbow];
+    const n = 7;
+    const len = hang * (0.82 + 0.18 * hash2(i, 4, 6));
+    for (let k = 1; k <= n; k++) {
+      const t = k / n;
+      const sway = Math.sin(P2 - t * 2.4 + i * 0.9) * L * 0.09 * t * t;
+      pts.push(add3(elbow, [sway + rd[0] * L * 0.03 * t, -len * t, rd[2] * L * 0.03 * t + Math.cos(P2 + i - t * 2) * L * 0.03 * t * t]));
+    }
+    sol.tube(pts, (t) => L * (t < 0.15 ? 0.022 - 0.06 * t : 0.012 * (1 - 0.55 * t)) + L * 0.004, { col: armC });
+  }
+  const bot = hc[1] - L * 0.1 - hang;
+  return { sol, anchors: { mouth: [L * 0.1, -L * 0.04, 0], top: [0, L * 0.58, 0], bottom: [0, bot, 0], tail: [-L * 0.2, L * 0.5, 0] }, eyes: eyes.slice(0, 1), yawBase: 24, glassAlpha: 0.62 };
+};
+
+// [deep26] Telescope octopus (Amphitretus): a jelly-clear octopus, its orange digestive gland glowing through the
+// glassy mantle, two tubular eyes standing up on top like a periscope pair, eight arms joined by a clear web.
+SOLIDS.telescope = (S, L, ph) => {
+  const sol = new Solid();
+  const C = S.col;
+  const o3 = [0, 0, 0];
+  const body = hexRGB(C.back), side = hexRGB(C.flank), under = hexRGB(C.belly), gl = hexRGB(C.gland || '#ff9a3a');
+  const P2 = TAU * ph;
+  const bob = Math.sin(P2) * L * 0.015;
+  const glass = (q) => { mix3(o3, under, body, smoothstep(-0.6, 0.8, q[1])); if (Math.hypot(q[0], q[1], q[2]) > 0.9) tone3(o3, 0.08); return packRGB(o3); };
+  // the clear mantle and head
+  sol.ell([-L * 0.02, L * 0.2 + bob, 0], [L * 0.24, L * 0.28, L * 0.23], { role: R_GLASS, col: glass });
+  sol.ell([L * 0.04, L * 0.0 + bob, 0], [L * 0.2, L * 0.13, L * 0.2], { role: R_GLASS, col: glass });
+  // visible insides: the digestive gland (orange) and a pale gill pair
+  sol.ell([-L * 0.04, L * 0.2 + bob, 0], [L * 0.09, L * 0.13, L * 0.08], { col: (q, x, y, z) => packRGB(tone3([...gl], 0.12 * q[1] + (grain(x, y, z, L / 40, 3) - 0.5) * 0.14)) });
+  for (const sd of [1, -1]) sol.ell([-L * 0.02, L * 0.08 + bob, sd * L * 0.09], [L * 0.07, L * 0.035, L * 0.03], { col: P('#f6e6d8') });
+  // the telescope eyes: silvery tubes standing up, dark lenses on top with a green eyeshine
+  const eyes = [];
+  for (const sd of [1, -1]) {
+    const b0 = [L * 0.08, L * 0.12 + bob, sd * L * 0.08], b1 = [L * 0.12, L * 0.42 + bob, sd * L * 0.1];
+    sol.cap(b0, b1, L * 0.05, L * 0.055, { col: (q) => packRGB(tone3([...hexRGB('#c8d8e0')], 0.1 * q[3] - 0.15 * q[0])) });
+    const e = add3(b1, [L * 0.01, L * 0.04, 0]);
+    natEye(sol, e, L * 0.048, [0.25, 1, sd * 0.25], C.eye || '#141a24', { pupil: 0.8, shine: '#8affc8' });
+    eyes.push([...e, L * 0.048]);
+  }
+  // eight arms joined by a clear web, opening and closing (it drifts head up)
+  const open = 0.5 + 0.5 * Math.sin(P2 + 0.8);
+  webUmbrella(sol, { apex: [L * 0.02, -L * 0.05 + bob, 0], ax: [0.15, -1, 0], len: L * (0.3 - 0.05 * open), rim: L * (0.26 + 0.1 * open), n: 8, rot: 0.2, col: side, inner: mix3([0, 0, 0], under, side, 0.4), arm: mix3([0, 0, 0], side, gl, 0.15), armTip: under, P2, L, shell: 0.12, role: R_GLASS, armR: 0.026, tip: 0.5, curl: 1.4 });
+  return { sol, anchors: { mouth: [0, -L * 0.1, 0], top: [0, L * 0.52, 0], bottom: [0, -L * 0.5, 0], tail: [-L * 0.25, L * 0.2, 0] }, eyes: eyes.slice(0, 1), yawBase: 26, glassAlpha: 0.42 };
+};
+
+// [deep26] Cock-eyed (strawberry) squid (Histioteuthis): a wine-red squid studded with glowing photophores, with one
+// huge yellow eye that bulges up over its head to watch for silhouettes above, and one small blue eye looking down
+// for glows below. Eight webbed arms and two long feeding tentacles.
+SOLIDS.cockeye = (S, L, ph) => {
+  const sol = new Solid();
+  const C = S.col;
+  const o3 = [0, 0, 0];
+  const body = hexRGB(C.back), side = hexRGB(C.flank), under = hexRGB(C.belly), finC = hexRGB(C.fin || C.back);
+  const ph3 = hexRGB(S.photo || '#9affff');
+  const P2 = TAU * ph;
+  const dots = (x, y, z) => grain(x, y, z, L / 22, 31) > 0.8;
+  const skin = (q, x, y, z) => {
+    if (dots(x, y, z)) return packRGB(ph3);
+    mix3(o3, under, side, smoothstep(-0.8, -0.2, q[1])); mix3(o3, o3, body, smoothstep(0, 0.7, q[1]));
+    tone3(o3, (grain(x, y, z, L / 55, 4) - 0.5) * 0.12 + (grain(x, y, z, L / 30, 7) > 0.85 ? -0.15 : 0));
+    return packRGB(o3);
+  };
+  // mantle: a rounded cone pointing back; photophores (glowing studs) all over
+  const mantle = { col: skin, warp: (q) => [q[0], q[1] * (1 - 0.3 * Math.max(0, -q[0])), q[2] * (1 - 0.3 * Math.max(0, -q[0]))] };
+  sol.ell([-L * 0.2, L * 0.01, 0], [L * 0.26, L * 0.15, L * 0.15], mantle);
+  // photophore studs as small glowing beads (rows on the mantle and head)
+  for (let k = 0; k < 26; k++) {
+    const u = hash2(k, 1, 51), a = (hash2(k, 2, 52) - 0.5) * Math.PI * 1.4;
+    const x = -L * 0.42 + u * L * 0.62;
+    const rr = (x < -0.05 * L ? L * 0.15 * (1 - 0.3 * Math.max(0, (-x - L * 0.2) / (L * 0.26))) : L * 0.13) * 0.98;
+    sol.ell([x, Math.sin(a) * rr * 0.9 + L * 0.01, Math.cos(a) * rr], [L * 0.014, L * 0.014, L * 0.014], { col: P(S.photo || '#9affff'), glow: true });
+  }
+  // short round fins at the mantle tip
+  for (const sd of [1, -1]) {
+    const a = 0.3 * Math.sin(P2) + 0.1;
+    const dir = vnorm(-0.3, Math.sin(a), sd * Math.cos(a));
+    sol.ell(add3([-L * 0.38, L * 0.03, sd * L * 0.06], dir, L * 0.07), [L * 0.07, L * 0.08, L * 0.02], { axes: [[1, 0, 0], dir, vnorm(0, -sd * Math.cos(a), Math.sin(a))], col: P(C.fin || C.back) });
+  }
+  // head
+  sol.ell([L * 0.06, 0, 0], [L * 0.12, L * 0.12, L * 0.13], { col: skin });
+  // the mismatched eyes: small blue one on the near side (low), the huge yellow one bulging over the top
+  const eyes = [];
+  natEye(sol, [L * 0.09, -L * 0.03, L * 0.115], L * 0.035, [0.4, -0.35, 0.85], C.eye2 || '#5aa8ff', { pupil: 0.62, shine: '#8ad8ff' });
+  eyes.push([L * 0.09, -L * 0.03, L * 0.115, L * 0.035]);
+  sol.ell([L * 0.07, L * 0.1, -L * 0.03], [L * 0.095, L * 0.09, L * 0.09], { col: skin });
+  natEye(sol, [L * 0.09, L * 0.14, -L * 0.01], L * 0.085, [0.35, 0.75, 0.55], C.eye || '#ffd86a', { pupil: 0.62, shine: '#fff0a0' });
+  eyes.unshift([L * 0.09, L * 0.14, -L * 0.01, L * 0.085]);
+  // arms: eight webbed at the base, curling; two long tentacles with clubs
+  const open = 0.55 + 0.45 * Math.sin(P2 + 1);
+  webUmbrella(sol, { apex: [L * 0.13, 0, 0], ax: [1, -0.1, 0], len: L * (0.3 - 0.06 * open), rim: L * (0.14 + 0.1 * open), n: 8, rot: 0.39, col: finC, inner: tone3([...finC], -0.25), arm: body, armTip: hexRGB('#ffb0b8'), P2, L, shell: 0.14, tip: 0.6, curl: 1.0, scallop: 0.6 });
+  for (const sd of [1, -1]) {
+    const pts = [];
+    for (let k = 0; k <= 8; k++) {
+      const t = k / 8;
+      pts.push([L * 0.15 + L * 0.75 * t, -L * 0.04 - L * 0.12 * t + Math.sin(P2 - t * 3 + sd) * L * 0.04 * t, sd * L * 0.03 * (1 + t)]);
+    }
+    sol.tube(pts, (t) => L * (t > 0.85 ? 0.022 : 0.009), { col: (q) => packRGB(q[2] > 0.85 ? ph3 : tone3([...body], 0.1)), glow: (q) => q[2] > 0.9 });
+  }
+  return { sol, anchors: { mouth: [L * 0.55, -L * 0.05, 0], top: [0, L * 0.25, 0], bottom: [0, -L * 0.22, 0], tail: [-L * 0.46, 0, 0] }, eyes: eyes.slice(0, 1), yawBase: 18 };
+};
+
 // Starfish: five tapering arms around a central disc, a pebbly texture, tube feet stepping underneath.
 // Built in the side map plane and rolled so its back faces the camera.
 SOLIDS.star = (S, L, ph) => {
@@ -2004,7 +2162,9 @@ SOLIDS.isopod = (S, L, ph) => {
   // head, eyes, antennae
   sol.ell([L * 0.42, -L * 0.01, 0], [L * 0.07, L * 0.1, L * 0.15], { col: P(C.back) });
   for (const sd of [1, -1]) {
-    sol.ell([L * 0.44, L * 0.03, sd * L * 0.12], [L * 0.035, L * 0.045, L * 0.04], { col: P(C.eye || '#2a2a24'), role: R_EYE });
+    const ek = S.eyeR ?? 1;
+    sol.ell([L * 0.44, L * 0.03, sd * L * 0.12], [L * 0.035 * ek, L * 0.045 * ek, L * 0.04 * ek], { col: P(C.eye || '#2a2a24'), role: R_EYE });
+    if (S.eyeshine) sol.ell([L * (0.44 + 0.02 * ek), L * 0.045, sd * L * (0.12 + 0.02 * ek)], [L * 0.014 * ek, L * 0.018 * ek, L * 0.014 * ek], { col: P(S.eyeshine), glow: true }); // [deep26]
     const sw = 0.1 * Math.sin(TAU * ph + (sd > 0 ? 0 : 1));
     sol.tube([[L * 0.47, -L * 0.02, sd * L * 0.06], [L * 0.62, L * 0.0 + L * 0.04 * sw, sd * L * 0.14], [L * 0.75, -L * 0.06, sd * L * 0.24]], (t) => L * 0.014 * (1 - 0.6 * t) + L * 0.004, { col: P(C.flank) });
   }

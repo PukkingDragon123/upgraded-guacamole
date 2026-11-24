@@ -189,12 +189,11 @@ function frameIndex(spin, turn) {
 }
 
 // the logical (1x) twin for plain contexts: crisp at round(k / 2) (never a blurry downsample)
-function logicalOf(sp, name, k, shadow, state, S, dxd, dyd) {
+function logicalOf(sp, name, k, shadow, state, S, fr) {
   const c = makeCanvas(S, S);
   const kl = Math.max(1, Math.round(k / HI));
   const art = scaled(name, sp, kl, shadow, state);
-  const g = ctxOf(c);
-  g.drawImage(art, Math.round((S - art.width) / 2 + (dxd - (S * HI - (sp.w + (shadow ? 1 : 0)) * k) / 2) / HI), Math.round((S - art.height) / 2 + (dyd - (S * HI - (sp.h + (shadow ? 1 : 0)) * k) / 2) / HI));
+  ctxOf(c).drawImage(art, Math.round((S - art.width) / 2), Math.round((S - art.height) / 2) - fr * kl);
   return c;
 }
 
@@ -216,7 +215,7 @@ export function pixFrame(name, px, turn = 0, o = {}) {
   const hi = makeCanvas(S * HI, S * HI);
   const dx = Math.round((S * HI - Wd) / 2 + (sh * k) / 2), dy = Math.round((S * HI - Hd) / 2 + (sh * k) / 2) - fr * k;
   ctxOf(hi).drawImage(scaled(name, sp, k, shadow, state), dx - Math.round((sh * k) / 2), dy - Math.round((sh * k) / 2));
-  const c = logicalOf(sp, name, k, shadow, state, S, dx - Math.round((sh * k) / 2), dy - Math.round((sh * k) / 2));
+  const c = logicalOf(sp, name, k, shadow, state, S, fr);
   Object.defineProperty(c, 'hi', { value: hi, configurable: true });
   c.__pix = name;
   e = { canvas: c, ox: S / 2, oy: S / 2, k, w: Wd / HI, h: Hd / HI };

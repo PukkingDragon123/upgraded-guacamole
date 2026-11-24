@@ -1545,7 +1545,7 @@ export const SPEC = SPEC_IN;
 // Fallback for looks without an explicit spec: pick an archetype from the look's kind / shape and keep its
 // colours (natural-ised a little).
 const SHAPE_BASE = { oval: 'perch', torpedo: 'salmon', round: 'puffer', disc: 'butterfly', long: 'salmon', box: 'boxfish', blunt: 'grouper', pointy: 'snapper' };
-const SOLID_KIND = { crab: 'crab', jelly: 'jelly', pudding: 'jelly', octopus: 'octopus', squid: 'squid', star: 'star', isopod: 'isopod', seahorse: 'seahorse', chomper: 'chomper' };
+const SOLID_KIND = { crab: 'crab', jelly: 'jelly', pudding: 'jelly', octopus: 'octopus', squid: 'squid', star: 'star', isopod: 'isopod', seahorse: 'seahorse', chomper: 'chomper', bigfin: 'bigfin', telescope: 'telescope', cockeye: 'cockeye' };
 const FISH_KIND = { ray: 'manta', blob: 'blobfish', iconfish: 'boxfish' };
 function autoReal(look, kind) {
   const col = look.col || look.chain?.col || {};
