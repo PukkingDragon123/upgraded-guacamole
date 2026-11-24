@@ -102,11 +102,13 @@ export class CrateBattle extends Battle {
   }
 
   get shielded() { return this.shield; }
+  get zoomAdd() { return this.reveal ? 0.55 * clamp01(this.reveal.t * 3) : this.sprout ? 0.25 : 0; }
+  get camOffY() { return this.reveal ? -0.05 : 0.08; } // the MIMIC! title needs the top of the screen
   get canCharge() { return super.canCharge && !this.reveal && !this.sprout; }
 
   markerIcon(w, h) { return crateIcon(this.box, h); }
 
-  cancel() { const f = this.box; f.hooked = false; f.rollCtl = false; f.legs = 0; f.mimic = 0; f.shield = false; }
+  cancel() { const f = this.box; f.hooked = false; f.rollCtl = false; f.legs = 0; f.mimic = 0; f.shield = false; f.size = 1; }
 
   update(dt) {
     const F = this.F, f = this.box;
@@ -160,7 +162,6 @@ export class CrateBattle extends Battle {
     f.walk += dt * 20;
     this.marker = damp(this.marker, -0.25, 3, dt); this.mv = 0;
     this.tension = damp(this.tension, 0.5, 4, dt);
-    F.focusCam(f.x, f.y, F.fightZoom() + 0.25, 3);
     if (S.t > 1) {
       this.sprout = null; f.hop = 0; f.legs = 1;
       // the crate is a runner now: erratic, sideways lunges, a quicker drain
@@ -195,11 +196,11 @@ export class CrateBattle extends Battle {
     // the lid creaks, then flies open; two snaps at the camera
     f.mimic = k < 0.35 ? 0.15 + Math.sin(k * 60) * 0.05 : k < 0.6 ? clamp01((k - 0.35) / 0.25) : k < 1.6 ? (Math.floor((k - 0.6) * 5) % 2 ? 0.2 : 1) : 0.6;
     f.hop = k < 0.6 ? Math.abs(Math.sin(k * 40)) * 1.5 : 0;
+    f.size = 1 + 0.5 * ease.outBack(clamp01((k - 0.35) / 0.4)); // it swells up into a mini-boss
     if (k > 0.6 && !R.snap1) { R.snap1 = true; F.sfx('gulp', { vol: 0.9, pitch: 0.6 }); F.shake(6); }
     if (k > 1.0 && !R.snap2) { R.snap2 = true; F.sfx('gulp', { vol: 0.9, pitch: 0.5 }); F.shake(6); F.particles.aeroBubbles?.(f.x, f.y - 8, 5, { w: 6 }); }
     this.marker = damp(this.marker, 0, 2, dt); this.mv = 0;
     this.tension = damp(this.tension, 0.6, 4, dt);
-    F.focusCam(f.x, f.y - 6, F.fightZoom() + 0.7 * clamp01(k * 3), 4);
     if (k > 2.3) {
       this.reveal = null;
       // a mini-boss: narrower zone, a harder, jumpier pull, a longer bar; it bit back a little
@@ -330,14 +331,14 @@ export class CrateBattle extends Battle {
       ctx.save();
       ctx.globalAlpha = a;
       const jx = t < 0.3 ? rng.int(-3, 3) : 0;
-      const landed = letters3D(ctx, 'MIMIC!', W / 2 + jx, Math.round(H * 0.24), t, { pal: 'red', scale: W < 700 ? 2.2 : 2.8, drop: 180, stagger: 0.07 });
+      const landed = letters3D(ctx, 'MIMIC!', W / 2 + jx, Math.round(H * 0.15), t, { pal: 'red', scale: W < 700 ? 2.2 : 2.8, drop: 180, stagger: 0.07 });
       for (const [lx, ly, i] of landed) {
         if (this['land' + i]) continue;
         this['land' + i] = true;
         F.fx.pixelBurst?.('shard', lx, ly + 20, 4, { ramp: 'red', speed: [40, 120], layer: 'fg' });
         F.sfx('mash_pop', { pitch: 0.7 + i * 0.06, vol: 0.5 });
       }
-      if (t > 0.8) word3D(ctx, 'IT BITES!', W / 2, Math.round(H * 0.24 + 62), { t, pop: clamp01((t - 0.8) * 4), scale: W < 700 ? 0.9 : 1.1, pal: 'sun', wobble: 1 });
+      if (t > 0.8) word3D(ctx, 'IT BITES!', W / 2, Math.round(H * 0.15 + 58), { t, pop: clamp01((t - 0.8) * 4), scale: W < 700 ? 0.9 : 1.1, pal: 'sun', wobble: 1 });
       ctx.restore();
     } else {
       if (t > 1.5) { this.titleT = -1; return; }

@@ -243,7 +243,7 @@ function cabinet() {
   }
   // hat boxes + a straw hat (upper shelf)
   m.cylinder(18, 16, 75, 88, 9, HB1); m.cylinder(18, 16, 89, 90, 10, HB2);
-  m.paint(() => m.fill((x, y, z) => (y >= 76 && y <= 87 && (x - 17.5) ** 2 + (z - 15.5) ** 2 <= 82 && Math.floor((Math.atan2(z - 16, x - 18) + 4) * 3) % 2 === 0 ? HB2 : null)));
+  for (let y = 76; y <= 87; y++) for (let z = 6; z <= 26; z++) for (let x = 8; x <= 28; x++) if (m.get(x, y, z) === HB1 && Math.floor((Math.atan2(z - 16, x - 18) + 4) * 3) % 2 === 0) m.set(x, y, z, HB2);
   m.box(17, 91, 15, 19, 92, 17, RIB);
   m.cylinder(46, 16, 75, 76, 11, C[2]); m.cylinder(46, 16, 77, 81, 6, C[2]); dome(m, 46, 81, 16, 6, 3.5, 6, C[2]);
   m.cylinder(46, 16, 77, 78, 6.4, RIB);
@@ -304,7 +304,7 @@ function hatStand() {
   // scarf draped over the front hook
   m.tube([[c - 3, 84, z + 7, 1.6], [c - 5, 70, z + 8, 1.8], [c - 4, 58, z + 8, 1.8]], SC, 5);
   m.tube([[c + 3, 84, z + 7, 1.6], [c + 4, 74, z + 8, 1.8], [c + 3, 66, z + 8, 1.8]], SC, 5);
-  m.paint(() => m.fill((x, y, zz, p) => (p === SC && y % 6 === 0 ? SC2 : null)));
+  for (let y = 56; y <= 86; y += 6) for (let zz = 0; zz < m.nz; zz++) for (let x = 0; x < m.nx; x++) if (m.get(x, y, zz) === SC) m.set(x, y, zz, SC2);
   return m;
 }
 
@@ -409,7 +409,7 @@ function plant(seed, size = 1) {
   const cx = m.nx / 2, cz = m.nz / 2, pr = 9 * size, ph = 15 * size;
   m.cone(cx, cz, 0, ph, pr * 0.82, pr, PT);
   m.cylinder(cx, cz, ph - 3 * size, ph, pr + 0.8, PT);
-  m.paint(() => m.fill((x, y) => (y >= ph * 0.35 && y <= ph * 0.35 + 2 * size ? PB : null)));
+  m.paint(() => m.box(0, Math.ceil(ph * 0.35), 0, m.nx - 1, Math.floor(ph * 0.35 + 2 * size), m.nz - 1, PB));
   m.cylinder(cx, cz, ph - 1, ph - 0.5, pr - 1, SO);
   const n = 7;
   for (let i = 0; i < n; i++) {
@@ -560,21 +560,36 @@ function* buildScene(S) {
   S.done = true;
 }
 
-function stepScene(S) {
+function stepScene(S, budget = BUDGET) {
   if (S.done || !S.gen) return;
   const t0 = now();
   try {
-    while (now() - t0 < BUDGET) {
+    while (now() - t0 < budget) {
       const a = now(), r = S.gen.next(), d = now() - a;
       if (d > (S.maxStep || 0)) { S.maxStep = d; S.maxAt = S.steps; }
-      if (d > 12) (S.slow ||= []).push((S.steps || 0) + ":" + Math.round(d));
       S.steps = (S.steps || 0) + 1;
       if (r.done) { S.done = true; S.gen = null; S.ms = now() - S.born; break; }
     }
   } catch (e) { console.error(e); S.done = true; S.gen = null; }
+  if (S.done && !S.doneAt) S.doneAt = now();
 }
 
-export function wardrobeRoomStats() { return [...scenes.values()].map((S) => ({ key: S.key, done: S.done, steps: S.steps, maxStep: Math.round(S.maxStep || 0), maxAt: S.maxAt, ms: Math.round(S.ms || 0), slow: (S.slow || []).join(" ") })); }
+// Build a scene ahead of time in idle slices (the panel warms its current size a few seconds after boot).
+export function warmWardrobeRoom(w, h, R = 1) {
+  const S = sceneFor(Math.round(w * R), Math.round(h * R));
+  if (S.done || S.warming) return;
+  S.warming = true;
+  const ric = typeof requestIdleCallback === 'function' ? requestIdleCallback : (fn) => setTimeout(() => fn({ timeRemaining: () => 6 }), 50);
+  // only in real idle time (no forced timeouts), so it never competes with busy frames
+  const tick = (dl) => {
+    if (S.done || !scenes.has(S.key)) { S.warming = false; return; }
+    if (dl.timeRemaining() > 9) stepScene(S, Math.min(8, dl.timeRemaining() - 4));
+    ric(tick);
+  };
+  ric(tick);
+}
+
+export function wardrobeRoomStats() { return [...scenes.values()].map((S) => ({ key: S.key, done: S.done, steps: S.steps, maxStep: Math.round(S.maxStep || 0), maxAt: S.maxAt, ms: Math.round(S.ms || 0) })); }
 export function wardrobeRoomPending() { for (const S of scenes.values()) if (!S.done) return true; return false; }
 
 // ------------------------------------------------------------------ per-frame drawing
@@ -614,15 +629,34 @@ export function drawWardrobeRoom(ctx, v, t, o = {}) {
   const Rz = ctx.__hi || 1;
   const wd = Math.round(v.w * Rz), hd = Math.round(v.h * Rz);
   const S = sceneFor(wd, hd);
-  stepScene(S);
+  stepScene(S, o.budget ?? 22);
   const { G } = S, k = 1 / Rz;
   const ox = v.x, oy = v.y;
   const D = (c, dx, dy, w = c.width, h = c.height) => ctx.drawImage(c, ox + dx * k, oy + dy * k, w * k, h * k);
+  const feet = [ox + sx(G, TX) * k, oy + sy(G, 9, G.TZ) * k];
+  const A0 = ctx.globalAlpha;
   ctx.save();
   ctx.beginPath(); ctx.rect(v.x, v.y, v.w, v.h); ctx.clip();
-  // base tone while the shell builds
-  ctx.fillStyle = '#bfe6ee'; ctx.fillRect(v.x, v.y, v.w, v.h * 0.68);
-  ctx.fillStyle = '#d8a56c'; ctx.fillRect(v.x, v.y + v.h * 0.68, v.w, v.h * 0.32);
+  // a calm stand-in (wall, wainscot, floor, rug) while the scene builds; the voxel room fades in over it
+  const fa = S.done ? Math.min(1, (now() - S.doneAt) / 350) : 0;
+  if (fa < 1) {
+    const wy = oy + sy(G, 0, 6) * k, ry = oy + sy(G, 50, 6) * k;
+    const wg = ctx.createLinearGradient(0, oy, 0, wy);
+    wg.addColorStop(0, '#9fd4e0'); wg.addColorStop(1, '#c6eef4');
+    ctx.fillStyle = wg; ctx.fillRect(v.x, v.y, v.w, wy - oy);
+    ctx.fillStyle = '#f4f6f0'; ctx.fillRect(v.x, ry, v.w, wy - ry);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(v.x, ry - 2, v.w, 3);
+    const fg = ctx.createLinearGradient(0, wy, 0, oy + v.h);
+    fg.addColorStop(0, '#b98250'); fg.addColorStop(1, '#e0aa70');
+    ctx.fillStyle = fg; ctx.fillRect(v.x, wy, v.w, oy + v.h - wy);
+    ctx.fillStyle = '#3cc0e0';
+    ctx.beginPath(); ctx.ellipse(feet[0], oy + sy(G, 0, G.TZ) * k, 80 * G.s * k, G.FD * 0.3 * SP * G.s * k, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.ellipse(feet[0], oy + sy(G, 4, G.TZ) * k, 34 * G.s * k, 34 * SP * G.s * k, 0, 0, TAU); ctx.fill();
+  }
+  if (fa <= 0) { ctx.restore(); return { feet, u: G.s * k, ready: false, front: () => {}, mirror: null }; }
+  const FA = A0 * fa;
+  ctx.globalAlpha = FA;
   // window views
   for (const p of PORTS) drawView(ctx, S, p, t, ox, oy, k);
   D(S.wall.c, 0, 0);
@@ -640,32 +674,32 @@ export function drawWardrobeRoom(ctx, v, t, o = {}) {
   ctx.globalCompositeOperation = 'lighter';
   S.L.bulbs.forEach((b, i) => {
     const tw = 0.45 + 0.35 * Math.sin(t * (1.3 + (i % 5) * 0.37) + i * 1.7) + (Math.sin(t * 0.7 + i) > 0.96 ? 0.4 : 0);
-    ctx.globalAlpha = Math.max(0, Math.min(1, tw));
+    ctx.globalAlpha = FA * Math.max(0, Math.min(1, tw));
     const c = glowDot(BULBS[b.c], gr);
     D(c, sx(G, b.x + 0.5) - gr, sy(G, b.y, 9) - gr);
   });
   // warm light pool on the rug around the stage
-  ctx.globalAlpha = 0.5 + 0.06 * Math.sin(t * 0.8);
+  ctx.globalAlpha = FA * (0.5 + 0.06 * Math.sin(t * 0.8));
   { const c = glowDot('#fff2c8', 64); const rx = 92 * G.s, ry = G.FD * 0.3 * SP * G.s * 1.4; D(c, sx(G, TX) - rx, sy(G, 0, G.TZ) - ry, rx * 2, ry * 2); }
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = FA;
   ctx.globalCompositeOperation = 'source-over';
   // mirror glints
   if (S.mirror) drawMirrorGlint(ctx, S, t, ox, oy, k);
   // turntable
   const spin = (o.spin || 0) * (Math.PI / 180);
-  const feet = [ox + sx(G, TX) * k, oy + sy(G, 9, G.TZ) * k];
   if (S.table.length) {
     const per = TAU / 4; // the pattern repeats every 90 degrees
     const fi = Math.floor((((-spin % per) + per) % per) / per * 12) % S.table.length;
     const f = S.table[fi];
     const dx = Math.round(sx(G, TX - f.c) - f.px), dy = Math.round(sy(G, 0, G.TZ - f.c) - f.py);
     D(f.canvas, dx, dy);
-    if (f.glow) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.6; D(f.glow, dx, dy); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; }
+    if (f.glow) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = FA * 0.6; D(f.glow, dx, dy); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = FA; }
   }
   ctx.restore();
   const front = (c2 = ctx) => {
     c2.save();
     c2.beginPath(); c2.rect(v.x, v.y, v.w, v.h); c2.clip();
+    c2.globalAlpha = FA;
     c2.drawImage(S.front.c, ox, oy, S.front.c.width * k, S.front.c.height * k);
     // dust motes drifting in the warm light
     c2.fillStyle = '#fff6d8';
@@ -673,10 +707,10 @@ export function drawWardrobeRoom(ctx, v, t, o = {}) {
       const ph = (t * (0.02 + hash1(i, 3) * 0.02) + hash1(i, 5)) % 1;
       const x = ox + (0.08 + hash1(i, 7) * 0.55) * v.w + Math.sin(t * 0.5 + i) * 6;
       const y = oy + v.h * (0.85 - ph * 0.7);
-      c2.globalAlpha = Math.sin(ph * Math.PI) * (0.35 + 0.35 * Math.sin(t * 2 + i * 3));
+      c2.globalAlpha = FA * Math.sin(ph * Math.PI) * (0.35 + 0.35 * Math.sin(t * 2 + i * 3));
       c2.fillRect(Math.round(x * Rz) / Rz, Math.round(y * Rz) / Rz, k, k);
     }
-    c2.globalAlpha = 1;
+    c2.globalAlpha = FA;
     c2.drawImage(vignette(Math.round(v.w), Math.round(v.h)), ox, oy, v.w, v.h);
     c2.restore();
   };

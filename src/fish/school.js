@@ -42,7 +42,7 @@ export class School {
 
   speciesPool() {
     const w = this.world;
-    return SPECIES.filter((s) => s.biome === w.biome && !s.spawn?.never && (w.zones?.allow?.(s) ?? true)); // [phase6:oceans] depth zone
+    return SPECIES.filter((s) => (s.biome === w.biome || s.oceans?.includes(w.biome)) && !s.spawn?.never && (w.zones?.allow?.(s) ?? true)); // [phase6:oceans] depth zone; [deep26] s.oceans: cosmopolitan deep species
   }
 
   weightOf(sp) {

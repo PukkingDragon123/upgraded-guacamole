@@ -1483,7 +1483,7 @@ export class ZoneSpawner {
     const id = this.ocean.biome?.id;
     const key = id + '|' + zid;
     if (this.cache.has(key)) return this.cache.get(key);
-    const pool = SPECIES.filter((s) => s.biome === id && !s.spawn?.never);
+    const pool = SPECIES.filter((s) => (s.biome === id || s.oceans?.includes(id)) && !s.spawn?.never); // [deep26] s.oceans
     const order = ['sunlit', 'twilight', 'midnight', 'abyss'];
     let i = order.indexOf(zid), out = zid;
     while (i >= 0) {

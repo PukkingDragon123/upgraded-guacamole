@@ -96,6 +96,7 @@ export class Progression {
   goalPing() {
     const g = this.game, st = g.state;
     if (!st?.tutorialDone || g.fishing?.fighting || g.ui?.blocking) return;
+    if (st.hotbar && !st.hotbar.unlocked?.lab) return; // [hot26] The Lab's button is not built yet (src/game/hotbar.js)
     let gl = null;
     try { gl = labGoal(st); } catch { gl = null; }
     if (!gl || gl.status !== 'available' || !gl.check.paid || !gl.check.gateOk) return;

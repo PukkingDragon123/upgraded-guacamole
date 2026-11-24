@@ -6,7 +6,8 @@
 //   vanity_mirror   Wardrobe       an oval standing mirror on a gold frame
 //   net_rack        My Fish        a wooden rack with a hanging landing net and a bucket
 //   workbench       Workshop       a wooden bench with a vise, a pegboard of tools
-// Models face +z (the front) like every prop; the tank renders them at yaw 0.
+// Models face +z (the front) like every prop; the tank renders them at yaw 0. decor.price = the price of another copy
+// once the button is unlocked (the unlock price itself is HOTBAR_UNLOCKS[id].price).
 
 import { VoxelModel } from './voxel.js';
 
@@ -30,7 +31,7 @@ const def = (id, meta, build) => { DEFS[id] = { meta: { biome: 'aquarium', decor
 
 // ------------------------------------------------------------------ Research Bench (The Lab)
 def('research_bench', {
-  name: 'Research Bench', tags: ['unlock', 'glow', 'machine'], decor: { price: 5, size: 2 },
+  name: 'Research Bench', tags: ['unlock', 'glow', 'machine'], decor: { price: 90, size: 2 },
   desc: 'Professor Fizz\'s travel lab. Bubbling flasks, a microscope and a very serious clipboard.',
 }, () => {
   const m = new VoxelModel(60, 54, 30);
@@ -87,7 +88,7 @@ def('research_bench', {
 
 // ------------------------------------------------------------------ Bookshelf (FishDex)
 def('bookshelf', {
-  name: 'Bookshelf', tags: ['unlock', 'home'], decor: { price: 15, size: 1 },
+  name: 'Bookshelf', tags: ['unlock', 'home'], decor: { price: 80, size: 1 },
   desc: 'Every fish book ever written. Mostly picture books. Fish cannot read.',
 }, () => {
   const m = new VoxelModel(42, 70, 20);
@@ -132,7 +133,7 @@ def('bookshelf', {
 
 // ------------------------------------------------------------------ Tackle Box (Bait)
 def('tackle_box', {
-  name: 'Tackle Box', tags: ['unlock', 'toy'], decor: { price: 15, size: 1 },
+  name: 'Tackle Box', tags: ['unlock', 'toy'], decor: { price: 60, size: 1 },
   desc: 'Trays of shiny lures and squishy worms. Organised by vibe.',
 }, () => {
   const m = new VoxelModel(48, 40, 30);
@@ -169,7 +170,7 @@ def('tackle_box', {
 
 // ------------------------------------------------------------------ Mirror (Wardrobe)
 def('vanity_mirror', {
-  name: 'Mirror', tags: ['unlock', 'fancy'], decor: { price: 20, size: 1 },
+  name: 'Mirror', tags: ['unlock', 'fancy'], decor: { price: 90, size: 1 },
   desc: 'Mirror, mirror, in the tank. Who is the shiniest? (It is always you.)',
 }, () => {
   const m = new VoxelModel(36, 64, 16);
@@ -204,7 +205,7 @@ def('vanity_mirror', {
 
 // ------------------------------------------------------------------ Net Rack (My Fish)
 def('net_rack', {
-  name: 'Net Rack', tags: ['unlock', 'home'], decor: { price: 20, size: 1 },
+  name: 'Net Rack', tags: ['unlock', 'home'], decor: { price: 70, size: 1 },
   desc: 'A landing net and a bucket. For gently moving fish about. Very gently.',
 }, () => {
   const m = new VoxelModel(46, 58, 22);
@@ -243,7 +244,7 @@ def('net_rack', {
 
 // ------------------------------------------------------------------ Workbench (Workshop)
 def('workbench', {
-  name: 'Workbench', tags: ['unlock', 'build'], decor: { price: 60, size: 2 },
+  name: 'Workbench', tags: ['unlock', 'build'], decor: { price: 120, size: 2 },
   desc: 'Marina\'s spare bench: a vise, a mallet and a pegboard of very organised tools.',
 }, () => {
   const m = new VoxelModel(60, 56, 28);

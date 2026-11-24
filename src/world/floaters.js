@@ -181,7 +181,7 @@ function crateVariantModel(F, o) {
       if (x < 0 || x >= n || dz < 0 || dz >= n || dy < -1 || dy > 2) return 0;
       if (dy === -1) {
         if (dz === n - 2 && x > 0 && x < n - 1 && x % 2 === 0) return tooth; // fangs along the front
-        if ((x === 3 || x === 6) && (dz === 4 || dz === 5)) return dz === 5 && o.eye !== false ? pupil : eye; // eyes on the underside
+        if ((x === 2 || x === 3 || x === 6 || x === 7) && dz >= 3 && dz <= 5) return dz === 4 && (x === 3 || x === 6) ? pupil : eye; // big eyes on the underside
         return 0;
       }
       const c = crate(x, dy + lidY, dz);
@@ -478,10 +478,13 @@ export class Floaters {
           f.roll += f.rollV * dt;
         }
       } else {
-        f.y = f.y0 + Math.sin(this.t * 0.45 + f.ph) * 5 - (f.out ? (1 - f.fade) * 10 : 0);
-        f.roll = Math.sin(this.t * 0.7 + f.ph) * 8;
-        const fl = this.floorUnder(f.x, f.y0, f.z) - 24; // [phase6:oceans] the floor under the box (shelf or abyss)
-        if (f.y > fl) f.y0 -= f.y - fl;
+        if (f.running) { f.y = f.y0 - Math.abs(Math.sin(this.t * 16 + f.ph)) * 3; f.roll = Math.sin(this.t * 30) * 4; } // [crate26] scuttling off
+        else {
+          f.y = f.y0 + Math.sin(this.t * 0.45 + f.ph) * 5 - (f.out ? (1 - f.fade) * 10 : 0);
+          f.roll = Math.sin(this.t * 0.7 + f.ph) * 8;
+          const fl = this.floorUnder(f.x, f.y0, f.z) - 24; // [phase6:oceans] the floor under the box (shelf or abyss)
+          if (f.y > fl) f.y0 -= f.y - fl;
+        }
         if (s !== null && f.y < s + 30) f.y0 += s + 30 - f.y;
         if (f.x < -40 || f.x > W + 40) { f.out = true; f.fade = 0; }
       }
@@ -505,8 +508,8 @@ export class Floaters {
       const k = 1 - f.z * 0.5;
       const si = k > 0.86 ? 0 : k > 0.68 ? 1 : 2;
       const ri = f.kind === 'orb' ? 2 : ROLLS.reduce((bi, r, i) => (Math.abs(r - f.roll) < Math.abs(ROLLS[bi] - f.roll) ? i : bi), 0);
-      const vo = variantOf(f); // [crate26] legs / mimic / shield / peek
-      const spr = vo ? variantSprite(f.tier, vo, SCALES[si]) : boxSprite(f.kind, f.tier, ROLLS[ri], SCALES[si]);
+      const vo = variantOf(f); // [crate26] legs / mimic / shield / peek (f.size: a revealed mimic swells up)
+      const spr = vo ? variantSprite(f.tier, vo, Math.max(1, Math.round(SCALES[si] * (f.size || 1) * 2) / 2)) : boxSprite(f.kind, f.tier, ROLLS[ri], SCALES[si]);
       const img = fogged(spr, fogC, Math.min(0.8, f.z * fogK));
       const x = Math.round(f.x - spr.ox), y = Math.round(f.y - spr.oy - (f.hop || 0));
       const a = a0 * clamp01(f.fade);
@@ -571,6 +574,9 @@ export class Floaters {
       if (f.surprise === 'mimic' && this.rng.chance(0.5)) { try { this.game.particles?.aeroBubbles?.(f.x + 2, f.y - 6, 1, { w: 2 }); } catch { /* cosmetic */ } }
     }
   }
+
+  // [crate26] dev preview of a surprise-crate sprite: o as crateVariantModel ({leg, grow, open, eye, shield})
+  preview(tier, o, scale = 2) { return variantSprite(tier, o, scale); }
 
   // Nearest catchable box whose body is within r of the world point.
   hitHook(wx, wy, r = 8) {

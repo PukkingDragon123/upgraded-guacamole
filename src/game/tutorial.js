@@ -13,6 +13,8 @@
 //      fight    spin to keep the fish in the middle of the meter, SHOCK on the beat (Space), land it
 //      card     the catch card: keep it              tank  it swims into the goldfish jar (a response choice)
 //      coin     collect the jar's Aero               lab   open The Lab       research  start the first research
+//               [hot26] on a new game The Lab is locked: the 'lab' step has you click its padlocked slot and build a
+//               Research Bench in the tank (src/game/hotbar.js); the button pops in, then you open it
 //      done     "keep me around for tips?" (a response choice: the hint helper on or off), then
 //               game.emit('tutorialDone') (quest lines start; also emitted by skip())
 //    (step ids 'tank' / 'coin' are what aquarium.js checks to keep jar clicks as drop grabs)
@@ -943,6 +945,7 @@ export class Tutorial {
   }
   hintText() { return this.hintTip().text; }
   goalTip() {
+    if (hotbarLock(this.game.state, 'lab')) return null; // [hot26] the Lab is not built yet
     let gl = null;
     try { gl = LAB.labGoal?.(this.game.state); } catch (e) { gl = null; }
     if (!gl || gl.status !== 'available') return null;

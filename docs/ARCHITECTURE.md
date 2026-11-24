@@ -222,8 +222,9 @@ seabed, world space), `drawUi(ctx)`, `hit(wx, wy)`, `active` (build mode), `togg
   real brand logos (the sneakers are generic white high-tops).
 - World, buildings, boats and characters stay voxel; characters and NPCs also get cute cartoon eyes, never realistic ones.
 - **Less text, more visuals.** Prefer icons, motion, particles and colour over labels and sentences.
-- **Currency** is **Aero** (`CURRENCY` in `src/ui/aero.js`). `state.coins` still holds the amount; every
-  label/icon says Aero and uses `drawAeroCoin`/`fmtAero`. "Oxidized Coins" is gone.
+- **Currency** is **Aero Bucks** ([cur26]; was "Aero"; `CURRENCY` in `src/ui/aero.js`; short form "AB", or the droplet
+  icon + number). `state.coins` still holds the amount and internal ids / keys (`aero`, `coins`, `fmtAero`) are unchanged
+  for save compatibility; every user-facing label says Aero Bucks. "Oxidized Coins" is gone.
 - **Progression** is Fisch-like: you unlock better rods (stats: lure speed, luck, control, resilience,
   strength, shock), boats, tanks and oceans. **Everything is unlocked in The Lab** (`src/game/lab.js`): there is
   no shop, no separate research panel, no boatyard. Crafting recipes (buildings, bait, decor) are Lab unlocks.
@@ -263,7 +264,7 @@ rejects stale reads). Never revert someone else's change.
 - `src/store/bait.js`: `BAITS`, `ensureBait`, `currentBait(state)`, `consumeBait(state)`, `addBait`.
   `game.currentBait()` delegates here. Bait objects keep `type` compatible with species `bait` preferences.
 - `src/world/floaters.js`: `Floaters` (`list`, `update`, `draw(ctx, layer)`, `hitHook`, `take`). `game.floaters`.
-  Fishing reels a box in and calls `game.onBoxCaught(f)`; loot from `src/build/items.js` (`rollCrate(tier, biome, luck)` -> `{aero, items:[{id, qty}]}`, `grantLoot`).
+  Fishing fights a box on the meter ([crate26] `cratefight.js`), lands it and calls `game.onBoxCaught(f)`; loot from `src/build/items.js` (`rollCrate(tier, biome, luck)` -> `{aero, items:[{id, qty}]}`, `grantLoot`).
 - `src/gfx/character.js`: `drawCharacter(ctx, x, y, o)` (same call shape), player look in `state.character` (now a
   **bubble person**), cosmetics registry + `grantCosmetic(state, id)`. `src/gfx/npcs.js`: `NPCS`, `drawNPC(ctx, id, o)`.
 - `src/world/boatmodels.js`: boat tiers/parts; `state.boat = {tier, parts:{hull, sail, flag, engine, decal}}`.
@@ -662,7 +663,7 @@ and the boss charge-dodge / minion clicks.
   (crits x1.6). Intro card, phase cards and the victory overlay are unchanged.
 - HUD (`hud.js` + `meter.js` + `gear.js`): name pill, the meter (voxel-block track coral | aqua | green zone | aqua |
   orange, the fish's own voxel icon as the marker, SPIN! / EASY! coaching words), the catch bar under it, the SHOCK
-  button left, the gear right (just the gear + SPIN ME! hint in meter fights; box reels keep the old gauge round it).
+  button left, the gear right (just the gear + SPIN ME! hint in meter fights; [crate26] crates now fight on the meter too, so the old box gauge is unused).
   [gear25] The gear is VOXEL ART (`gear.js` gearModel: 18 teeth, 6 spokes, enamel rim channel, brass rivets, hex-nut
   hub, aqua gem) rendered by voxicon `renderLayers` (ink outline, ramps, AO, glints): it repeats every 60 degrees, so
   24 frames (the model re-voxelised per angle) are cached at 1x and at the UI layer's 2x, warmed (throttled) while
@@ -673,3 +674,132 @@ and the boss charge-dodge / minion clicks.
 - Lesson (`tutorial.js`): cast -> wait -> hook (click) -> spin (to 40 %, Bubbles coaches spin faster / slower) -> shock
   (a hit; misses / backfires are handed back, the third try gets a very wide notch) -> land -> card. Old saved steps
   (reel / ease / surge / zap) resume at the cast. Smoke test drives it with real mouse circling and Space.
+
+## [cur26] Currencies (Aero Bucks + Byte Gems), wallet plaque, right-edge quest tracker
+
+- **Aero Bucks**: the old Aero, renamed in every user-facing string (HUD, shop, Lab costs, quests, rewards, toasts,
+  tooltips, cutscenes). It looks like a water droplet. Internal ids stay `aero` / `coins`.
+- **Byte Gems** (`src/game/gems.js`, the second currency, a violet pixel crystal): `GEM_NAME`, `gems(state)`,
+  `addGems(state, n, reason)`, `canSpendGems(state, n)`, `spendGems(state, n, reason) -> bool`, `skipCost(seconds)`,
+  `ensureGems(state)` (save migration: saves from before gems get `GEM_WELCOME` = 30 once, flag `state.gemGift`),
+  `bindGemsGame(game)` (Game binds itself; changes emit 'gemsChanged' {gems, delta, reason}). Balance `state.gems`;
+  lifetime `state.gemsEarned` / `state.gemsSpent`. Earned ONLY from quests: `reward.gems` (defaults in quests.js
+  `GEM_REWARDS`: main 2, boss quest 10, side 3, order 1, board bonus 5, milestone 3 x tier (max 15), chapter 10 + 5n;
+  data may set `reward.gems` by hand). `grantReward` pays them; `rewardList` shows `{key: 'gem', n}`.
+- Sinks: timer skips (`src/game/skips.js`: `labSkipCost/labSkip`, `wsSkipCost/wsSkip`, `eggSkipCost/eggSkip`; event
+  'timerSkipped' {kind, id, gems}) shown as violet pixel "SKIP" buttons (Lab card "SKIP NOW", Workshop bench, tank egg
+  chips under the top plate); cosmetics (the Wardrobe prices some items in gems with this API). No real money.
+- Art (`src/ui/gemui.js`): hand-drawn 2D pixel sprites (droplet 11x14, gem 13x11 art px) used unless the icon agent's
+  `getUiIcon('aerobuck')` / `getUiIcon('gem')` pixel icons exist (3D renders are ignored); `drawDrop`, `drawGem`
+  (diagonal glint sweep), `drawDropSplash`, `drawGemShards`, `pixelPlate`, `drawGemButton`, `gemSkipButton(ui, ...)`,
+  `drawEggChip`, inline text icons `{abdrop}` / `{bytegem}`.
+- Wallet (`UI.drawWallet` in ui.js, replaces the glossy Aero pill): a pixel-art plaque top right (stepped corners, ink
+  outline, broken highlight line, ripple marks, rivets; blue droplet half + violet gem half, inset wells, pixel-font
+  numbers). Coins tick up as before (`coinShown`, splash on `coinBump`); gems tick up one by one (`gemShown`,
+  glint on `gemBump`). `ui.coinRect` = the whole plaque; `ui.coinTarget()` / `ui.gemTarget()` = the icons (quest
+  reward flights fly gems to the gem, questcine target 'gem'). Tooltips per half.
+- HUD top left is empty: the location / clock chip is no longer drawn (`hud.drawChip` kept, unused). The quest tracker
+  slot (`hud.questSlot()` -> `{x, y, w, h, a, side: 'right', edge}`) sits on the right edge at ~30 % height (left of
+  the tank's tool rail in the aquarium). QuestHud hides the tracker off that edge (`peek` 0..1) and slides it in on
+  objective progress (a polled fingerprint), a pin change, a card flying in (`expectCard`), a landing, a completion
+  flash, 'questReady', or while a chapter story waits; it stays while hovered and slides out ~4 s later.
+  `trackerRowRect(id)` answers even while hidden, so quest cinematics fly cards to where the row will be.
+
+## [hot26] Hotbar buttons unlocked by building + an empty starter tank
+User direction: "make your tank start off empty" and "make you start with 3 buttons unlocked, need to build to unlock more".
+- Data + rules: `src/game/hotbar.js`. `HOTBAR_START` = Bait Shop, Quests, Aquarium; `HOTBAR_ALWAYS` = Settings.
+  `HOTBAR_UNLOCKS[btnId] = {prop, build, price, label, icon}`: The Lab = `research_bench` (5 Aero), Satchel =
+  `treasure_chest` (10), FishDex = `bookshelf` (15), Bait = `tackle_box` (15), Wardrobe = `vanity_mirror` (20), My Fish =
+  `net_rack` (20), Map = `map_table` (40), Multiplayer = `phone_booth` (50), Workshop = `workbench` (60).
+  `state.hotbar = {v, unlocked: {id: ts}, fresh: {id: ts}, migrated?}`; `ensureHotbar(state)` (the HUD calls it at boot),
+  `hotbarUnlocked`, `hotbarLock(state, id)` -> null | `{id, prop, build, price, label, icon, tip}`, `unlockHotbar(game, id)`
+  (emits `'hotbarUnlocked'` {id, label}), `unlockByProp(game, propId)`, `unlockPrice(state, propId)`, `unlockAll(game)`.
+  Unlocks are permanent (storing / moving the prop never relocks). Old saves (no `state.hotbar`): every button the save
+  shows it already used is granted (Lab research or a finished tutorial -> Lab, catches -> FishDex + Bait, items -> Satchel,
+  a tank fish -> My Fish, cosmetics / dress -> Wardrobe, chapter 2+ / other oceans -> Map, Workshop feature -> Workshop,
+  online -> Multiplayer, an unlock prop already in the tank -> its button, chapter 3+ -> everything).
+- Props: `src/gfx/unlockprops.js` (`UNLOCK_PROPS`, registered into `PROPS` by props.js): Research Bench, Bookshelf,
+  Tackle Box, Mirror, Net Rack, Workbench (tag 'unlock', `decorOnly`); Treasure Chest, Treasure Map Table and Phone Booth
+  are existing decor. Any decor placement goes through `Aquarium.insertDecorRec`, which calls `unlockByProp`.
+- Build mode (`build2d.js`): catalog tab **Unlocks** (`catOf` -> 'unlock'); while a prop's button is locked its offer is
+  `{kind: 'buy', price: unlockPrice, unlock: btnId}` (always buyable, sorted first, the button's 3D icon bobs in the
+  tile corner, the tooltip says what it unlocks); placing it clears the picked entry. `enter({place: propId})` opens the
+  Unlocks tab on it.
+- HUD (`hud.js`, the hotbar part only): `hud.locked(it)`; a locked slot = slate tile, greyed icon (canvas filter), the Lab's
+  gold `padlockTex`, no badge; the hover pill reads "Build a Research Bench to unlock The Lab" (no keycap); a click calls
+  `aquarium.openBuild({place: prop})`. The gear pod's rod slot (Lab) and bait slot (Bait panel -> Bait Shop) respect the
+  locks. `celebrateStep` waits until the bar is showing (not in build mode / cinematics / a modal), then pops the button
+  in (slow outBack appear, pop squash, confetti, stars, bubbles, `ui_unlock`) and `drawCelebration` (called from
+  `drawTooltip`, above panels) draws 3D voxel words "NEW BUTTON:" + "THE LAB!" (`drawPop3D`) and bouncing pixel chevrons
+  over the button for ~3.6 s (`hud.celebrating`). No rings, no light rays.
+- Keys: `game.hotkeyLocked(cmd)` (game.js `handleKeys`, `I`, the aquarium's `F`) ignores a locked button's shortcut and
+  toasts what to build (at most every 1.5 s).
+- Tutorial (`tutorial.js`): SHOWN no longer reveals locked buttons (the lesson shows the Bait Shop). The 'lab' step, while
+  The Lab is locked: "The Lab is locked! Click it, then build a Research Bench" (pointing at the padlocked slot; the bench
+  price is topped up), "Click in your tank to build the bench!" in build mode (Bubbles rests at the edge), and once it
+  unlocks the build mode closes after ~0.9 s, the button pops in and Bubbles says "A new button! Now open The Lab!";
+  opening it moves on to 'research' as before. The hint helper suggests the cheapest locked build every third tip and skips
+  tips about locked buttons.
+- Quests: objective `{t: 'hotbar', id}` ("Build a Research Bench (unlocks The Lab)", icon 'decor', measured from
+  `hotbarUnlocked`, re-checked on 'hotbarUnlocked'). Main: `c1_bench` (Lab), `c1_satchel` (Satchel, + a crate for
+  `c1_chest`), `c1_shelf` (FishDex), `c2_chart` (Map, before `c2_sail`), `c2_bench` (Workshop). Side: `s1_tackle` (Bait),
+  `s1_net` (My Fish), `s1_dress` now asks for the Mirror first, `s2_phone` (Multiplayer). All told by Bubbles (Marina for
+  her Workbench).
+- `tools/progcheck.mjs`: keys `b:<btn>`; Lab nodes and research / tank / boat goals need `b:lab`, sailing goals `b:map`,
+  chests `b:inventory`, dress `b:wardrobe`, online `b:multiplayer`; every unlock prop must be tank decor; a main quest
+  needing a locked button must come no later than (or in the same active window as) a main quest that asks to build it.
+  It prints the unlock table.
+- Empty starter tank: `defaultState().tank.bare = true`; `state.js` `oldTank()` sets `bare = false` on saves from before, so
+  they keep their rocks and plants. `TankScene.buildScenery` adds no rocks, driftwood, moss balls, pebbles, static plants
+  or physics plants while `bare` (it is in the scene key): clean sand planes, the back glass relief, water, light, the tank
+  gear (sponge filter + air stone bubbles). Quests that check decor count placements ('tankBuilt'), so they stay doable.
+- Smoke (`tests/smoke.mjs`): at the tutorial's Lab step it checks that only Quests / Aquarium / Bait Shop are unlocked,
+  clicks the padlocked Lab slot, checks build mode opened on the Research Bench, clicks into the tank to place it, checks
+  the unlock and the NEW BUTTON moment, then opens The Lab from its button as before.
+
+## Crate fights, legs crates, mimics and line length [crate26]
+User direction: "crates also have the same fishing mechanic as fish, and some can grow legs and swim away, or some are
+mimics" and "make your strings have max length too, need to upgrade".
+- Crate fight (`src/fishing/cratefight.js`): clicking the crate under the idle hook (`drawBoxHover`: pixel corner brackets,
+  no ring) runs `Fishing.startBox(f)`. `CrateFish` is a fish-shaped proxy whose x / y / z write straight through to the
+  floater (`f.hooked`, `f.rollCtl`: fishing owns the position and roll). `CrateBattle extends Battle` keeps the same
+  meter, spin, beat and SHOCK button (and the hooks QuestBook wraps), and tunes it per tier (`PROFILE`): wooden crate
+  (light, wobbly, 9 s bar), iron (heavy, steady: pull 0.82, amp 0.07, spring 0.6), golden (heavy, sly), orb (floaty,
+  darting); bottles and capsules wobble more. Landing -> `CratePop` (out of the water to the rod) -> `game.onBoxCaught(f)`
+  (chests to the Satchel / the chest-cracking minigame, as before). Loss -> `CrateEscape` (a Fishing.cine; the floater is
+  released and fades). The old box reel and its gear gauge are gone (`boxreel.js` keeps the art, the hover cue and the
+  loot pop-up). Meter: `B.markerIcon(w, h)` (the crate rides the meter as its own voxel icon, `floaters.crateIcon`),
+  `B.shielded` locks the zone like a boss shield, `B.zoomAdd` / `B.camOffY` steer the fight camera, `B.drawHud` /
+  `B.drawWorld` add the crate's titles.
+- Surprises (`floaters.js`): `rollSurprise(rng, oceanK, deepExtra)` at spawn, kind `crate` only: legs `0.13 + 0.07 d +
+  0.03 deep`, mimic `0.06 + 0.06 d + 0.04 deep` (about 13 % / 6 % in the (OS)cean, about 20 % / 12 % in the last ocean, more
+  in the deep zones). Tells: a legs crate hops with leg tips poking out every 2.5-5.5 s, and a mimic lifts its lid a
+  crack with an eye glinting every 3.5-7 s. Art: `crateVariantModel` builds real voxel models: three crab legs a side
+  (knee up, 4 walk frames, 3 grow steps), the lid hinged on the back edge and rotated open (12-90 degrees) with fangs, gums,
+  big eyes under it, rim teeth, a mouth cavity and a tongue that lolls over the front, and a steel shield finish.
+  The sprites are cached per frame and scale and anchored on the body centre with `project()`. `f.size` swells a revealed
+  mimic to 1.5x. Floater fields: legs, walk, mimic, peek, shield, flash, hop, size, running. Dev: `spawn({kind, tier,
+  surprise, x, y, z})`, `forceSurprise`, `preview(tier, o, scale)`.
+- Legs: 1.2-3.5 s into the fight a 1 s beat (hop, legs grow, 3D LEGS?!), then pull speed x1.7, amp x1.25, jitter +0.22,
+  lunges >= 0.32/s with a 0.7x warning, drain x2, half the self-centring. If you lose it, it drops to the seabed and
+  scuttles off-screen (dust puffs, a 3D taunt, crab_scuttle). Mimic: it shows itself at the hook-set (45 %) or 25-40 %
+  of the way in. The reveal is a 2.3 s cinematic: the lid creaks, flies open and snaps twice, it swells, the camera
+  pushes in with slow-mo and a red flash, and bouncing 3D voxel letters spell MIMIC! with IT BITES! under them. Then a
+  MINI-BOSS: zone x0.85, pull +0.1, amp +0.08, speed x1.3, bar x1.45, and it bites 6 % back. CHOMP every 3.2-5.5 s (a
+  0.75 s telegraph with the lid agape and a 3D CHOMP!) snaps the lid and knocks the marker 0.5 toward the edge it leans
+  to (-2.5 %). At 50 % a SHIELD: the lid clamps shut in steel, the zone locks, a charge is handed over and the beat comes
+  fast. A GOOD / CRITICAL shock CRACKS it. A tamed mimic upgrades the loot one tier (`upgradeTier`: crate -> iron chest
+  -> golden -> orb) and gets the MIMIC TAMED! title.
+- Line length (`src/fishing/line.js`, pure data): reach in ZONES, the same in every ocean (1 = the ocean's own scene,
+  the Sunlit Zone, 2 = through Twilight, 3 = through Midnight, 4 = the abyss floor; `reachY(layout, reach)` -> world y,
+  and the first zone is always fully in reach, so the lesson and the smoke test never meet the limit). Rod base
+  `1.1 + 0.07 x tier` (+0.4 Leviathan Line, +0.2 Trident, +0.15 Glow): Twig 1.1 (Sunlit), tier 5 1.45, Aerolite 1.73.
+  Lab (Tackle row, `lineReach`, chip "+1 zone"): Longer Line (tier 1, +1: Twilight), Deep Spool (tier 2, +1.2: Midnight
+  and the top 30 % of the Abyss, enough for every boss), Abyss Spool (tier 4, +0.7: the floor). Workshop line spools: Braided +0.15,
+  Glow +0.3, Titan +0.5. `rodStatsOf().line` (clamped 1..4) and `RODS[i].stats.line`; `ROD_STAT_KEYS` has 'line' (the Lab
+  rod card / Workshop show `lineLabel()`: SUNLIT / TWILIGHT / MIDNIGHT / ABYSS / ABYSS FLOOR). Fishing clamps the idle hook
+  at `lineMaxY()`. Past it, the line draws taut, a red crimp bead sits above the hook, a dotted ghost line runs to where you
+  aim, a 3D voxel MAX LINE sign (and LAB: LONGER LINE) shows under the hook (pinned to the screen edge), and 'maxLine' is
+  emitted. `tools/progcheck.mjs`: boss objectives need line_len1 + line_len2. Saves that had already left the (OS)cean get
+  those two nodes for free (`state.lab.lineV`).
+

@@ -22,7 +22,7 @@
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { HI } from './hires.js';
 import { hexToRgb, mix } from '../core/color.js';
-import { PAL, SPRITES, ALIAS, FAMILY } from './pixart.js';
+import { PAL, SPRITES, ALIAS, FAMILY, baitSpriteName } from './pixart.js';
 
 export { PAL };
 
@@ -85,6 +85,10 @@ function compile(name) {
 }
 
 function build(def) {
+  if (def.canvas) { // a ready pixel canvas (1 px per art pixel, outline included), e.g. the itempix items
+    const c = def.canvas, W = c.width, H = c.height;
+    return { canvas: c, w: W, h: H, spin: def.spin || 'wobble', data: ctxOf(c).getImageData(0, 0, W, H).data };
+  }
   const R = rowsOf(def);
   if (!R) return null;
   const pal = R.pal ? { ...PAL, ...R.pal } : PAL;
@@ -233,7 +237,7 @@ export function pixFrame(name, px, turn = 0, o = {}) {
   const c = logicalOf(sp, name, k, shadow, state, S, fr);
   Object.defineProperty(c, 'hi', { value: hi, configurable: true });
   c.__pix = name;
-  e = { canvas: c, ox: S / 2, oy: S / 2, k, w: Wd / HI, h: Hd / HI };
+  e = { canvas: c, ox: S / 2, oy: S / 2, k, w: Wd / HI, h: Hd / HI, top: (dy - Math.round((sh * k) / 2)) / HI, by: (dy - Math.round((sh * k) / 2) + Hd) / HI };
   if (frameCache.size > 2500) frameCache.delete(frameCache.keys().next().value);
   frameCache.set(key, e);
   return e;
@@ -241,14 +245,14 @@ export function pixFrame(name, px, turn = 0, o = {}) {
 
 const stillCache = new Map();
 export function pixStill(name, w, h = w, o = {}) {
-  const D = Math.max(4, Math.round(Math.min(w, h) * HI));
+  const D = Math.max(4, Math.round(Math.max(w, h) * HI));
   name = pickName(name, D);
   const sp = name && compile(name);
   if (!sp) return null;
   const key = name + '|' + w + 'x' + h + '|' + (o.shadow ? 1 : 0);
   let c = stillCache.get(key);
   if (c) return c;
-  const k = pickScale(Math.max(sp.w, sp.h), D);
+  const k = Math.max(D >= 10 ? 2 : 1, pickScale(Math.max(sp.w, sp.h), D)); // never below 1 logical px per art pixel
   const shadow = !!o.shadow && k >= 3;
   const art = scaled(name, sp, k, shadow, 'normal');
   const cw = Math.max(w, Math.ceil(art.width / HI)), ch = Math.max(h, Math.ceil(art.height / HI));
@@ -277,6 +281,7 @@ export function pixKeyName(key) {
     if (!m) break;
     k = m[2];
   }
+  if (k.startsWith('bait:')) { const b = baitSpriteName(k.slice(5).split('|')[0]); return b && hasPix(b) ? b : null; }
   if (k.startsWith('pkg_') && hasPix('chest_' + k.slice(4))) return 'chest_' + k.slice(4);
   if (hasPix('item_' + k)) return 'item_' + k;
   return hasPix(k) ? k : null;

@@ -716,8 +716,9 @@ export class Fishing {
     if (B.mode === 'hookset') zoom += 0.3;
     if (B.boss?.stage === 'intro') zoom += 0.45 * clamp01((B.boss.stageT - 0.8) / 1.5);
     if (B.beat) zoom += 0.12;
+    zoom += B.zoomAdd || 0; // [crate26] a crate's surprise beat pushes in
     if (B.boss?.stage === 'intro') this.focusCam(f.x, f.y - (this.H * 0.16) / zoom, zoom, 1.6);
-    else this.focusCam(f.x, f.y + (this.H * 0.08) / zoom, zoom, B.mode === 'hookset' ? 4.5 : 3); // the fish sits a bit high: room for the meter
+    else this.focusCam(f.x, f.y + (this.H * (B.camOffY ?? 0.08)) / zoom, zoom, B.mode === 'hookset' ? 4.5 : 3); // the fish sits a bit high: room for the meter
     if (!this.poseHold) {
       const pose = B.stunned || this.gear.p > 0.08 ? 'reel' : 'pull';
       if (pose !== this.pose) this.setPose(pose);

@@ -115,6 +115,7 @@ export class Game {
     this.saveT = 10;
     this.offline();
     if (this.pendingWelcome) setTimeout(() => this.ui.open('welcome'), 1500);
+    if (this.gemGift) setTimeout(() => { this.ui.toast(`Welcome gift: ${this.gemGift} Byte Gems!`, 'star', 5); this.ui.gemBump = 1; }, 5000); // [cur26]
     if (!this.state.tutorialDone && !params.has('skipintro')) this.tutorial.start();
     else {
       this.ocean.reveal = 1;

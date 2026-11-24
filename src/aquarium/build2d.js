@@ -375,7 +375,7 @@ export class Build2D {
         if (!rectContains(t, inp.x, inp.y)) continue;
         this.hoverTile = t.e.key;
         const o = t.e.offer;
-        tip(`${t.e.name}\n${t.e.kind === 'blueprint' ? `Blueprint x${o.n}` : o.kind === 'owned' ? `You own ${o.n}` : o.kind === 'buy' ? `{coin} ${fmtAero(o.price)} Aero` : o.why}${o.unlock ? `\nBuild it to unlock ${HOTBAR_UNLOCKS[o.unlock].label}!` : ''}`); // [hot26]
+        tip(`${t.e.name}\n${t.e.kind === 'blueprint' ? `Blueprint x${o.n}` : o.kind === 'owned' ? `You own ${o.n}` : o.kind === 'buy' ? `{coin} ${fmtAero(o.price)} Aero Bucks` : o.why}${o.unlock ? `\nBuild it to unlock ${HOTBAR_UNLOCKS[o.unlock].label}!` : ''}`); // [hot26]
         if (inp.pressed) { inp.consume(); this.pick(t.e); }
         return;
       }

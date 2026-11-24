@@ -1,4 +1,6 @@
-// Lab icons: glossy low-poly 3D rods and globe (phase 6, src/gfx/iconmeshes.js; voxel fallback), voxel boats, aquarium
+// [pixicons26] Lab icons are HAND-DRAWN 2D PIXEL ART first (src/gfx/pixicons.js): rods (recoloured per look), boats,
+// tanks, biome globes, bait, materials, critters, the grouper and every stat glyph; buildings and tank foods keep their
+// own art. (was: Lab icons: glossy low-poly 3D rods and globe (phase 6, src/gfx/iconmeshes.js; voxel fallback), voxel boats, aquarium
 // tanks and ocean globes, voxel buildings / bait (from their own
 // modules), and a set of hand-made pixel glyphs for stat nodes. Every icon is cached per (key, size).
 //   labIcon(key, px) -> canvas (fits a px x px box) | null
@@ -20,6 +22,22 @@ import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
 import { foodIcon } from '../aquarium/food.js'; // [food24] tank foods
 import { rodIcon, getBigIcon, voxMisses, voxelModelFrame } from '../gfx/bigicons.js'; // [phase6:ui] glossy low-poly 3D rods / globe
 import { lpAvailable } from '../gfx/lowpoly.js'; // [phase10:ui]
+import { hasPix, pixStill, pixKeyName } from '../gfx/pixicons.js'; // [pixicons26]
+import { baitSpriteName } from '../gfx/pixart.js';
+
+const TANK_PIX = { jar: 'tank_jar', bowl: 'aquarium', smalltank: 'tank_smalltank', bigtank: 'fishmgr', reeftank: 'tank_reeftank', wallaquarium: 'tank_wallaquarium' };
+// the pixel sprite for a Lab icon key (null = no sprite: rods go through rodIcon, buildings / foods keep their art)
+function labPixName(key) {
+  const [kind, id] = key.includes(':') ? key.split(':') : [null, key];
+  if (kind === 'boat') return hasPix('boat_' + id) ? 'boat_' + id : 'boat_skiff';
+  if (kind === 'tank') return TANK_PIX[id] || 'fishmgr';
+  if (kind === 'biome') return 'globe:' + id;
+  if (kind === 'bait') return baitSpriteName(id) || 'bait';
+  if (kind === 'mat') return pixKeyName('item:' + id);
+  if (kind === 'fish' || key === 'fish') return 'grouper';
+  if (!kind && hasPix(key)) return key;
+  return null;
+}
 
 // ---------------------------------------------------------------- pixel glyphs
 const PAL = {
@@ -337,6 +355,8 @@ function twin(c, big) {
 function buildIcon(key, px) {
   let c = null;
   try {
+    const pn = !key.startsWith('rod:') && labPixName(key);
+    if (pn && (c = pixStill(pn, px, px, { shadow: true }))) return c; // [pixicons26]
     const [kind, id] = key.includes(':') ? key.split(':') : [null, key];
     if (kind === 'rod' && ROD_BY_ID[id]) c = rodIcon(ROD_BY_ID[id], px) || fitVoxel(() => rodModel(ROD_BY_ID[id]), px, key);
     else if (kind === 'boat') c = fitVoxel(() => boatModel(id), px, key);

@@ -2,21 +2,23 @@
 // deep-sea animals (anatomy in src/fish/anatomy.js / realvox.js SOLIDS) with the game's pun names. Same schema as
 // species.js; they ship at final size (no GROW pass). Every one declares its depth `zone` (depthzones.speciesZones)
 // and a `valueMul` depth bonus (traits.valueMultiplier, on top of the ocean's OCEAN_VALUE).
+// `oceans` lists other oceans whose deep water a cosmopolitan species also roams (spawning only; its FishDex page
+// stays with its home `biome`).
 // New quirks: 'lunge' (snaps at the hook from a distance, jaws open), 'lure' fish flash their lights now and then.
-// Deep fish can be kept: in the tank their glowing parts show best with the light turned down (see `tank`).
+// Deep fish can be kept in the tank like any other catch; `glow: true` (set below for every glowing one) makes the
+// tank draw their lures, photophores and eyeshine at full strength.
 
 const S = [];
 const add = (o) => S.push(o);
 const fight = (phases, power, stamina, tricks, o = {}) => ({ phases, power, stamina, tricks, biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.15, ...o });
 const spawn = (o = {}) => ({ weight: 1, weather: null, time: null, requires: null, hidden: null, ...o });
 const DEEP = { twilight: 1.15, midnight: 1.3, abyss: 1.5 };
-const TANK = 'Deep-sea fish: keep the tank light low and its glow comes alive.';
 
 // ===========================================================================
 // THE DEEP OCEAN (abyss)
 
 add({
-  id: 'cockeye', name: 'Dual Monitor Squid', biome: 'abyss', rarity: 'common', zone: ['twilight', 'midnight'], valueMul: DEEP.twilight,
+  id: 'cockeye', name: 'Dual Monitor Squid', biome: 'abyss', oceans: ['oscean', 'shallows', 'fjord'], rarity: 'common', zone: ['twilight', 'midnight'], valueMul: DEEP.twilight,
   size: [8, 20], weight: [0.2, 0.8],
   look: { kind: 'squid', glow: true, body: { len: 50, h: 26 }, col: { body: '#de3a50', back: '#c8203a', belly: '#f07888', fin: '#b81830' } },
   scale: 1,
@@ -29,13 +31,12 @@ add({
   spawn: spawn({ weight: 1.2 }),
   sound: 'squeak',
   desc: 'A cock-eyed (strawberry) squid. One huge yellow eye watches for silhouettes above, one small blue eye watches for glows below. Always has two tabs open.',
-  behavior: 'Drifts tilted, studded with glowing photophores. Inks when hooked.',
-  tank: TANK,
+  behavior: 'Drifts tilted, studded with glowing photophores. Inks when hooked. Found in the deep of several oceans.',
   shinyHue: 300,
 });
 
 add({
-  id: 'viperfish', name: 'Needle Drop Viperfish', biome: 'abyss', rarity: 'uncommon', zone: ['twilight', 'midnight'], valueMul: DEEP.midnight,
+  id: 'viperfish', name: 'Needle Drop Viperfish', biome: 'abyss', oceans: ['oscean', 'shallows', 'metropolis'], rarity: 'uncommon', zone: ['twilight', 'midnight'], valueMul: DEEP.midnight,
   size: [20, 35], weight: [0.1, 0.4],
   look: { glow: true, body: { len: 64, h: 10, shape: 'long' }, col: { body: '#2a3a66', back: '#141c3a', belly: '#3a4a7a', fin: '#1a2448' } },
   scale: 1,
@@ -48,8 +49,7 @@ add({
   spawn: spawn(),
   sound: 'click',
   desc: 'Sloane\'s viperfish. Its needle fangs are so long they do not fit in its mouth, so it just leaves them out. Drops the needle, then drops on you.',
-  behavior: 'Hangs still under its glowing dorsal lure, then lunges.',
-  tank: TANK,
+  behavior: 'Hangs still under its glowing dorsal lure, then lunges. Roams the deep of several oceans.',
   shinyHue: 190,
 });
 
@@ -68,12 +68,11 @@ add({
   sound: 'click',
   desc: 'Stoplight loosejaw. Its jaw has no floor and hangs wide open, and it shines a red searchlight that nothing else down here can see. Huge red flag. Swims toward it anyway.',
   behavior: 'Sweeps the dark with its red light and snaps its open jaw shut.',
-  tank: TANK,
   shinyHue: 0,
 });
 
 add({
-  id: 'seadevil', name: 'Sleep Paralysis Seadevil', biome: 'abyss', rarity: 'rare', zone: ['midnight', 'abyss'], valueMul: DEEP.abyss,
+  id: 'seadevil', name: 'Sleep Paralysis Seadevil', biome: 'abyss', oceans: ['oscean', 'fjord', 'junkyard'], rarity: 'rare', zone: ['midnight', 'abyss'], valueMul: DEEP.abyss,
   size: [5, 18], weight: [0.05, 0.6],
   look: { glow: true, body: { len: 46, h: 34, shape: 'blunt' }, col: { body: '#18141e', back: '#0e0c14', belly: '#221c28', fin: '#16121c' } },
   scale: 1,
@@ -86,8 +85,7 @@ add({
   spawn: spawn(),
   sound: 'grunt',
   desc: 'A black seadevil anglerfish. Shows up in the dark at 3 a.m., just a glowing dot and a grin full of glass needles, and you cannot move. It can swallow fish twice its size.',
-  behavior: 'Hangs motionless, twitching its lure, and gulps whatever comes close.',
-  tank: TANK,
+  behavior: 'Hangs motionless, twitching its lure, and gulps whatever comes close. Lurks under several oceans.',
   shinyHue: 260,
 });
 
@@ -106,7 +104,6 @@ add({
   sound: 'roar',
   desc: 'A frilled shark: 80 million years of lore, six frilly gill slits and 300 trident teeth. Bends like a snake and strikes like one. The lore was always accurate.',
   behavior: 'Coils, then lunges like a snake. Prefers the night.',
-  tank: TANK,
   shinyHue: 30,
 });
 
@@ -125,7 +122,6 @@ add({
   sound: 'squeak',
   desc: 'The Mariana snailfish, the deepest fish ever filmed (8,336 m). Soft, see-through and unbothered by a pressure that would flatten a car. Left on read by the whole ocean.',
   behavior: 'Glides over the trench floor like a pink ghost, surprisingly curious.',
-  tank: TANK,
   shinyHue: 180,
 });
 
@@ -144,7 +140,6 @@ add({
   sound: 'click',
   desc: 'A tripod fish. Stands on three metre-tall fin rays on the abyssal plain, facing the current, feelers up, waiting for lunch to drift by. Has not sat down since 2019.',
   behavior: 'Stands on its stilts on the abyss floor and waits.',
-  tank: TANK,
   shinyHue: 50,
 });
 
@@ -163,7 +158,6 @@ add({
   sound: 'bell',
   desc: 'A bigfin squid, seen alive only a handful of times. Ten arms bent at impossible elbows hang down for metres below it. You noclipped into the wrong level of the ocean.',
   behavior: 'Hovers motionless with its arms dangling far below. Trophy of the abyss.',
-  tank: TANK,
   shinyHue: 220,
 });
 
@@ -185,7 +179,6 @@ add({
   sound: 'gulp',
   desc: 'A black swallower. Eats fish twice its own length and stretches its see-through belly around them. Big back energy. Sometimes the meal is too big and they both float up.',
   behavior: 'Cruises with a swollen belly, always ready for one more.',
-  tank: TANK,
   shinyHue: 280,
 });
 
@@ -204,7 +197,6 @@ add({
   sound: 'click',
   desc: 'A whipnose angler. Its lure rod is longer than its whole body and it holds it way out in front, glowing, at the perfect angle. Never once looked at the camera.',
   behavior: 'Swims upside down in the wild, trailing its huge rod. Lunges at the light.',
-  tank: TANK,
   shinyHue: 170,
 });
 
@@ -223,7 +215,6 @@ add({
   sound: 'click',
   desc: 'A yeti crab from the hydrothermal vents. Farms bacteria in the silky hair on its arms and waves them over the vent to feed its crop. Has not shaved since it hatched.',
   behavior: 'Waves its hairy arms over the vents on the rift floor.',
-  tank: TANK,
   shinyHue: 30,
 });
 
@@ -242,7 +233,6 @@ add({
   sound: 'roar',
   desc: 'A bluntnose sixgill shark: six gill slits where most sharks have five, glowing green eyes and a body older than the dinosaurs. Six? Seven? It counts its gills differently every time.',
   behavior: 'Rises from the rift floor at night, green eyes first. Trophy of the vents.',
-  tank: TANK,
   shinyHue: 120,
 });
 
@@ -264,7 +254,6 @@ add({
   sound: 'grunt',
   desc: 'A velvet belly lanternshark. Its black belly glows blue to match the light from above, so from below it simply is not there. Low-key the best camouflage in the sea.',
   behavior: 'Hunts in small packs in the dark fjord water. Glows underneath.',
-  tank: TANK,
   shinyHue: 210,
 });
 
@@ -283,7 +272,6 @@ add({
   sound: 'boing',
   desc: 'A telescope octopus. Clear as jelly, with two tube eyes standing up on its head. Camera on, face off: all you can see is its lunch.',
   behavior: 'Drifts nearly invisible, peering up through its tube eyes.',
-  tank: TANK,
   shinyHue: 140,
 });
 
@@ -302,7 +290,6 @@ add({
   sound: 'roar',
   desc: 'A goblin shark: pink, flabby, with a blade of a snout and jaws that SLING out of its face to grab prey. Not in its main character era. Fully in goblin mode.',
   behavior: 'Drifts lazily, then its jaws shoot forward without warning.',
-  tank: TANK,
   shinyHue: 160,
 });
 
@@ -321,7 +308,6 @@ add({
   sound: 'gulp',
   desc: 'A cookiecutter shark. Glows from below except a dark collar that looks like a small fish, lures in whales and tuna, then takes one perfectly round bite. Just one. Every single time.',
   behavior: 'Rises at night, latches on with its suction lips and spins.',
-  tank: TANK,
   shinyHue: 40,
 });
 
@@ -340,8 +326,9 @@ add({
   sound: 'click',
   desc: 'A giant isopod, the roly-poly\'s final boss form. Eats a whale fall, then goes five years without a snack. Its big compound eyes shine gold in your light.',
   behavior: 'Trundles across the abyss floor, eyes glinting.',
-  tank: TANK,
   shinyHue: 260,
 });
+
+for (const sp of S) if (sp.quirks.includes('glow') || sp.quirks.includes('lure')) sp.glow = true;
 
 export const DEEP_SPECIES = S;

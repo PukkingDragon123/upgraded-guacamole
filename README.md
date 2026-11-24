@@ -6,7 +6,7 @@ person in a little boat on a glossy, sunlit sea:
 - Spin a big glossy reel to keep the fish in the middle of the meter.
 - Hit the big SHOCK button at the right moment for a critical zap.
 
-Then fill your side-scrolling voxel tank with fish that earn Aero, and research better rods, boats, tanks and
+Then fill your side-scrolling voxel tank with fish that earn Aero Bucks, and research better rods, boats, tanks and
 seven oceans in The Lab.
 
 All art (voxel world, fish, characters and rooms) is generated in code. The Alagard pixel font by Hewett Tsoi
@@ -42,7 +42,28 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
   - Settings
 
   Settings has a Normal / Big / Huge UI size.
-- **Bait**: buy bait packs from Bubbles the toy grouper at the **Bait Shop** with Aero. Each bait is used up when a fish bites.
+
+  A new game starts with only three buttons unlocked: **Bait Shop**, **Quests** and **Aquarium** (Settings is always
+  there). The other buttons are locked slots with a padlock. To unlock one, **build** its little voxel prop in your tank:
+
+  | Button | Build in the tank | Aero |
+  | --- | --- | --- |
+  | The Lab | Research Bench (the tutorial walks you through it) | 5 |
+  | Satchel | Treasure Chest | 10 |
+  | FishDex | Bookshelf | 15 |
+  | Bait | Tackle Box | 15 |
+  | Wardrobe | Mirror | 20 |
+  | My Fish | Net Rack | 20 |
+  | Map | Treasure Map Table | 40 |
+  | Multiplayer | Phone Booth | 50 |
+  | Workshop | Workbench | 60 |
+
+  Hover a locked slot to see what to build. Click it to open the tank's build mode with that prop picked; the
+  **Unlocks** tab of the build tray lists them all. When you place the prop, the button pops into the hotbar with a
+  "NEW BUTTON!" moment, and it stays unlocked even if you move or store the prop later. Until then its keyboard
+  shortcut does nothing. Bubbles' quests guide the first builds (Research Bench, Treasure Chest, Bookshelf, Map Table,
+  Workbench), and side stories cover the rest. Saves from before this change keep every button they had already used.
+- **Bait**: buy bait packs from Bubbles the toy grouper at the **Bait Shop** with Aero Bucks. Each bait is used up when a fish bites.
 - **Fishing**: click the water to cast. Then:
   - **Hook**: wait for the big "!" and click (or press Space). If you click while the fish is only nibbling,
     you scare it off.
@@ -58,20 +79,36 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
     recharge and a wider gold notch. At high tiers your shock also arcs as chain lightning.
   - **Bosses**: you fight bosses the same way, in three phases. In phase 2 the boss raises shields that only a
     shock can break. In phase 3 it enrages and critical hits do extra damage.
+  - **Crates**: floating crates fight on the same meter. Hover the hook over one (corner brackets show) and click
+    to snag it, then spin and shock as with a fish. Light wooden crates and bottles wobble, iron crates pull hard
+    but steadily, and orbs dart about. Some crates are surprises. About 1 in 7 **grows crab legs**: the meter goes
+    jittery, sideways lunges come often and the bar drains twice as fast. If you lose one, it runs off across the
+    seabed. About 1 in 12 is a **MIMIC**: its lid flies open (teeth, tongue, eyes) and it fights like a mini-boss.
+    It snaps CHOMP! to knock your marker aside, and at half way it clamps shut behind a shield that only a GOOD or
+    CRITICAL shock cracks. Beating a mimic upgrades its loot one tier. Surprises are more common in later oceans and
+    deep water. Watchful anglers can spot them first: a twitching, hopping crate has legs, and an eye peeking out
+    from under the lid means a mimic. Landed crates go to your Satchel or the chest-cracking minigame as before.
+  - **Line length**: your line only reaches so deep. Your first rod reaches the Sunlit Zone. At the limit the line
+    goes taut, the hook stops and a MAX LINE sign shows. Better rods spool a little more line. In The Lab's Tackle
+    row, **Longer Line** reaches the Twilight Zone, **Deep Spool** reaches the Midnight Zone and the top of the Abyss
+    (where the bosses wait), and **Abyss Spool** reaches the floor. The Workshop's line spools add more (Braided,
+    Glow, Titan). The rod card's LINE stat names the deepest zone you can reach.
 - **Depth**: each ocean drops through sunlit, twilight, midnight and abyss zones. Use `Home`/`End`,
   `PageUp`/`PageDown` or the wheel to dive; a depth meter shows your zone. The camera follows your hook and
   catch; Ctrl/Alt + wheel or `+`/`-` changes the zoom.
 - **Aquarium**: a 2D side-scrolling voxel tank, like the ocean. Drag, use the wheel, `A`/`D` or the arrow keys,
   or push the mouse to the edge to scroll. Press **Build** to place decor and buildings: building happens only
-  inside the tank (`Q`/`E` rotate, `F` flips, `Delete` removes, `Esc` leaves build mode).
+  inside the tank (`Q`/`E` rotate, `F` flips, `Delete` removes, `Esc` leaves build mode). Your first tank starts
+  empty (clean sand, the back glass, water and the filter's bubbles), so every rock, plant and building in it is
+  one you placed.
 - **Keys**:
   - **Panels**: `L` The Lab, `Q` quests, `J` FishDex, `I` Satchel, `W` Wardrobe, `T` map, `B` bait,
-    `S` Bait Shop, `O` multiplayer, `A` aquarium.
+    `S` Bait Shop, `O` multiplayer, `A` aquarium, `C` Workshop, `F` My Fish. A key works once its button is unlocked.
   - **Game**: `P` pause, `Esc` settings/close.
 
 ### The loop
 
-Catch fish and keep them in your side-scrolling tank, where they earn **Aero** (even while you're away). Follow the
+Catch fish and keep them in your side-scrolling tank, where they earn **Aero Bucks** (even while you're away). Follow the
 **quest lines**: 7 story chapters told by Bubbles the toy grouper, Professor Fizz, Marina and Captain Bloat.
 Each chapter's boss charts the next ocean, and you fund the expedition in The Lab. The Quest Log (`Q`) has three tabs:
 - **Story**: each chapter's main quests, plus about 15 optional side stories per chapter. Side stories cover species,
@@ -81,6 +118,30 @@ Each chapter's boss charts the next ocean, and you fund the expedition in The La
 - **Milestones**: lifetime goals in tiers, such as fish caught, FishDex pages, perfect zaps and bosses beaten.
 
 Side stories, orders and milestones are claimed with a **Claim** button. Pin one to the HUD tracker with **Track**.
+The tracker hides off the right edge of the screen and slides in when a quest moves forward, when you pin
+one, or when a chapter story is waiting. Hover it to keep it open; `Q` opens the full Quest Log.
+
+### Currencies
+
+The wallet in the top-right corner is a small pixel-art plaque with two counters:
+- **Aero Bucks** (the water droplet) are the everyday money. Fish, your tank, crates and quests pay them. You spend
+  them on bait, Lab research, crafting, tank gear and most cosmetics.
+- **Byte Gems** (the violet pixel crystal) come **only from quests**:
+
+  | Source | Byte Gems |
+  | --- | --- |
+  | Story quest | 2 |
+  | Boss quest | 10 |
+  | Side story | 3 |
+  | Daily order | 1 |
+  | Board Cleared bonus | 5 |
+  | Milestone tier n | 3 x n (up to 15) |
+  | Chapter finished | 10 + 5 x chapter |
+
+  Spend Byte Gems to **skip timers** or on some cosmetics in the Wardrobe. You can skip Lab research ("Skip now" on a
+  brewing node's card), Workshop crafting (the violet button on a bench) and egg clutches in the tank (the egg timer
+  chip under the tank's top plate). The price follows the time left: about 1 gem per 30 seconds, and cheaper per
+  minute for long timers. Older saves get a one-time welcome gift of 30 Byte Gems. Nothing costs real money.
 
 Research in **The Lab**, a zoomed-in tree that grows out from the middle. Nodes you can't reach yet stay
 black. Some key nodes are **sealed by a quest**: they show a padlock, chains and a quest scroll, and their card names the
@@ -96,9 +157,9 @@ with a minigame.
   - New rods, boats and tanks cost 1.5 times a tier's price. Workshop rods, tackle, rod tuning, boat parts, tank gear
     and buildings climb the same way.
 - **New oceans are big, expensive expeditions.** Beating an ocean's boss charts the next ocean. Then you fund the trip in
-  The Lab with a lot of Aero, rare materials from the ocean you're leaving and a few of its fish:
+  The Lab with a lot of Aero Bucks, rare materials from the ocean you're leaving and a few of its fish:
 
-  | Ocean | Aero | Also needs |
+  | Ocean | Aero Bucks | Also needs |
   | --- | --- | --- |
   | Sunny Shallows | 600 | Turbine Shark beaten, driftwood, shells |
   | Frosty Fjord | 2,000 | Dragon-Karp beaten, sea glass, coral, a pearl, 2 Shallows fish |
@@ -107,9 +168,9 @@ with a minigame.
   | Lava Rift | 28,000 | Main Character Marlin beaten, magnet stones, circuit boards, pearls, 3 fish |
   | The Deep Ocean | 65,000 | The Final Boss beaten, lava glass, ancient stones, an abyss crystal, 3 fish |
 
-  The chapter's reward pays a big part of it (250 to 24,000 Aero). Fishing the rest takes about 5 minutes for the first
+  The chapter's reward pays a big part of it (250 to 24,000 Aero Bucks). Fishing the rest takes about 5 minutes for the first
   trip and up to about an hour for The Deep Ocean.
-- **Quests unlock research.** 39 Lab nodes need a quest finished as well as Aero and materials. For example:
+- **Quests unlock research.** 39 Lab nodes need a quest finished as well as Aero Bucks and materials. For example:
   - The Glass Rod needs the Dragon-Karp beaten.
   - The Chrome Caster needs Marina's "Rust Bucket" job.
   - The Capacitor needs Fizz's "Spark Joy" zap study.
@@ -118,7 +179,7 @@ with a minigame.
 
   Every sealed node's quest opens before or alongside that node's tier, and `node tools/progcheck.mjs` checks that
   nothing is a dead end.
-- **Later oceans pay more.** Fish from each new ocean are worth more Aero: from 1x in the (OS)cean up to 4.2x in
+- **Later oceans pay more.** Fish from each new ocean are worth more Aero Bucks: from 1x in the (OS)cean up to 4.2x in
   The Deep Ocean. This covers the catch bonus, the release value and tank income.
 - **Bosses gate the top tiers.** Lab research from tier 6 up needs a boss trophy:
   - Tier 6: the Frosty Fjord boss.
@@ -127,8 +188,8 @@ with a minigame.
   - Tier 9: the Lava Rift boss.
   Finishing that boss's chapter also counts.
 - **Every upgrade is noticeable.**
-  - Each tank tier adds room, a bigger Aero rate and a longer offline cap.
-  - Each boat adds bait slots, reel speed, Aero magnet range and rare-fish luck, up to the Submarine.
+  - Each tank tier adds room, a bigger Aero Bucks rate and a longer offline cap.
+  - Each boat adds bait slots, reel speed, Aero Bucks magnet range and rare-fish luck, up to the Submarine.
   - Each ocean pays more.
 - **A next goal is always shown.** It is the next rod, tank or boat. Once the next ocean is charted, its expedition is the goal:
   - Each chapter has a quest for the next rod.
@@ -144,8 +205,8 @@ with a minigame.
   | Reef Flakes | You start with them | Everyday food |
   | Pop Pellets | Research Pellet Press (Lab, Tank Life, tier 2) | Fills 35% more, hunger grows a third slower |
   | Bloodworms | Marina's side story "Worm Wrangler" (chapter 2) | Much happier fish, evolve 1.5x faster |
-  | Brine Shrimp | Research Brine Hatchery (Lab, Tank Life, tier 4) | +10% Aero/min, romance at lower happiness, shorter rest between clutches |
-  | Golden Krill | Professor Fizz's side story "Golden Krill" (chapter 5) | +15% Aero/min, eggs from a krill-fed parent mutate 2x (shiny 1.5x) |
+  | Brine Shrimp | Research Brine Hatchery (Lab, Tank Life, tier 4) | +10% AB/min, romance at lower happiness, shorter rest between clutches |
+  | Golden Krill | Professor Fizz's side story "Golden Krill" (chapter 5) | +15% AB/min, eggs from a krill-fed parent mutate 2x (shiny 1.5x) |
 
   Locked foods are sealed in the Feed tray. Hover one to see how to unlock it; click it to open the Lab on its node or
   to track its quest. Feed all and the auto-feeder use your chosen food if you have it, else Reef Flakes. Feeding by
@@ -205,8 +266,8 @@ with a minigame.
 - **NPCs**: Bubbles the toy grouper, Professor Fizz, Goldie, Pinch, Marina and Captain Bloat.
 - **The aquarium**:
   - Six tank tiers, from the Nano Tank to the Mega Tank. Each Lab upgrade makes the tank wider and taller, holds
-    more fish and earns more Aero.
-  - The tank has front, middle and back voxel layers with plants, rocks and light shafts.
+    more fish and earns more Aero Bucks.
+  - The tank has front, middle and back voxel layers. A new tank starts empty: you add the plants, rocks, decor and buildings.
   - You can feed fish, breed them, decorate the tank and build in it. Five voxel foods (four of them unlocked as you
     progress) each have their own effect.
 - **Multiplayer fishing** (opt-in): when the game is opened from its shared claude.ai link, you see other
@@ -244,7 +305,7 @@ src/store     Bait Shop, bait, custom bait               src/build    buildings,
   - skipping the opening
   - buying bait
   - fighting and landing the first fish, then the catch card
-  - the jar and collecting Aero
+  - the jar and collecting Aero Bucks
   - starting the first Lab research
   - opening every panel
   - travelling to all seven oceans

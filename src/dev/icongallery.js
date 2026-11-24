@@ -43,7 +43,8 @@ export async function run(params) {
     const put = (f, x, y) => { if (f) g.drawImage(f.canvas || f, Math.round(x - (f.ox ?? (f.width || f.canvas.width) / 2)), Math.round(y - (f.oy ?? (f.height || f.canvas.height) / 2))); };
     const label = (s, x, y) => drawText(g, String(s).slice(0, 10), x, y, { font: 'small', align: 'center', color: '#0c3a52' });
     if (page === 9) { // every authored sprite: 44 px frame, 22 px, 11 px and the native grid
-      const names = PIX_NAMES();
+      const off = Number(params.get('off') || 0);
+      const names = PIX_NAMES().slice(off, off + 120);
       names.forEach((n, i) => {
         const x = 40 + (i % 12) * 77, y = 36 + Math.floor(i / 12) * 104;
         put(pixFrame(n, 44), x, y);

@@ -452,7 +452,7 @@ export class Hud {
   // [hot26] a button unlocked by building pops into the bar (once the bar is showing again) with 3D voxel words
   celebrateStep(dt) {
     const g = this.game;
-    if (this.cele) { this.cele.t += dt; if (this.cele.t > 3.6) this.cele = null; return; }
+    if (this.cele) { if (this.show > 0.9 && this.wantShow()) this.cele.t += dt; if (this.cele.t > 3.6) this.cele = null; return; } // (paused while a cinematic hides the bar)
     let H = null;
     try { H = ensureHotbar(g.state); } catch { return; }
     const ids = Object.keys(H.fresh || {});
@@ -475,15 +475,16 @@ export class Hud {
 
   drawCelebration(ctx) {
     const c = this.cele;
-    if (!c || this.show < 0.3) return;
+    if (!c || this.show < 0.6) return;
     const it = c.it, m = this.m, B = m.B, k = m.k, t = c.t;
     const fade = t < 3 ? 1 : Math.max(0, 1 - (t - 3) / 0.6);
     const a0 = ctx.globalAlpha;
     ctx.globalAlpha = a0 * fade;
     const cx = R(this.W / 2), cy = R(Math.min(this.H * 0.36, this.topY() - 70 * k));
+    const q = (v) => Math.max(1, Math.round(v * 4) / 4), s1 = q(1.2 * k), s2 = q(2 * k);
     const pop1 = clamp(t / 0.35, 0, 1), pop2 = clamp((t - 0.25) / 0.4, 0, 1);
-    if (pop1 > 0) drawPop3D(ctx, 'NEW BUTTON:', cx, cy - R(16 * k), { t, pop: pop1, palette: 'aqua', size: 14, depth: 3, glowA: 0.3 });
-    if (pop2 > 0) drawPop3D(ctx, c.label.toUpperCase() + '!', cx, cy + R(14 * k), { t: t + 0.4, pop: pop2, palette: 'gold', size: 22, depth: 4, phase: 1.3, glowA: 0.35 });
+    if (pop1 > 0) drawPop3D(ctx, 'NEW BUTTON:', cx, cy - R(22 * k), { t, pop: pop1, palette: 'aqua', scale: s1, depth: 3, glowA: 0.3 });
+    if (pop2 > 0) drawPop3D(ctx, c.label.toUpperCase() + '!', cx, cy + R(16 * k), { t: t + 0.4, pop: pop2, palette: 'gold', scale: s2, depth: 4, phase: 1.3, glowA: 0.35 });
     // bouncing pixel chevrons over the new button (no rings, no rays)
     if (it?.shown) {
       const bx = R(it.x + B / 2), by = R(it.y - 6 * k - Math.abs(Math.sin(t * 6)) * 6 * k);
