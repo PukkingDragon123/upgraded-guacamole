@@ -44871,7 +44871,7 @@ kmlmk..
     const hw = (Math.abs(ax) + Math.abs(bx)) * ext2 + 1, hh = (Math.abs(ay) + Math.abs(by)) * ext2 + 1;
     const x0 = Math.floor(f.x - hw), x1 = Math.ceil(f.x + hw), y0 = Math.floor(f.y - hh), y1 = Math.ceil(f.y + hh);
     for (let y = y0; y <= y1; y++) {
-      let run36 = null, rs2 = 0;
+      let run35 = null, rs2 = 0;
       const dy = y + 0.5 - f.y;
       for (let x = x0; x <= x1 + 1; x++) {
         let c = null;
@@ -44880,12 +44880,12 @@ kmlmk..
           const u = (dx * by - dy * bx) / det, v = (ax * dy - ay * dx) / det;
           if (u > -ext2 && u < ext2 && v > -ext2 && v < ext2) c = fn(u, v);
         }
-        if (c !== run36) {
-          if (run36) {
-            ctx3.fillStyle = run36;
+        if (c !== run35) {
+          if (run35) {
+            ctx3.fillStyle = run35;
             ctx3.fillRect(X + rs2, Y + y, x - rs2, 1);
           }
-          run36 = c;
+          run35 = c;
           rs2 = x;
         }
       }
@@ -74185,7 +74185,7 @@ kmlmk..
             for (let f = 0; f < ROTOR_FRAMES; f++) rotorSprite(bk.scale, bk.yaw, f);
           });
           this.warmLog = [];
-          const run36 = () => {
+          const run35 = () => {
             const f = steps.shift();
             if (!f) return;
             const t02 = performance.now();
@@ -74196,9 +74196,9 @@ kmlmk..
               return;
             }
             this.warmLog.push([Math.round(t02), Math.round(performance.now() - t02)]);
-            setTimeout(() => idle(run36), 100);
+            setTimeout(() => idle(run35), 100);
           };
-          idle(run36);
+          idle(run35);
         }
         open(data) {
           const g = this.game;
@@ -134392,70 +134392,6 @@ ${hearts} ${status}
     }
   });
 
-  // src/dev/zz_face26.js
-  var zz_face26_exports = {};
-  __export(zz_face26_exports, {
-    run: () => run35
-  });
-  function run35(params2) {
-    const sc0 = Number(params2.get("s") || 2), W11 = Math.round(Math.max(480, (40 * sc0 + 40) * 5 + 20)), H8 = Math.round(Math.max(300, (80 * sc0 + 30) * 2 + 20));
-    const cv = document.getElementById("screen");
-    cv.width = W11;
-    cv.height = H8;
-    const Z = Number(params2.get("z") || 4);
-    cv.style.width = W11 * Z + "px";
-    cv.style.height = H8 * Z + "px";
-    const g = ctxOf(cv);
-    setCharacterBudget(1e9);
-    const look = { ...DEFAULT_CHARACTER, ...params2.get("look") ? JSON.parse(params2.get("look")) : {} };
-    const sc = Number(params2.get("s") || 2);
-    const view = params2.get("v") || "moods";
-    const t = Number(params2.get("t") || 0.3);
-    g.fillStyle = "#3a7fb0";
-    g.fillRect(0, 0, W11, H8);
-    const lab3 = (s, x, y) => drawText(g, s, x, y, { font: "small", color: "#fff", align: "center", shadow: "#0b1622" });
-    if (view === "moods") {
-      const items = [["idle", null, null], ["blink", null, null, 1], ["happy", "cheer", null], ["sad", "sad", "sad"], ["surprised", null, "surprised"], ["angry", null, "angry"], ["love", null, "love"], ["excited", null, "excited"], ["squint", "pull", null], ["laugh", "laugh", null]];
-      items.forEach(([name, pose2, mood, blink], i) => {
-        const x = Math.round(30 * sc + 20 + i % 5 * (40 * sc + 40)), y = Math.round((80 * sc + 30) * (1 + Math.floor(i / 5)));
-        drawCharacter(g, x, y + 60 * (sc - 2) * 0, { pose: pose2 || "idle", t: pose2 === "cheer" ? 0.05 : t, facing: 1, scale: sc, look, id: "f" + i, mood, blink, trail: false, shadow: false, rod: false });
-        lab3(name, x, y + 4);
-      });
-    } else if (view === "styles") {
-      const st = ["bean", "sparkle", "anime", "happy", "sleepy", "star", "heart", "swirl", "led", "wink", "dot", "teary", "derp"];
-      st.forEach((e, i) => {
-        const x = 36 + i % 7 * 68, y = 120 + Math.floor(i / 7) * 130;
-        drawCharacter(g, x, y, { pose: "idle", t, facing: 1, scale: sc, look: { ...look, eyes: e }, id: "s" + i, trail: false, shadow: false, rod: false });
-        lab3(e, x, y + 4);
-      });
-    } else if (view === "scales") {
-      [0.45, 0.62, 1, 1.5, 2, 3].forEach((s, i) => {
-        const x = [20, 50, 90, 150, 240, 380][i];
-        drawCharacter(g, x, 240, { pose: "idle", t, facing: 1, scale: s, look, id: "k" + i, trail: false, shadow: false, rod: false });
-        drawCharacter(g, x, 120, { pose: "idle", t, yaw: 0, scale: s, look, id: "kf" + i, trail: false, shadow: false, rod: false, mood: i % 2 ? "happy" : null });
-      });
-    } else if (view === "turn") {
-      [0, -30, -60, -90, 30, 160].forEach((yw, i) => {
-        drawCharacter(g, 40 + i * 80, 200, { pose: "idle", t, yaw: yw, scale: sc, look, id: "t" + i, trail: false, shadow: false, rod: false });
-        lab3("yaw " + yw, 40 + i * 80, 204);
-      });
-    } else if (view === "npcs") {
-      Object.keys(NPCS).forEach((id2, i) => {
-        const x = 40 + i * 80;
-        drawNPC(g, id2, { x, y: 200, t, scale: sc, facing: 1, pose: "idle", mood: "happy", id: "n" + i });
-        lab3(id2, x, 204);
-      });
-    }
-  }
-  var init_zz_face26 = __esm({
-    "src/dev/zz_face26.js"() {
-      init_canvas();
-      init_font();
-      init_character();
-      init_npcs();
-    }
-  });
-
   // import("./dev/**/*.js") in src/main.js
   var globImport_dev_js = __glob({
     "./dev/audio.js": () => Promise.resolve().then(() => (init_audio2(), audio_exports)),
@@ -134492,8 +134428,7 @@ ${hearts} ${status}
     "./dev/voxfish.js": () => Promise.resolve().then(() => (init_voxfish(), voxfish_exports)),
     "./dev/voxui.js": () => Promise.resolve().then(() => (init_voxui(), voxui_exports)),
     "./dev/wardrobe.js": () => Promise.resolve().then(() => (init_wardrobe2(), wardrobe_exports)),
-    "./dev/world.js": () => Promise.resolve().then(() => (init_world(), world_exports)),
-    "./dev/zz_face26.js": () => Promise.resolve().then(() => (init_zz_face26(), zz_face26_exports))
+    "./dev/world.js": () => Promise.resolve().then(() => (init_world(), world_exports))
   });
 
   // src/main.js
