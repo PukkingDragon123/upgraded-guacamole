@@ -805,13 +805,44 @@ function buildFish(c, ph, inflStep, gape, hi) {
       pts.push([px, py, 0]);
     }
     tubeInto(body, pts, (t) => Math.max(0.003 * L, 0.009 * L * (1 - 0.6 * t)), 5, rgb01(lu.rod || S.col.back), D, W);
+    if (lu.drop) {
+      // [deep28] Lasiognathus fishes with a line: a fine thread hangs from the rod tip, the bait and hooks at its end
+      const dl = lu.drop * L, sw = 0.05 * L * Math.sin(P + 0.7);
+      tubeInto(body, [[px, py, 0], [px + sw * 0.35, py - dl * 0.5, 0], [px + sw, py - dl, 0]], () => 0.0024 * L, 4, rgb01('#dceaea'), D, W);
+      px += sw; py -= dl;
+    }
     const R = Math.max(0.008 * L, lu.bulb * L);
     ellInto(glow, [px, py, 0], [R, R, R], 9, 6, rgb01(lu.col || '#bff8ff'), D, W);
     if (lu.filaments) for (let k = 0; k < lu.filaments; k++) {
       const fa = -0.6 + (k / Math.max(1, lu.filaments - 1)) * 2.4;
       tubeInto(glow, [[px, py, 0], [px + Math.cos(fa) * R * 1.5, py + Math.sin(fa) * R * 1.5, 0]], (t) => 0.0035 * L * (1 - 0.6 * t), 4, rgb01(lu.col || '#bff8ff'), D, W);
     }
+    if (lu.hooks) for (let k = 0; k < lu.hooks; k++) {
+      // three bony J-hooks under the bait
+      const a = -Math.PI / 2 + (k - (lu.hooks - 1) / 2) * 0.85, ca = Math.cos(a), sa = Math.sin(a);
+      const hp = [[px + ca * R * 0.7, py + sa * R * 0.7, 0], [px + ca * R * 1.7, py + sa * R * 1.7, 0], [px + ca * R * 2.4, py + sa * R * 2.4, 0]];
+      const cx = hp[2][0] - sa * R * 0.5 * (k % 2 ? -1 : 1), cy = hp[2][1] + ca * R * 0.5 * (k % 2 ? -1 : 1);
+      const a0 = Math.atan2(hp[2][1] - cy, hp[2][0] - cx), dir = k % 2 ? 1 : -1;
+      for (let j = 1; j <= 3; j++) hp.push([cx + Math.cos(a0 + dir * j * 1.05) * R * 0.5, cy + Math.sin(a0 + dir * j * 1.05) * R * 0.5, 0]);
+      tubeInto(body, hp, (t) => Math.max(0.0025 * L, 0.007 * L * (1 - 0.6 * t)), 4, rgb01('#f2ead8'), D, W);
+    }
     lureTip = [px, py, 0];
+  }
+  // ---- [deep28] glowing caruncles on the back (triplewart seadevil) and dwarf males fused to the belly
+  for (const b of S.bumps || []) {
+    const X = xN - b.u * L, Y = M.topL(b.u), r = b.r * L;
+    ellInto(body, [X, Y - r * 0.1, 0], [r * 1.15, r * 0.7, r * 1.15], 8, 4, rgb01(S.col.back), D, W);
+    ellInto(glow, [X, Y + r * 0.45, 0], [r * 0.8, r * 0.8, r * 0.8], 8, 5, rgb01(b.col || S.bumpCol || '#9affff'), D, W);
+  }
+  for (const m of S.males || []) {
+    const X = xN - m.u * L, Yb = M.botL(m.u), len = m.len * L;
+    const z0 = (m.z ?? 1) * surf(m.u, Yb + 0.02 * L) * 0.45;
+    // fused by the snout, hanging back at a slant: a small body, a fan tail, a pale eye
+    const mc = rgb01(m.col || '#8a7270'), dx = -len * 0.62, dy = -len * 0.55;
+    const at = (k, o = 0) => [X + dx * k, Yb + 0.01 * L + dy * k + o, z0];
+    ellInto(body, at(0.45), [len * 0.36, len * 0.17, len * 0.15], 8, 5, mc, D, W);
+    tubeInto(body, [at(0.82), at(1.05)], (t) => len * (0.04 + 0.12 * t), 5, rgb01(m.fin || '#a08c88'), D, W);
+    ellInto(body, [X + dx * 0.2, Yb + dy * 0.2, z0 + (m.z ?? 1) * len * 0.1], [len * 0.045, len * 0.045, len * 0.045], 5, 3, rgb01('#e8eef4'), D, W);
   }
   // ---- teeth: fangs along the jaws
   if (S.mouth?.teeth && mouth) {

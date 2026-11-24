@@ -30,6 +30,7 @@ export function defaultState() {
       oceanOpacity: 1, overlayOpacity: 0.25, dayCycle: 'real', reducedMotion: false, lowPower: false,
       showFps: false, wallpaper: 'ocean', browserFish: true, hints: true,
       voices: 'chip', // [voices23] 'chip' (8-bit character voices) | 'off'
+      deepScares: true, // [deep28] Settings > Deep scares: the big eye, floor ambushes and squid packs in the deep
     },
     view: 'ocean', // 'ocean' | 'aquarium'
     tankWindow: { open: false, x: 0, y: 0 },

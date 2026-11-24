@@ -25,6 +25,7 @@ const TOGGLES = [
   ['showFps', 'clock', 'FPS', 'Frame counter (F3)'],
   ['browserFish', 'fish', 'Web fish', 'Fish visit your web pages (extension)'],
   ['hints', 'question', 'Tips', 'Bubbles the toy grouper pops up with tips'],
+  ['deepScares', 'eye', 'Deep scares', 'Deep-sea scares: On/Off (jump scares, floor ambushes and squid packs in the deep)'], // [deep28]
 ];
 
 // a pixel icon at an integer zoom (2x on the bigger UI sizes), centred vertically on cy

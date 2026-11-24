@@ -273,6 +273,7 @@ function drawTrack(ctx, F, B, L, t) {
   // the centre line
   ctx.fillStyle = rgba('#ffffff', 0.7); ctx.fillRect(Math.round(L.cx), y0 + 3, 1, L.h - 6);
   if (shield) word3D(ctx, 'LOCKED', L.cx, L.cy, { t, scale: 0.5 * S, pal: 'white', wobble: 0.4, alpha: 0.9 });
+  if (B.twist) drawTwist(ctx, F, B, L, t); // [deep28] the deep fish's personality on the meter
   // lunge warning: chevrons racing out on the side the fish will shove the marker
   const lu = B.lunge;
   if (lu) {
@@ -319,6 +320,69 @@ function drawTrack(ctx, F, B, L, t) {
     }
   }
   drawMarker(ctx, F, B, L, t);
+  // [deep28] a dazzle flash whites the meter out for a moment
+  if (B.flash > 0.02) {
+    ctx.fillStyle = rgba('#fffbe8', clamp01(B.flash) * 0.85);
+    ctx.fillRect(L.x0 - Math.round(8 * S), y0 - Math.round(6 * S), L.w + Math.round(16 * S), L.h + Math.round(12 * S));
+    glow(ctx, mx(L, B.marker), L.cy, Math.round(60 * S), '#ffffff', B.flash);
+  }
+}
+
+// [deep28] twist overlays (deeptwist.js): the dark zone of a blink, tentacles squeezing a wrap, alarm lamps, the word
+function drawTwist(ctx, F, B, L, t) {
+  const S = L.S, y0 = L.cy - L.h / 2, tw = B.twist;
+  const b = Math.max(2, Math.round(3 * S));
+  // alarm: a blinking red / blue voxel lamp at both ends of the track
+  if (B.alarm > 0.02) {
+    const on = Math.floor(t * 8) % 2;
+    for (const sd of [-1, 1]) {
+      const x = Math.round(sd < 0 ? L.x0 - 10 * S : L.x1 + 10 * S), col = (on ^ (sd > 0 ? 1 : 0)) ? '#ff3a4a' : '#4ab0ff';
+      const r = Math.round(6 * S);
+      ctx.globalAlpha = B.alarm;
+      ctx.fillStyle = INK; ctx.fillRect(x - r - 1, L.cy - r - 1, r * 2 + 2, r * 2 + 2);
+      ctx.fillStyle = col; ctx.fillRect(x - r, L.cy - r, r * 2, r * 2);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(x - r, L.cy - r, Math.round(r * 0.8), 2);
+      ctx.globalAlpha = 1;
+      glow(ctx, x, L.cy, Math.round(22 * S), col, 0.6 * B.alarm);
+    }
+  }
+  // wrap: tentacles creep in from both ends to the zone posts, a row of pale suckers underneath
+  if (B.wrapK > 0.02) {
+    for (const sd of [-1, 1]) {
+      const xa = mx(L, sd * 1.08), xb = mx(L, sd * (B.zoneW + 0.02));
+      const n = 22;
+      for (let i = 0; i <= n; i++) {
+        const k = i / n;
+        if (k > B.wrapK) break;
+        const x = lerp(xa, xb, k), y = L.cy + Math.sin(t * 4 + k * 9 + sd) * L.h * 0.34 * (0.4 + k * 0.6);
+        const r = Math.max(2, Math.round(lerp(6, 2.5, k) * S));
+        ctx.fillStyle = INK; ctx.fillRect(Math.round(x - r - 1), Math.round(y - r - 1), r * 2 + 2, r * 2 + 2);
+        ctx.fillStyle = i % 2 ? '#c8584a' : '#b04a40'; ctx.fillRect(Math.round(x - r), Math.round(y - r), r * 2, r * 2);
+        ctx.fillStyle = '#e8a490'; ctx.fillRect(Math.round(x - r), Math.round(y - r), r * 2, 1);
+        if (i % 2 === 0) { ctx.fillStyle = '#f8e4d8'; ctx.fillRect(Math.round(x - 1), Math.round(y + r - 2), 2, 2); }
+      }
+    }
+  }
+  // blink: the zone goes dark (blue sparkles left behind by the squid's lights)
+  if (B.blind > 0.02) {
+    const zx0 = Math.round(mx(L, -(B.zoneW0 ?? B.zoneW) - 0.04)), zx1 = Math.round(mx(L, (B.zoneW0 ?? B.zoneW) + 0.04));
+    ctx.fillStyle = rgba('#050a1e', 0.94 * B.blind);
+    ctx.fillRect(zx0, y0 - Math.round(6 * S), zx1 - zx0, L.h + Math.round(12 * S));
+    ctx.fillStyle = '#4ab8ff';
+    for (let i = 0; i < 7; i++) {
+      const ph = (t * 1.7 + i * 0.37) % 1;
+      if (ph > B.blind) continue;
+      const x = zx0 + ((i * 53 + Math.floor(t * 3) * 17) % Math.max(1, zx1 - zx0)), y = y0 + ((i * 29) % Math.max(1, L.h));
+      ctx.globalAlpha = 1 - ph; ctx.fillRect(x, y, b, b);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // the dazzle charging: the fish's lights build up on the marker
+  if (B.dazzleTele > 0.02) glow(ctx, mx(L, B.marker), y0 - Math.round(16 * S), Math.round((10 + 24 * B.dazzleTele) * S), '#fff2a0', 0.4 + 0.5 * B.dazzleTele);
+  if (tw.wordT > 0 && !B.beat) {
+    const pop = clamp01((1.6 - tw.wordT) * 6);
+    word3D(ctx, tw.word, L.cx, y0 - Math.round(52 * S), { t, pop: Math.min(1, pop + 0.4), scale: 0.5 * S, pal: tw.pal, wobble: 1.2, alpha: clamp01(tw.wordT * 3) });
+  }
 }
 
 function drawMarker(ctx, F, B, L, t) {
@@ -326,7 +390,9 @@ function drawMarker(ctx, F, B, L, t) {
   const m = B.marker;
   const x = Math.round(mx(L, m));
   const inZ = B.inZone && !B.boss?.shielded && !B.shielded;
-  const col = B.stunned ? '#bff8ff' : inZ ? (B.centre ? '#ffffff' : '#e2ffb0') : Math.abs(m) > 0.8 ? '#ff8a7a' : '#ffffff';
+  const col = B.redFlash > 0.3 ? (Math.floor(t * 16) % 2 ? '#ff3a4a' : '#ffffff') : B.stunned ? '#bff8ff' : inZ ? (B.centre ? '#ffffff' : '#e2ffb0') : Math.abs(m) > 0.8 ? '#ff8a7a' : '#ffffff';
+  const vanta = B.vanta || 0; // [deep28] the blackdragon turns ultra-black: only its chin light shows
+  if (vanta > 0.02) ctx.globalAlpha = 1 - vanta * 0.94;
   // the pin across the track
   const pw = Math.max(4, Math.round(5 * S));
   ctx.fillStyle = INK; ctx.fillRect(x - Math.ceil(pw / 2) - 1, y0 - Math.round(6 * S), pw + 2, L.h + Math.round(12 * S));
@@ -342,6 +408,25 @@ function drawMarker(ctx, F, B, L, t) {
   // a little down-pointing pixel tip under the fish
   ctx.fillStyle = INK;
   for (let i = 0; i < 4; i++) ctx.fillRect(x - 4 + i, y0 - Math.round(6 * S) - 4 + i, 9 - i * 2, 1);
+  if (vanta > 0.02) {
+    ctx.globalAlpha = 1;
+    glow(ctx, x, y0 - fh * 0.35, Math.round(9 * S), '#ff5ab0', 0.9 * vanta);
+    ctx.fillStyle = '#ff9ad0'; ctx.fillRect(x - 1, Math.round(y0 - fh * 0.35) - 1, 3, 3);
+  }
+  if (B.redFlash > 0.3) glow(ctx, x, y0 - fh * 0.5, Math.round(fh * 0.9), '#ff3a4a', 0.5 * B.redFlash);
+  // slime: pale drips sliding down the pin and the fish
+  if (B.slime > 0.05) {
+    const ds = Math.max(2, Math.round(3 * S));
+    for (let i = 0; i < 4; i++) {
+      const ph = (t * (0.5 + i * 0.13) + i * 0.29) % 1;
+      const dx = Math.round(((i * 37) % 9 - 4) * S * 1.6), dy = Math.round(lerp(-fh * 0.7, L.h + 4 * S, ph));
+      ctx.globalAlpha = B.slime * (1 - ph * 0.6);
+      ctx.fillStyle = INK; ctx.fillRect(x + dx - 1, y0 + dy - 1, ds + 2, ds * 2 + 2);
+      ctx.fillStyle = '#e4f6d8'; ctx.fillRect(x + dx, y0 + dy, ds, ds * 2);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(x + dx, y0 + dy, 1, ds);
+    }
+    ctx.globalAlpha = 1;
+  }
   // SPIN! / EASY! coaching arrows when the marker strays (not during a beat or stun)
   if (!B.beat && !B.stunned && !B.boss?.shielded && !B.shielded && Math.abs(m) > B.zoneW + 0.04 && B.mode !== 'hookset') {
     const right = m < 0; // the marker is left: spin harder to push it right

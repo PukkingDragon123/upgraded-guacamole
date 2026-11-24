@@ -24,11 +24,13 @@ import { PlantField, plantCols, headCols } from './plants.js';
 import { DRESS, dressSprite } from './deepdress.js'; // [phase7:env] fine voxel props on the deep ledges
 import {
   layoutZones, zoneAt, metresAt, waterAt, rockAt, deepDark, LIP_H, ZONE_POP, ZONE_RARITY, speciesZones, rgbHex, hex, mixRGB,
+  ZONE_SCARY, isScary, hadalY,
 } from './depthzones.js';
 import { SPECIES } from '../fish/species.js';
 import { Fish } from '../fish/fish.js';
 import { rollIndividual } from '../fish/traits.js';
 import { drawFishRig } from '../gfx/fishrig.js';
+import { DeepScares } from './deepscares.js'; // [deep28] schools, tentacles, ambushes, packs, the big eye
 
 export const DEEP_R = 3;           // hi-res pixels per world px for the deep's near layers (the camera sits at ~3x)
 const CHUNK = 128;                 // wall chunk height (world px)
@@ -157,6 +159,7 @@ export class DeepSea {
     this.vignette = null;
     this.glowSpots = [];
     this.drifts = [];
+    this.scares = new DeepScares(this); // [deep28]
   }
 
   fail(e) {
@@ -823,7 +826,8 @@ export class DeepSea {
     // distant eyes: pairs of glints in the dark that blink, watch the hook and vanish when it comes close
     this.eyeT -= dt;
     // [deep26] more watchers the deeper you go (a lone pair even in the twilight)
-    const maxEyes = deep === 'abyss' ? 6 : deep === 'midnight' ? 3 : deep === 'twilight' ? 1 : 0;
+    const hadal = deep === 'abyss' && cy >= hadalY(L); // [deep28] the hadal band at the bottom: even more watchers
+    const maxEyes = hadal ? 9 : deep === 'abyss' ? 7 : deep === 'midnight' ? 4 : deep === 'twilight' ? 1 : 0;
     if (this.eyeT <= 0) {
       this.eyeT = deep === 'abyss' ? 1.6 + Math.random() * 3 : deep === 'midnight' ? 3.5 + Math.random() * 5 : 9 + Math.random() * 10;
       if (this.eyes.length < maxEyes) {
@@ -920,10 +924,12 @@ export class DeepSea {
         try { S.f.animate?.(dt); } catch { /* rig not ready */ }
       }
       if (S.t > S.dur) this.scare = null;
-    } else if (this.scareT <= 0 && deep === 'abyss' && h?.visible && !busy) {
-      this.scareT = 70 + Math.random() * 80;
-      this.startScare(h, v, reduced);
+    } else if (this.scareT <= 0 && (deep === 'abyss' || deep === 'midnight') && h?.visible && !busy && g.state?.settings?.deepScares !== false) {
+      // [deep28] scares now also in the midnight zone (rarer), the big eye in the abyss and the hadal band
+      this.scareT = deep === 'midnight' ? 110 + Math.random() * 90 : hadal ? 55 + Math.random() * 60 : 70 + Math.random() * 80;
+      this.startScare(h, v, reduced, deep === 'midnight' ? 0 : hadal ? 0.45 : 0.3);
     }
+    try { this.scares.update(dt, v, deep, h, busy, reduced); } catch (e) { this.fail(e); } // [deep28]
   }
 
   giantSpecies() {
@@ -992,8 +998,10 @@ export class DeepSea {
     this.game.audio?.play?.('whale_call', { vol: 0.32, pitch: 0.3, pan: -dir * 0.6 });
   }
 
-  startScare(h, v, reduced) {
+  startScare(h, v, reduced, eyeChance = 0) {
     const g = this.game;
+    // [deep28] the rare big one: a huge eye opening right behind the hook (deepscares.js)
+    if (Math.random() < eyeChance && !this.scares.eye) { this.scares.startEye(h, v, reduced); return; }
     const kind = Math.random() < 0.55 ? 'eyes' : 'lunge';
     const side = h.x > (v.x0 + v.x1) / 2 ? -1 : 1;
     if (kind === 'eyes') {
@@ -1059,6 +1067,8 @@ export class DeepSea {
     }
     if (this.floor && v.y1 > this.floor.oy) for (const l of this.floor.lights) out.lights.push({ x: l.x, y: l.y, r: l.r * 0.7, color: l.color, a: (0.5 + 0.2 * Math.sin(this.t * 1.3 + l.ph)) * (1 - l.z * 0.7) * (l.vent ? 1 : 0.4) });
     if (this.scare?.kind === 'eyes') out.lights.push({ x: this.scare.x, y: this.scare.y, r: 26, color: '#ffe86a', a: 0.35 * this.scareK() });
+    this.scares.addLights(out.lights); // [deep28]
+    this.Lnow = out;
     return out;
   }
 
@@ -1293,6 +1303,7 @@ export class DeepSea {
     // the giant silhouette: composited offscreen with the hook's light pool cut out (it passes behind it)
     const G = this.giant;
     if (G) this.drawGiant(ctx, G, t);
+    this.scares.drawGlow(ctx, v, t, this.game.fishing?.hook); // [deep28] schools, the tentacle, the big eye
     // distant eyes
     for (const e of this.eyes) {
       if (e.a < 0.02 || e.blink > 0) continue;
@@ -1387,6 +1398,7 @@ export class DeepSea {
     const v = env.view, L = this.L, cy = (v.y0 + v.y1) / 2, z = zoneAt(L, cy);
     // the lunging scare passes in front of everything
     if (this.scare?.kind === 'lunge') this.drawCreature(ctx, this.scare.f, 0.96, this.t, this.scare.len);
+    this.scares.drawFront(ctx, v, this.t, this.Lnow); // [deep28] floor ambushes, the Humboldt pack
     if (!z.deep) return;
     // vignette (screen space): the abyss closes in at the edges
     const k = z.id === 'abyss' ? 0.8 : z.id === 'midnight' ? 0.5 : 0.22;
@@ -1478,6 +1490,14 @@ export class ZoneSpawner {
     return speciesZones(sp, id, D?.L);
   }
 
+  // [deep28] 'hadal' while the view looks at the bottom stretch of the abyss (depthzones.hadalY), else the zone id
+  sub() {
+    const z = this.zone(), D = this.deep;
+    if (!z?.deep || z.id !== 'abyss' || !D?.L) return z?.id || null;
+    const v = this.ocean.game.world?.view;
+    return v && (v.y0 + v.y1) / 2 >= hadalY(D.L) ? 'hadal' : 'abyss';
+  }
+
   // zones that actually have species in this ocean (empty zones borrow the nearest shallower one)
   liveZone(zid) {
     const id = this.ocean.biome?.id;
@@ -1500,7 +1520,8 @@ export class ZoneSpawner {
     if (!z) return true;
     const want = this.liveZone(z.id);
     const zs = this.zonesOf(sp);
-    if (!zs.includes(want)) return false;
+    // [deep28] hadal species only below hadalY; abyss species come down into the hadal band too
+    if (!zs.includes(want) && !(want === 'abyss' && zs.includes('hadal') && this.sub() === 'hadal')) return false;
     // crawlers need a floor: the sunlit shelf or the abyss floor
     if ((sp.move?.style === 'crawl' || sp.move?.style === 'hop') && z.deep && z.id !== 'abyss') return false;
     return true;
@@ -1509,16 +1530,20 @@ export class ZoneSpawner {
   rarityMul(sp) {
     const z = this.zone();
     if (!z) return 1;
-    return ZONE_RARITY[z.id]?.[sp.rarity] ?? 1;
+    const k = z.deep ? this.sub() : z.id;
+    // [deep28] the deeper, the more the scary ones turn up
+    return (ZONE_RARITY[k]?.[sp.rarity] ?? 1) * (z.deep && isScary(sp) ? ZONE_SCARY[k] ?? 1 : 1);
   }
 
   popMul() {
     const z = this.zone();
-    return z ? ZONE_POP[z.id] ?? 1 : 1;
+    return z ? ZONE_POP[z.deep ? this.sub() : z.id] ?? 1 : 1;
   }
 
   band(z) {
     const D = this.deep;
+    // [deep28] looking at the hadal band: fish spawn (and stay) down there, where the player looks
+    if (z.id === 'abyss' && this.sub() === 'hadal') return { top: hadalY(D.L) + 8, bot: D.L.bottom - 20 };
     return { top: z.top + 8, bot: z.id === 'abyss' ? D.L.bottom - 20 : z.y1 - 12 };
   }
 

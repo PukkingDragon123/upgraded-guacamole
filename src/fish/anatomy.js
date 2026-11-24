@@ -1373,6 +1373,161 @@ A.tripod = {
   wave: 0.15, stiff: true,
 };
 
+// ---------------------------------------------------------------- [deep28] more deep-sea archetypes
+
+// Hagfish (Myxine / Eptatretus): a pink-grey, jawless eel-shape with no real eyes (pale eyespots), a fringe of
+// barbels round its slit mouth, a low fin fold on the tail and a row of slime pores along each flank.
+A.hagfish = {
+  plan: 'fish',
+  body: { top: [[0, 0.03], [0.04, 0.05], [0.12, 0.056], [0.5, 0.054], [0.8, 0.045], [0.95, 0.03], [1, 0.012]], bot: [[0, -0.01], [0.04, -0.04], [0.12, -0.05], [0.5, -0.05], [0.8, -0.04], [0.95, -0.026], [1, -0.012]], wid: [[0, 0.03], [0.1, 0.05], [0.5, 0.048], [0.85, 0.03], [1, 0.006]], nose: 0.08, xs: 2.2, wy: 0.45 },
+  eye: { u: 0.05, v: 0.72, r: 0.01, iris: '#e8d8dc', pupil: 0.25 },
+  mouth: { u: 0.03, v: 0.32, drop: -0.004, dark: 0.5 },
+  op: null, noGill: true, nostril: false, scales: null,
+  fins: [fin('top', 0.6, 1, 0.022, 'low', 0.2, 24), fin('bot', 0.74, 1, 0.02, 'low', 0.2, 16)],
+  pec: null, pel: null,
+  tail: { type: 'round', len: 0.07, spread: 0.05, rays: 6, thick: 0.004 },
+  barbels: [
+    { u: 0.0, v: 0.62, len: 0.05, ang: 25, curl: 0.3, fwd: true, out: 0.35, col: '#c8a0a8', w: 1 },
+    { u: 0.004, v: 0.36, len: 0.06, ang: -10, curl: 0.2, fwd: true, out: 0.4, col: '#c8a0a8', w: 1 },
+    { u: 0.012, v: 0.08, len: 0.05, ang: -55, curl: 0.3, fwd: true, out: 0.3, col: '#c8a0a8', w: 1 },
+  ],
+  col: { back: '#7a5a68', flank: '#a88894', belly: '#dcc4c8', fin: '#b0909a', vb: 0.6, vbel: 0.32, soft: 0.12 },
+  pat: [{ type: 'photophores', color: '#f4e8ea', size: 0.008, rows: [{ u0: 0.14, u1: 0.92, n: 26, v: 0.2 }] }, { type: 'mottle', tone: -0.06, scale: 12, thresh: 0.55, amt: 1 }],
+  mat: { iri: 0.05, gloss: 0.95, sheen: 1 },
+  wave: 0.95,
+};
+
+// Cusk eel (Abyssobrotula, the deepest fish ever caught, 8370 m): a pale, soft, tapering body edged by one long
+// fin, a big blunt head with small eyes, pelvic fins reduced to two feelers under the chin.
+A.cuskeel = {
+  plan: 'fish',
+  body: { top: [[0, 0.04], [0.05, 0.09], [0.14, 0.105], [0.26, 0.09], [0.5, 0.055], [0.78, 0.026], [1, 0.006]], bot: [[0, -0.01], [0.05, -0.065], [0.14, -0.085], [0.28, -0.07], [0.5, -0.045], [0.78, -0.022], [1, -0.006]], wid: [[0, 0.035], [0.12, 0.065], [0.3, 0.05], [0.7, 0.018], [1, 0.005]], nose: 0.07, xs: 2, wy: 0.45 },
+  eye: { u: 0.065, v: 0.74, r: 0.018, iris: '#5a6a7a', pupil: 0.75, glow: true, glowCol: '#bfe0ff' },
+  mouth: { u: 0.1, v: 0.42, drop: -0.012, dark: 0.6 },
+  op: { u: 0.2, top: 0.85, bot: 0.15, bulge: 0.015, dark: 0.12 },
+  scales: null,
+  fins: [fin('top', 0.28, 1, 0.05, 'low', 0.25, 40, { col: '#c4a49a', edge: '#8a6a62' }), fin('bot', 0.4, 1, 0.045, 'low', 0.25, 34, { col: '#c4a49a', edge: '#8a6a62' })],
+  pec: { u: 0.2, v: 0.45, len: 0.08, w: 0.035, ang: -10, rays: 10 },
+  pel: null,
+  tail: { type: 'pointed', len: 0.07, spread: 0.035, rays: 8, col: '#c4a49a', edge: '#8a6a62' },
+  barbels: [{ u: 0.12, v: 0.0, len: 0.12, ang: -100, curl: 0.4, out: 0.15, col: '#f0e0d8', tip: '#fff4ee' }],
+  col: { back: '#b89a92', flank: '#dcc6be', belly: '#f2e4de', fin: '#d4bcb4', vb: 0.6, vbel: 0.32, soft: 0.15 },
+  pat: [{ type: 'mottle', tone: 0.05, scale: 10, thresh: 0.5, amt: 1 }],
+  mat: { iri: 0.15, gloss: 0.96, sheen: 1, glass: 0.18 },
+  wave: 0.75,
+};
+
+// Pacific blackdragon (Idiacanthus antrostomus, female): a long eel-like body of ultra-black skin that swallows
+// 99.5 % of light, huge glassy fangs, a chin barbel with a glowing pink bulb, rows of tiny violet photophores.
+A.blackdragon = {
+  plan: 'fish',
+  body: { top: [[0, 0.025], [0.04, 0.05], [0.1, 0.056], [0.5, 0.046], [0.85, 0.03], [1, 0.016]], bot: [[0, 0.0], [0.04, -0.036], [0.1, -0.046], [0.5, -0.042], [0.85, -0.026], [1, -0.014]], wid: [[0, 0.018], [0.08, 0.036], [0.4, 0.034], [0.85, 0.02], [1, 0.008]], nose: 0.03, xs: 2, wy: 0.45 },
+  eye: { u: 0.045, v: 0.7, r: 0.012, iris: '#3a2a4a', pupil: 0.7, glow: true, glowCol: '#ff8ad8' },
+  mouth: { u: 0.1, v: 0.5, drop: -0.012, curve: 0.003, dark: 0.9, gapeK: 0.95, rest: 0.34, teeth: { n: 10, len: 0.014, col: '#eef6ff' } },
+  fangs: [{ u: 0.012, len: 0.062, up: 1, lean: -0.45, w: 0.06, out: 0.95 }, { u: 0.04, len: 0.045, up: -1, lean: 0.1, w: 0.07 }, { u: 0.068, len: 0.04, up: 1, lean: -0.3, w: 0.07 }],
+  op: null, noGill: true, scales: null,
+  fins: [fin('top', 0.55, 0.95, 0.03, 'low', 0.3, 30), fin('bot', 0.68, 0.95, 0.028, 'low', 0.3, 20)],
+  pec: null, pel: { u: 0.48, len: 0.03, w: 0.01, ang: -50 },
+  tail: { type: 'fork', len: 0.06, spread: 0.04, fork: 0.3, rays: 10 },
+  barbels: [{ u: 0.06, v: 0.0, len: 0.17, ang: -95, curl: -0.9, out: 0, mid: true, col: '#140e18', tip: '#ff5ab0', glowTip: true, bulb: 0.009 }],
+  col: { back: '#060509', flank: '#0b0910', belly: '#110d16', fin: '#09070d', vb: 0.6, vbel: 0.3 },
+  pat: [{ type: 'photophores', color: '#b07aff', glow: true, size: 0.005, rows: [{ u0: 0.1, u1: 0.95, n: 40, v: 0.14 }, { u0: 0.1, u1: 0.8, n: 30, v: 0.36 }] }],
+  mat: { iri: 0.04, gloss: 0.45, sheen: 0.15 },
+  wave: 0.85, glow: true,
+};
+
+// Longnose lancetfish (Alepisaurus ferox): a long, slim, silvery predator with a huge sail of a dorsal fin along most
+// of its back, big eyes and a mouth full of daggers; famous for stomachs full of whatever it found.
+A.lancetfish = {
+  plan: 'fish',
+  body: { D: 0.085, up: 0.5, at: 0.3, ped: 0.42, tip: 0.0, fore: 1.6, chin: 1.3, back: 0.8, W: 0.034, pw: 0.016, nose: 0.035, xs: 2, wy: 0.45 },
+  eye: { u: 0.068, v: 0.64, r: 0.022, iris: '#c8d8e8', pupil: 0.72, glow: true, glowCol: '#bfe8ff' },
+  mouth: { u: 0.13, v: 0.42, drop: -0.018, curve: 0.004, dark: 0.82, gapeK: 0.85, rest: 0.2, teeth: { n: 9, len: 0.018, col: '#f4f8ff' } },
+  fangs: [{ u: 0.03, len: 0.04, up: 1, lean: -0.3, w: 0.07 }, { u: 0.065, len: 0.036, up: -1, lean: 0.05, w: 0.07 }],
+  op: { u: 0.16, top: 0.84, bot: 0.16, bulge: 0.012, dark: 0.16 },
+  scales: null,
+  fins: [fin('top', 0.12, 0.6, 0.22, 'sail', 0.55, 40, { spiny: true, col: '#1e2c4a', edge: '#5a7ab0' }), fin('top', 0.86, 0.89, 0.025, 'round', 0.3, 1, { adipose: true }), fin('bot', 0.72, 0.84, 0.05, 'tri', 0.4, 12)],
+  pec: { u: 0.17, v: 0.3, len: 0.07, w: 0.018, ang: -15, rays: 10 },
+  pel: { u: 0.48, len: 0.05, w: 0.015, ang: -50 },
+  tail: { type: 'fork', len: 0.14, spread: 0.1, fork: 0.5, rays: 16 },
+  col: { back: '#22304e', flank: '#8aa0b8', belly: '#dce6f0', fin: '#22304e', vb: 0.66, vbel: 0.34 },
+  pat: [{ type: 'mottle', color: '#1a2440', scale: 10, thresh: 0.62, amt: 0.4, vmin: 0.5 }],
+  mat: { iri: 0.55, gloss: 0.94, chrome: 0.32 },
+  wave: 0.6,
+};
+
+// Sabertooth fish (Coccorella / Evermannella): a stubby dark fish with tubular eyes staring up and two huge curved
+// tusks rising from the lower jaw past its snout.
+A.sabertooth = {
+  plan: 'fish',
+  body: { D: 0.24, up: 0.52, at: 0.3, ped: 0.28, tip: -0.01, fore: 1.5, chin: 1.5, back: 0.9, W: 0.075, nose: 0.04, xs: 2, wy: 0.45 },
+  eye: { u: 0.12, v: 0.84, r: 0.04, tube: true, lens: '#8affd0', tubeCol: '#16141a' },
+  mouth: { u: 0.2, v: 0.55, drop: -0.03, curve: 0.005, dark: 0.85, gapeK: 0.9, rest: 0.28, teeth: { n: 8, len: 0.026, col: '#f4f6ff' } },
+  fangs: [{ u: 0.025, len: 0.2, up: 1, lean: -0.35, w: 0.09, out: 0.95 }, { u: 0.08, len: 0.08, up: -1, lean: 0.1, w: 0.08 }, { u: 0.13, len: 0.06, up: 1, lean: -0.2, w: 0.08 }],
+  op: { u: 0.26, top: 0.86, bot: 0.14, bulge: 0.02, dark: 0.18 },
+  scales: null,
+  fins: [fin('top', 0.45, 0.58, 0.09, 'tri', 0.4, 9), fin('top', 0.82, 0.86, 0.03, 'round', 0.3, 1, { adipose: true }), fin('bot', 0.62, 0.84, 0.06, 'low', 0.4, 16)],
+  pec: { u: 0.3, v: 0.3, len: 0.1, w: 0.03, ang: -12, rays: 10 },
+  pel: { u: 0.48, len: 0.07, w: 0.02, ang: -50 },
+  tail: { type: 'fork', len: 0.18, spread: 0.12, fork: 0.35, rays: 14 },
+  col: { back: '#1a1418', flank: '#2c2028', belly: '#4a3a46', fin: '#221a20', vb: 0.6, vbel: 0.3 },
+  pat: [{ type: 'speckle', tone: 0.14, density: 0.07 }],
+  mat: { iri: 0.25, gloss: 0.86 },
+  wave: 0.45, glow: true,
+};
+
+// Deep-sea lizardfish (Bathysaurus ferox): a pale, flat-headed ambush predator that lies on the abyssal plain propped
+// on its fins, a crocodile mouth lined with rows of needle teeth, big eyes with a golden eyeshine.
+A.lizardfish = {
+  plan: 'fish',
+  body: { top: [[0, 0.02], [0.04, 0.034], [0.14, 0.048], [0.26, 0.062], [0.45, 0.068], [0.7, 0.05], [0.9, 0.032], [1, 0.026]], bot: [[0, -0.004], [0.04, -0.02], [0.14, -0.034], [0.3, -0.05], [0.5, -0.05], [0.75, -0.04], [1, -0.026]], wid: [[0, 0.03], [0.08, 0.055], [0.2, 0.068], [0.45, 0.056], [0.8, 0.03], [1, 0.012]], nose: 0.05, xs: 2, wy: 0.4 },
+  eye: { u: 0.1, v: 0.86, r: 0.02, iris: '#e8d090', pupil: 0.66, glow: true, glowCol: '#ffe8a0' },
+  mouth: { u: 0.19, v: 0.5, drop: -0.006, curve: 0.004, dark: 0.85, gapeK: 0.8, rest: 0.32, teeth: { n: 16, len: 0.03, col: '#f8f4ec', out: 1.04 } },
+  fangs: [{ u: 0.02, len: 0.04, up: 1, lean: -0.2 }, { u: 0.06, len: 0.035, up: -1 }, { u: 0.1, len: 0.035, up: 1 }, { u: 0.14, len: 0.03, up: -1 }],
+  op: { u: 0.22, top: 0.8, bot: 0.2, bulge: 0.015, dark: 0.15 },
+  scales: { size: 0.02, k: 0.06 },
+  fins: [fin('top', 0.42, 0.55, 0.08, 'tri', 0.4, 12), fin('top', 0.8, 0.84, 0.025, 'round', 0.3, 1, { adipose: true }), fin('bot', 0.68, 0.82, 0.05, 'tri', 0.4, 10)],
+  pec: { u: 0.25, v: 0.3, len: 0.1, w: 0.03, ang: -20, rays: 12 },
+  pel: { u: 0.42, len: 0.09, w: 0.03, ang: -70, spread: 20 },
+  tail: { type: 'fork', len: 0.14, spread: 0.09, fork: 0.3, rays: 14 },
+  col: { back: '#625a52', flank: '#9a9284', belly: '#dcd6c8', fin: '#7a7266', vb: 0.66, vbel: 0.3 },
+  pat: [{ type: 'mottle', color: '#3e3832', scale: 9, thresh: 0.56, amt: 0.6, vmin: 0.45 }],
+  mat: { iri: 0.15, gloss: 0.85 },
+  wave: 0.45,
+};
+
+// Lasiognathus: an angler that fishes with an actual rod and line: a long illicium, a thin line hanging from its tip
+// and a glowing bait with three bony HOOKS; its upper jaw juts past the lower one, lined with long teeth.
+A.lasiognathus = {
+  ...A.angler,
+  body: { top: [[0, 0.1], [0.05, 0.2], [0.16, 0.28], [0.36, 0.3], [0.6, 0.24], [0.82, 0.11], [1, 0.04]], bot: [[0, 0.04], [0.04, -0.1], [0.16, -0.22], [0.36, -0.26], [0.62, -0.19], [0.84, -0.09], [1, -0.04]], W: 0.2, pw: 0.04, nose: 0.05, xs: 2.2, wy: 0.45 },
+  eye: { u: 0.18, v: 0.82, r: 0.02, iris: '#4a5a7a', pupil: 0.6, glow: true, glowCol: '#9ad8ff' },
+  mouth: { u: 0.3, v: 0.62, drop: -0.16, curve: -0.02, dark: 0.85, gapeK: 0.55, rest: 0.4, teeth: { n: 14, len: 0.07, col: '#eaf4ff', out: 1.04 } },
+  lure: { u: 0.12, len: 0.5, ang: 112, curve: 2.4, bulb: 0.03, col: '#bffff0', rod: '#3a2830', drop: 0.32, hooks: 3, filaments: 3 },
+  col: { back: '#1e1218', flank: '#2c1c24', belly: '#3a2830', fin: '#24161c', vb: 0.6, vbel: 0.3 },
+  pat: [{ type: 'speckle', tone: 0.12, density: 0.06 }],
+};
+
+// The Hadal Matriarch: a giant female deep-sea angler after Ceratias holboelli (the largest anglerfish, over a metre)
+// and the triplewart seadevil: an oval velvet-black body, a short stout rod with a big glowing bait, three glowing
+// caruncles (warts) on her back, prickly skin, and two tiny dwarf males fused to her belly for life.
+A.matriarch = {
+  ...A.angler,
+  body: { top: [[0, 0.12], [0.05, 0.21], [0.18, 0.28], [0.4, 0.29], [0.62, 0.22], [0.84, 0.1], [1, 0.04]], bot: [[0, 0.0], [0.04, -0.12], [0.18, -0.22], [0.42, -0.25], [0.66, -0.19], [0.86, -0.08], [1, -0.04]], W: 0.2, pw: 0.04, nose: 0.05, xs: 2.2, wy: 0.45 },
+  eye: { u: 0.17, v: 0.82, r: 0.015, iris: '#6a7a9a', pupil: 0.6, glow: true, glowCol: '#9ad8ff' },
+  mouth: { u: 0.3, v: 0.74, drop: -0.18, curve: -0.025, dark: 0.9, gapeK: 0.55, rest: 0.45, teeth: { n: 16, len: 0.06, col: '#e8f4ff', out: 1.03 } },
+  fangs: [{ u: 0.03, len: 0.1, up: 1, lean: -0.3 }, { u: 0.08, len: 0.09, up: -1, lean: -0.25 }, { u: 0.14, len: 0.08, up: 1, lean: -0.2 }, { u: 0.2, len: 0.07, up: -1, lean: -0.2 }],
+  lure: { u: 0.1, len: 0.2, ang: 95, curve: 1.1, bulb: 0.05, col: '#bff8ff', rod: '#2a2026', filaments: 7 },
+  bumps: [{ u: 0.6, r: 0.03 }, { u: 0.67, r: 0.026 }, { u: 0.74, r: 0.022 }],
+  bumpCol: '#9affff',
+  males: [{ u: 0.52, len: 0.15, col: '#8a7270' }, { u: 0.36, len: 0.12, z: -1, col: '#7a6464' }],
+  spines: { len: 0.012, gap: 0.07, col: '#3a2a30', always: 1 },
+  fins: [fin('top', 0.78, 0.88, 0.08, 'round', 0.4, 8), fin('bot', 0.76, 0.88, 0.08, 'round', 0.4, 7)],
+  col: { back: '#100a0e', flank: '#1c1218', belly: '#2a1c22', fin: '#160e12', vb: 0.6, vbel: 0.3 },
+  pat: [{ type: 'speckle', tone: 0.1, density: 0.05 }],
+  mat: { iri: 0.08, gloss: 0.55, sheen: 0.4 },
+};
+
 export const ARCH = A;
 
 // ---------------------------------------------------------------- per-species anatomy
@@ -1523,6 +1678,25 @@ SPEC_IN.cockeye = solid('cockeye', { back: '#c8203a', flank: '#de3a50', belly: '
 SPEC_IN.yeticrab = solid('crab', { back: '#f2ead8', flank: '#f6f0e2', belly: '#fbf8ee', leg: '#f0e6d2', claw: '#f4ecdc', tip: '#d8c8a8', eye: '#c8b8a0' }, { setae: '#ecd49a', claw: 1.45, legLen: 0.5, wide: 0.4, depth: 0.42, stalk: 0.5, eyeR: 0.02, teeth: 2 });
 SPEC_IN.giantisopod = solid('isopod', { back: '#d8ccc0', flank: '#bcaea6', belly: '#efe6de', eye: '#1a1418' }, { eyeR: 1.6, eyeshine: '#ffd86a', voxK: 1.3 });
 
+// [deep28] more deep-sea arrivals (src/fish/species-deep28.js)
+S('hagfish', 'hagfish');
+S('cuskeel', 'cuskeel');
+S('blackdragon', 'blackdragon');
+S('lancetfish', 'lancetfish');
+S('sabertooth', 'sabertooth');
+S('lizardfish', 'lizardfish');
+S('lasiognathus', 'lasiognathus');
+S('matriarch', 'matriarch');
+const teuthid = (col, o) => solid('teuthid', col, { chunk: 1.15, ...o });
+SPEC_IN.giantsquid = teuthid({ back: '#a83a34', flank: '#c8584a', belly: '#e8a490', fin: '#9a3430', eye: '#5a7a9a' }, { mantleL: 0.44, mantleR: 0.085, taper: 0.6, fin: 'diamond', finL: 0.26, finW: 0.1, headR: 0.06, eyeR: 0.048, shine: '#e8f0ff', armLen: 0.3, armR: 0.022, tentLen: 1.05, clubR: 0.024, speckle: '#7a1e1c', yawBase: 16 });
+SPEC_IN.colossal = teuthid({ back: '#b8443a', flank: '#d86a5a', belly: '#f0b8a8', fin: '#a83c34', eye: '#6a8a5a' }, { mantleL: 0.42, mantleR: 0.13, mantleW: 1.05, taper: 0.45, fin: 'broad', finL: 0.42, finW: 0.16, headR: 0.085, eyeR: 0.055, shine: '#c8e8ff', armLen: 0.32, armR: 0.032, tentLen: 0.62, clubR: 0.03, hooks: true, speckle: '#8a2a24', sucker: '#f8e4d8', yawBase: 18 });
+SPEC_IN.humboldt = teuthid({ back: '#c81e2a', flank: '#e8424a', belly: '#f8b0a8', fin: '#b81a26', eye: '#1a1418' }, { mantleL: 0.5, mantleR: 0.1, taper: 0.6, fin: 'diamond', finL: 0.34, finW: 0.12, headR: 0.07, eyeR: 0.034, shine: '#ffe8d0', armLen: 0.3, armR: 0.026, tentLen: 0.55, speckle: '#fff0ea', glow: false, yawBase: 18 });
+SPEC_IN.fireflysquid = teuthid({ back: '#5a3a8a', flank: '#7a5aa8', belly: '#c8b8e8', fin: '#4a2e78', eye: '#1a1830' }, { mantleL: 0.48, mantleR: 0.11, taper: 0.55, fin: 'diamond', finL: 0.3, finW: 0.12, headR: 0.08, eyeR: 0.04, shine: '#7ac8ff', armLen: 0.32, armR: 0.024, tentLen: 0.42, photo: { col: '#4ab8ff', n: 34, size: 0.016 }, glow: true, yawBase: 18 });
+SPEC_IN.dana = teuthid({ back: '#8a2a3a', flank: '#a8404e', belly: '#e0a0a8', fin: '#7a2232', eye: '#1a1418' }, { mantleL: 0.42, mantleR: 0.12, taper: 0.55, fin: 'diamond', finL: 0.5, finW: 0.17, headR: 0.08, eyeR: 0.042, shine: '#ffe8a0', armLen: 0.4, armR: 0.034, tentLen: 0, armSpread: 0.55, armLights: '#fff2a0', armCurl: 0.8, glow: true, yawBase: 18 });
+SPEC_IN.seapig = solid('seapig', { back: '#f0a8b8', flank: '#f6c0cc', belly: '#fcdce2', fin: '#f8d0d8', gut: '#b05060' }, { chunk: 1.2 });
+SPEC_IN.atolla = solid('atolla', { back: '#7a0814', flank: '#c01828', belly: '#ff7a88' }, { chunk: 1.3, alarm: '#4ab0ff', glow: true });
+SPEC_IN.bobbit = solid('bobbit', { back: '#4a2a6a', flank: '#a07a2a', belly: '#d8b880', sand: '#4a3e36' }, { chunk: 1.2, bristle: '#e8603a', shine: '#ffd86a' });
+
 // eels (chain creatures): a realistic head model; the body segments follow the game's path
 const eelHead = (o) => ({
   base: 'perch', chainHead: true, L: o.L ?? 22,
@@ -1545,7 +1719,7 @@ export const SPEC = SPEC_IN;
 // Fallback for looks without an explicit spec: pick an archetype from the look's kind / shape and keep its
 // colours (natural-ised a little).
 const SHAPE_BASE = { oval: 'perch', torpedo: 'salmon', round: 'puffer', disc: 'butterfly', long: 'salmon', box: 'boxfish', blunt: 'grouper', pointy: 'snapper' };
-const SOLID_KIND = { crab: 'crab', jelly: 'jelly', pudding: 'jelly', octopus: 'octopus', squid: 'squid', star: 'star', isopod: 'isopod', seahorse: 'seahorse', chomper: 'chomper', bigfin: 'bigfin', telescope: 'telescope', cockeye: 'cockeye' };
+const SOLID_KIND = { crab: 'crab', jelly: 'jelly', pudding: 'jelly', octopus: 'octopus', squid: 'squid', star: 'star', isopod: 'isopod', seahorse: 'seahorse', chomper: 'chomper', bigfin: 'bigfin', telescope: 'telescope', cockeye: 'cockeye', teuthid: 'teuthid', seapig: 'seapig', atolla: 'atolla', bobbit: 'bobbit' };
 const FISH_KIND = { ray: 'manta', blob: 'blobfish', iconfish: 'boxfish' };
 function autoReal(look, kind) {
   const col = look.col || look.chain?.col || {};

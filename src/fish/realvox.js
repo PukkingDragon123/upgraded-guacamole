@@ -2103,6 +2103,314 @@ SOLIDS.cockeye = (S, L, ph) => {
   return { sol, anchors: { mouth: [L * 0.55, -L * 0.05, 0], top: [0, L * 0.25, 0], bottom: [0, -L * 0.22, 0], tail: [-L * 0.46, 0, 0] }, eyes: eyes.slice(0, 1), yawBase: 18 };
 };
 
+// ===================================================================== [deep28] more deep-sea creatures
+
+// Teuthids (true squids): one builder for the giant, colossal, Humboldt, firefly and Dana octopus squids. A long
+// mantle pointing back with fins at its tip (S.fin: 'diamond' | 'broad' | 'round'), a head with big natural eyes
+// (eyeshine), eight arms with a row of suckers along their inner edge (S.hooks: hooked suckers), two long feeding
+// tentacles with clubs (S.tentLen, 0 = none), optional photophore studs (S.photo) and chromatophore speckles
+// (S.speckle), and Dana's lemon-sized light organs on two arm tips (S.armLights) that blink open across the frames.
+SOLIDS.teuthid = (S, L, ph) => {
+  const sol = new Solid();
+  const C = S.col;
+  const o3 = [0, 0, 0];
+  const body = hexRGB(C.back), side = hexRGB(C.flank), under = hexRGB(C.belly), finC = hexRGB(C.fin || C.back);
+  const spk = S.speckle ? hexRGB(S.speckle) : null;
+  const suck = hexRGB(S.sucker || '#f4e2d8'), hookC = hexRGB('#1e1210');
+  const P2 = TAU * ph;
+  const pulse = Math.sin(P2);
+  const mL = L * (S.mantleL ?? 0.46), mR = L * (S.mantleR ?? 0.1) * (1 + 0.04 * pulse), mW = mR * (S.mantleW ?? 1);
+  const hr = L * (S.headR ?? 0.07), hx = L * 0.04;
+  const xm = -L * 0.02 - mL * 0.5;
+  const skinO = (q, x, y, z) => {
+    mix3(o3, under, side, smoothstep(-0.8, -0.1, q[1])); mix3(o3, o3, body, smoothstep(0.1, 0.8, q[1]));
+    const g1 = grain(x, y, z, L / 75, 11);
+    if (spk && g1 > 0.8) mix3(o3, o3, spk, 0.7);
+    else tone3(o3, (g1 - 0.5) * 0.12 + (grain(x, y, z, L / 32, 7) > 0.88 ? -0.12 : 0));
+    return o3;
+  };
+  const skin = (q, x, y, z) => packRGB(skinO(q, x, y, z));
+  // mantle: a long cone narrowing to the tail, a darker collar at the head
+  sol.ell([xm, 0, 0], [mL * 0.55, mR, mW], {
+    col: (q, x, y, z) => { skinO(q, x, y, z); if (q[0] > 0.88) tone3(o3, -0.18); return packRGB(o3); },
+    warp: (q) => { const k = 1 - (S.taper ?? 0.55) * Math.max(0, -q[0]) ** 1.3; return [q[0], q[1] * k, q[2] * k]; },
+  });
+  // fins at the mantle tip, rowing
+  const fL = mL * (S.finL ?? 0.3), fW = L * (S.finW ?? 0.11), xt = xm - mL * 0.55;
+  for (const sd of [1, -1]) {
+    const a = 0.62 + 0.3 * Math.sin(P2 + 0.6);
+    const dir = vnorm(0, Math.sin(a), sd * Math.cos(a));
+    const nrm = vnorm(0, -sd * Math.cos(a), Math.sin(a));
+    const fx = xt + fL * (S.fin === 'broad' ? 0.62 : 0.5);
+    const root = [fx, mR * 0.2, sd * mW * 0.2];
+    sol.ell(add3(root, dir, fW * 0.5), [fL * 0.55, fW * 0.62, L * 0.012], {
+      axes: [[1, 0, 0], dir, nrm], sq: S.fin === 'round' ? null : [1.7, 1.7],
+      col: (q, x, y, z) => packRGB(tone3(mix3(o3, finC, body, 0.3 + 0.3 * Math.max(0, q[1])), (grain(x, y, z, L / 60, 6) - 0.5) * 0.1 + (Math.hypot(q[0], q[1]) > 0.86 ? -0.12 : 0))),
+    });
+  }
+  // head
+  sol.ell([hx, 0, 0], [hr * 1.1, hr * 0.92, hr * 0.95], { col: skin });
+  // photophore studs (firefly squid: all over; others: a few)
+  if (S.photo) {
+    const pc = S.photo.col || '#5ab8ff', n = S.photo.n ?? 24, ps = L * (S.photo.size ?? 0.012);
+    for (let k = 0; k < n; k++) {
+      const u = hash2(k, 1, 61), a = (hash2(k, 2, 62) - 0.5) * Math.PI * 1.5;
+      const x = xt + mL * 0.12 + u * (hx - xt);
+      const onHead = x > -L * 0.03;
+      const kk = onHead ? 1 : 1 - (S.taper ?? 0.55) * Math.max(0, (xm - x) / (mL * 0.55)) ** 1.3;
+      const ry = onHead ? hr * 0.92 : mR * kk * Math.sqrt(Math.max(0, 1 - ((x - xm) / (mL * 0.55)) ** 2));
+      const rz = onHead ? hr * 0.95 : mW * kk * Math.sqrt(Math.max(0, 1 - ((x - xm) / (mL * 0.55)) ** 2));
+      if (ry < ps) continue;
+      sol.ell([x, Math.sin(a) * ry * 0.96, Math.cos(a) * rz * 0.96], [ps, ps, ps], { col: P(pc), glow: true });
+    }
+  }
+  // eyes: big natural eyes with eyeshine
+  const eyes = [];
+  const er = L * (S.eyeR ?? 0.035);
+  for (const sd of [1, -1]) {
+    const e = [hx + hr * 0.15, hr * 0.22, sd * hr * 0.78];
+    natEye(sol, e, er, [0.35, 0.12, sd * 0.93], C.eye || '#1a1418', { pupil: 0.66, shine: S.shine || null });
+    if (S.eyeRing) sol.ell(add3(e, [0, 0, sd * er * 0.2]), [er * 1.25, er * 1.25, er * 0.5], { col: P(S.eyeRing), glow: !!S.eyeRingGlow, under: true });
+    if (sd > 0) eyes.push([...e, er]);
+  }
+  // arms: eight, flaring then gathering, suckers (or hooks) along the inner / lower edge
+  const bx = hx + hr * 0.85, aL = L * (S.armLen ?? 0.3), r0 = hr * 0.5;
+  const armCol = (q, x, y, z) => {
+    const t = q[2];
+    const nS = S.hooks ? 22 : 16;
+    if (q[3] < -0.3 && t > 0.08 && ((t * nS) % 1) < 0.42) return packRGB(S.hooks && t > 0.45 && Math.floor(t * nS) % 2 ? hookC : suck);
+    mix3(o3, side, body, 0.4 + 0.4 * Math.max(0, q[3]));
+    tone3(o3, (grain(x, y, z, L / 70, 9) - 0.5) * 0.1 + (t > 0.85 ? 0.06 : 0));
+    if (spk && grain(x, y, z, L / 80, 13) > 0.84) mix3(o3, o3, spk, 0.6);
+    return packRGB(o3);
+  };
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TAU + 0.39;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const pts = [];
+    const n = 7;
+    for (let k = 0; k <= n; k++) {
+      const t = k / n;
+      // a loose crown: the arms fan out from the head, then their tips curl back in
+      const fan = aL * (S.armSpread ?? 0.42) * t * (1 - 0.45 * t);
+      const rr = r0 * (1 + 0.6 * t) + fan;
+      const sway = Math.sin(P2 - t * 3 + i * 0.8) * L * 0.04 * t;
+      const curl = (S.armCurl ?? 0.5) * t * t * L * 0.06;
+      pts.push([bx + aL * t * (1 - 0.12 * t) - curl * 0.4, ca * rr + sway - curl * 0.5 * ca - L * 0.03 * t * t, sa * rr * 0.85 + Math.cos(P2 - t * 2 + i) * L * 0.012 * t]);
+    }
+    sol.tube(pts, (t) => L * (S.armR ?? 0.022) * (1 - 0.72 * t) + L * 0.004, { col: armCol });
+    // Dana octopus squid: lemon-sized light organs on the tips of the second arm pair, the black lid blinking open
+    if (S.armLights && (i === 1 || i === 6)) {
+      const tip = pts[n];
+      const lo = L * 0.03;
+      const lit = Math.sin(P2 * 2 + i) > -0.2;
+      sol.ell(tip, [lo * 1.25, lo, lo], { col: P(lit ? S.armLights : '#3a3424'), glow: lit });
+      sol.ell(add3(tip, [0, lo * (lit ? 0.75 : 0.25), 0]), [lo * 1.3, lo * 0.62, lo * 1.05], { col: P('#141014'), cut: { y0: 0 } });
+    }
+  }
+  // the two long feeding tentacles with clubs
+  const tL = L * (S.tentLen ?? 0.6);
+  if (tL > 0) {
+    for (const sd of [1, -1]) {
+      const pts = [];
+      const n = 10;
+      for (let k = 0; k <= n; k++) {
+        const t = k / n;
+        pts.push([bx + tL * t, -hr * 0.35 - L * 0.09 * t + Math.sin(P2 - t * 3.4 + sd) * L * 0.05 * t * t + sd * L * 0.025 * t, sd * L * 0.02 * (1 + t * 1.5) + Math.cos(P2 - t * 2.6 + sd) * L * 0.02 * t]);
+      }
+      sol.tube(pts, (t) => L * (t > 0.74 ? (S.clubR ?? 0.016) * Math.sin(Math.PI * Math.min(1, (t - 0.7) / 0.32)) + 0.009 : 0.0095), { col: (q, x, y, z) => (q[2] > 0.78 && q[3] < -0.1 && ((q[2] * 40) % 1) < 0.5 ? packRGB(S.hooks && ((q[2] * 20) % 1) < 0.5 ? hookC : suck) : packRGB(tone3([...side], 0.06 + (grain(x, y, z, L / 70, 3) - 0.5) * 0.1))) });
+      // colossal squid: swivelling hooks on the clubs (sharp dark claws)
+      if (S.hooks) for (let k = 0; k < 4; k++) {
+        const t = 0.8 + k * 0.05, p = pts[Math.round(t * n)] || pts[n];
+        sol.cap(p, add3(p, [-L * 0.012, -L * 0.03, sd * L * 0.008]), L * 0.007, L * 0.002, { col: packRGB(hookC) });
+      }
+    }
+  }
+  return { sol, anchors: { mouth: [bx + L * 0.02, 0, 0], top: [xm, mR * 1.05, 0], bottom: [xm, -mR * 1.05, 0], tail: [xt, 0, 0] }, eyes, yawBase: S.yawBase ?? 18 };
+};
+
+// Sea pig (Scotoplanes): a plump, see-through pink sea cucumber that walks the abyssal mud on six pairs of
+// inflated tube feet, two pairs of long papillae waving on its back like antennae, a ring of stubby feeding
+// tentacles shovelling mud at the front. No eyes, no worries.
+SOLIDS.seapig = (S, L, ph) => {
+  const sol = new Solid();
+  const C = S.col;
+  const o3 = [0, 0, 0];
+  const body = hexRGB(C.back), side = hexRGB(C.flank), under = hexRGB(C.belly), gut = hexRGB(C.gut || '#a84a5a');
+  const P2 = TAU * ph;
+  const bob = Math.sin(P2 * 2) * L * 0.006;
+  const cy = L * 0.17 + bob;
+  const skin = (q, x, y, z) => {
+    mix3(o3, under, side, smoothstep(-0.7, 0, q[1])); mix3(o3, o3, body, smoothstep(0.2, 0.9, q[1]));
+    const g = grain(x, y, z, L / 60, 5);
+    tone3(o3, (g - 0.5) * 0.08 + (grain(x, y, z, L / 24, 9) > 0.9 ? 0.12 : 0));
+    // little dark pores and the gut's blush showing through the jelly skin
+    if (grain(x, y, z, L / 34, 21) > 0.9) mix3(o3, o3, gut, 0.45);
+    if (q[1] < 0.1 && q[1] > -0.5) mix3(o3, o3, gut, 0.1);
+    return packRGB(o3);
+  };
+  // the body: a fat sausage, the front end a little higher and rounder
+  sol.ell([0, cy + L * 0.03, 0], [L * 0.4, L * 0.17, L * 0.17], { col: skin, warp: (q) => [q[0], q[1] * (1 + 0.18 * q[0]) + 0.1 * Math.max(0, q[0]) ** 2, q[2] * (1 + 0.1 * q[0])] });
+  // six pairs of plump tube feet stepping (front-back wave)
+  const legC = mix3([0, 0, 0], side, under, 0.4);
+  for (let k = 0; k < 6; k++) {
+    const x = -L * 0.28 + k * L * 0.105;
+    for (const sd of [1, -1]) {
+      const ph2 = P2 + k * 1.05 + (sd > 0 ? 0 : Math.PI);
+      const step = Math.sin(ph2) * L * 0.022, lift = Math.max(0, Math.cos(ph2)) * L * 0.014;
+      sol.ell([x + step, lift + L * 0.04, sd * L * 0.12], [L * 0.036, L * 0.05, L * 0.036], { col: (q) => packRGB(tone3([...legC], q[1] < -0.6 ? 0.14 : q[0] > 0.5 ? 0.06 : -0.03)) });
+    }
+  }
+  // papillae: two pairs of long, thin feelers waving on the back of the head
+  for (let k = 0; k < 2; k++) {
+    for (const sd of [1, -1]) {
+      const base = [L * (0.27 - k * 0.15), cy + L * (0.18 - k * 0.02), sd * L * 0.07];
+      const pts = [base];
+      const len = L * (k ? 0.16 : 0.22);
+      for (let j = 1; j <= 5; j++) {
+        const t = j / 5;
+        pts.push(add3(base, [len * ((k ? 0.15 : 0.45) * t + 0.14 * Math.sin(P2 + k + sd) * t), len * t * (1 - 0.2 * t), sd * len * 0.45 * t]));
+      }
+      sol.tube(pts, (t) => L * (0.014 * (1 - 0.6 * t) + 0.004), { col: (q) => packRGB(tone3([...body], 0.05 + 0.15 * q[2])) });
+    }
+  }
+  // the feeding tentacles: a ring of stubby fingers at the front, under the chin
+  const fc = [L * 0.42, cy - L * 0.02, 0];
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * TAU;
+    const d = vnorm(0.6, -0.55 + 0.35 * Math.cos(a), 0.6 * Math.sin(a));
+    const wig = Math.sin(P2 * 2 + i) * 0.15;
+    const tip = add3(fc, add3(d, [0, wig, 0]), L * 0.075);
+    sol.cap(add3(fc, d, L * 0.01), tip, L * 0.018, L * 0.014, { col: P(C.fin || '#f8d0d8') });
+    sol.ell(tip, [L * 0.02, L * 0.02, L * 0.02], { col: packRGB(tone3(hexRGB(C.fin || '#f8d0d8'), -0.12)) });
+  }
+  return { sol, anchors: { mouth: [L * 0.44, cy - L * 0.06, 0], top: [0, cy + L * 0.17, 0], bottom: [0, 0, 0], tail: [-L * 0.42, cy, 0] }, eyes: [], yawBase: 24, glassAlpha: 0.6 };
+};
+
+// Atolla jellyfish (Atolla wyvillei): a deep-red crown jelly, a flat disc with a deep groove around its central
+// dome, a ring of thick pedalia, short stiff tentacles and one long trailing tentacle. Its 'burglar alarm': a ring of
+// blue lights that chase round the rim (the lit arc turns with the swim frames) to call in a bigger predator.
+SOLIDS.atolla = (S, L, ph) => {
+  const sol = new Solid();
+  const C = S.col;
+  const o3 = [0, 0, 0];
+  const dark = hexRGB(C.back), red = hexRGB(C.flank), pale = hexRGB(C.belly), blue = S.alarm || '#4ab0ff';
+  const P2 = TAU * ph;
+  const pulse = Math.sin(P2);
+  const R = L * 0.44 * (1 + 0.04 * pulse), Hb = L * 0.13 * (1 - 0.08 * pulse), top = L * 0.18;
+  // outer disc
+  sol.ell([0, top, 0], [R, Hb, R], {
+    role: R_GLASS, cut: { y0: -0.1 },
+    col: (q) => {
+      const rr = Math.hypot(q[0], q[2]);
+      mix3(o3, red, dark, smoothstep(0.2, 0.9, q[1]));
+      if (rr > 0.5 && rr < 0.6) tone3(o3, -0.3); // the coronal groove
+      return packRGB(tone3(o3, rr > 0.9 ? -0.08 : 0));
+    },
+  });
+  // the central dome
+  sol.ell([0, top + Hb * 0.35, 0], [R * 0.5, Hb * 1.05, R * 0.5], { col: (q, x, y, z) => packRGB(tone3(mix3(o3, red, dark, smoothstep(-0.2, 0.8, q[1])), (grain(x, y, z, L / 50, 3) - 0.5) * 0.08 + (q[1] > 0.7 ? 0.08 : 0))) });
+  // pedalia: thick radial blocks round the rim
+  const np = 20;
+  for (let i = 0; i < np; i++) {
+    const a = (i / np) * TAU;
+    const rd = [Math.cos(a), 0, Math.sin(a)];
+    sol.ell([rd[0] * R * 0.78, top + Hb * 0.15, rd[2] * R * 0.78], [R * 0.15, Hb * 0.42, R * 0.07], { axes: [rd, [0, 1, 0], vnorm(-rd[2], 0, rd[0])], col: (q) => packRGB(tone3([...red], 0.1 * q[1] - 0.04)) });
+  }
+  // the alarm lights: a ring of photophores; the lit arc chases round with the frames
+  const nl = 16;
+  for (let i = 0; i < nl; i++) {
+    const a = (i / nl) * TAU + 0.2;
+    const k = (((i / nl) - ph) % 1 + 1) % 1;
+    const on = k < 0.32;
+    sol.ell([Math.cos(a) * R * 0.97, top - Hb * 0.1, Math.sin(a) * R * 0.97], [L * 0.017, L * 0.017, L * 0.017], { col: P(on ? blue : '#1a2a6a'), glow: on });
+  }
+  // short stiff marginal tentacles
+  for (let i = 0; i < 20; i++) {
+    const a = (i / 20) * TAU + 0.15;
+    const rd = [Math.cos(a), 0, Math.sin(a)];
+    const base = [rd[0] * R * 0.95, top - Hb * 0.25, rd[2] * R * 0.95];
+    const tip = add3(base, vnorm(rd[0] * 0.5, -1, rd[2] * 0.5), L * (0.16 + 0.05 * hash2(i, 1, 4)) * (1 + 0.1 * Math.sin(P2 + i)));
+    sol.cap(base, tip, L * 0.009, L * 0.004, { col: packRGB(tone3([...red], 0.05)) });
+  }
+  // the one long hypertrophied tentacle, trailing and curling
+  const pts = [];
+  const nk = 12;
+  for (let k = 0; k <= nk; k++) {
+    const t = k / nk;
+    pts.push([R * 0.9 * Math.cos(2.4) - L * 0.25 * t + Math.sin(P2 - t * 4) * L * 0.08 * t, top - Hb * 0.3 - L * 1.0 * t, R * 0.9 * Math.sin(2.4) + Math.cos(P2 - t * 3) * L * 0.06 * t]);
+  }
+  sol.tube(pts, (t) => L * 0.012 * (1 - 0.5 * t), { role: R_GLASS, col: (q) => packRGB(tone3(mix3(o3, red, pale, q[2] * 0.6), ((q[2] * 18) % 1) < 0.3 ? 0.12 : 0)) });
+  const bot = top - Hb * 0.3 - L;
+  return { sol, anchors: { mouth: [0, top - Hb * 0.3, 0], top: [0, top + Hb * 1.4, 0], bottom: [0, bot, 0], tail: [0, bot, 0] }, eyes: [], yawBase: 0, glassAlpha: 0.72 };
+};
+
+// Bobbit worm (Eunice aphroditois): an iridescent, banded worm hiding in the floor, only its front end raised in an
+// S, five banded antennae fanned out and two pairs of scissor jaws that snap open and shut across the frames.
+SOLIDS.bobbit = (S, L, ph) => {
+  const sol = new Solid();
+  const C = S.col;
+  const o3 = [0, 0, 0];
+  const a1 = hexRGB(C.back), a2 = hexRGB(C.flank), belly = hexRGB(C.belly), sand = hexRGB(C.sand || '#5a4c40');
+  const P2 = TAU * ph;
+  const sway = Math.sin(P2) * 0.18;
+  const Hh = L * 0.62;
+  // the burrow: a low sediment mound
+  sol.ell([0, 0, 0], [L * 0.24, L * 0.05, L * 0.2], { cut: { y0: 0 }, col: (q, x, y, z) => packRGB(tone3([...sand], (grain(x, y, z, L / 40, 2) - 0.5) * 0.2 + (Math.hypot(q[0], q[2]) < 0.3 ? -0.3 : 0))) });
+  // the body: an S-curve rising out of the mud
+  const pts = [];
+  const n = 12;
+  for (let k = 0; k <= n; k++) {
+    const t = k / n;
+    pts.push([Math.sin(t * Math.PI * 1.25 + sway) * L * 0.09 * (0.3 + t) + t * L * 0.05, -L * 0.03 + t * Hh, Math.cos(t * 4 + P2) * L * 0.015 * t]);
+  }
+  const rad = (t) => L * 0.046 * (1 - 0.2 * t) + L * 0.006;
+  sol.tube(pts, rad, {
+    col: (q, x, y, z) => {
+      const s = q[2] * 34, band = (s % 1) < 0.18;
+      mix3(o3, a1, a2, 0.5 + 0.5 * Math.sin(q[2] * 9 + q[3] * 2));
+      if (q[3] < -0.5) mix3(o3, o3, belly, 0.5);
+      tone3(o3, band ? -0.32 : 0.06 * q[3]);
+      return packRGB(o3);
+    },
+  });
+  // parapodia: tiny red bristle tufts along both sides
+  for (let k = 2; k < n - 1; k++) {
+    const p = pts[k];
+    for (const sd of [1, -1]) sol.cap(p, add3(p, [0, -L * 0.006, sd * L * 0.07]), L * 0.01, L * 0.003, { col: P(S.bristle || '#e05a3a') });
+  }
+  // the head, looking forward and a little down
+  const hp = pts[n];
+  const hc = add3(hp, [L * 0.05, L * 0.012, 0]);
+  sol.ell(hc, [L * 0.075, L * 0.05, L * 0.058], { col: (q, x, y, z) => packRGB(tone3(mix3(o3, a2, a1, 0.5 + 0.5 * q[1]), (grain(x, y, z, L / 60, 4) - 0.5) * 0.12)) });
+  // five banded antennae fanned up and forward
+  for (let i = 0; i < 5; i++) {
+    const f = (i - 2) / 2;
+    const base = add3(hc, [L * 0.01, L * 0.04, f * L * 0.03]);
+    const tip = add3(base, vnorm(0.45 + 0.15 * Math.abs(f), 1, f * 0.6), L * (0.13 - 0.02 * Math.abs(f)) * (1 + 0.08 * Math.sin(P2 + i)));
+    sol.cap(base, tip, L * 0.008, L * 0.004, { col: (q) => packRGB(((q[0] * 5) % 1) < 0.5 ? [240, 236, 226] : [60, 40, 36]) });
+  }
+  // two pairs of scissor jaws (mandibles) snapping open and shut
+  const open = 0.5 + 0.5 * Math.sin(P2);
+  const jc = hexRGB('#1a1410'), jt = hexRGB('#e8d8a8');
+  for (const up of [1, -1]) {
+    for (const sd of [1, -1]) {
+      const ang = up * (0.15 + 0.55 * open);
+      const base = add3(hc, [L * 0.06, up * L * 0.012, sd * L * 0.02]);
+      const mid = add3(base, [L * 0.05 * Math.cos(ang), L * 0.05 * Math.sin(ang), sd * L * 0.008]);
+      const tip = add3(mid, [L * 0.04 * Math.cos(ang - up * 1.4), L * 0.04 * Math.sin(ang - up * 1.4), -sd * L * 0.006]);
+      sol.tube([base, mid, tip], (t) => L * 0.012 * (1 - 0.75 * t), { col: (q) => packRGB(q[2] > 0.75 ? jt : jc) });
+    }
+  }
+  const eyes = [];
+  for (const sd of [1, -1]) {
+    const e = add3(hc, [L * 0.03, L * 0.03, sd * L * 0.045]);
+    natEye(sol, e, L * 0.012, [0.5, 0.4, sd * 0.8], '#2a1a10', { pupil: 0.8, catchlight: false, shine: S.shine || null });
+    if (sd > 0) eyes.push([...e, L * 0.012]);
+  }
+  return { sol, anchors: { mouth: [hc[0] + L * 0.12, hc[1], 0], top: [hc[0], hc[1] + L * 0.16, 0], bottom: [0, 0, 0], tail: [0, 0, 0] }, eyes, yawBase: 22 };
+};
+
 // Starfish: five tapering arms around a central disc, a pebbly texture, tube feet stepping underneath.
 // Built in the side map plane and rolled so its back faces the camera.
 SOLIDS.star = (S, L, ph) => {

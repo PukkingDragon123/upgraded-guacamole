@@ -14,7 +14,7 @@ import { todWeights } from './scenery.js'; // [phase7:env]
 import { installZoomSky } from './zoomsky.js';
 import { installWater } from './watersheet.js'; // [phase5:water] simulated surface + water sheet
 import { installDeep, ZoneSpawner } from './deepsea.js'; // [phase6:oceans] depth zones under every ocean
-import { ZONE_IDS } from './depthzones.js';
+import { ZONE_IDS, hadalY } from './depthzones.js';
 import { Voyage } from './voyage.js'; // [travel17] the cinematic ocean-to-ocean voyage
 
 export class Ocean {
@@ -204,6 +204,12 @@ export class Ocean {
         if ((deeper || now - (this.cardAt || 0) > 4000) && !g.fishing?.fighting && !this.titleCard) { this.zoneCard = { t: 0, id: z.id, name: z.name, m: z.depthM }; this.cardAt = now; }
       } else g.emit?.('depthZone', { id: z.id, name: z.name, depthM: z.depthM, prev: null });
     } else { this.zoneNow.depthM = z.depthM; this.zoneNow.y = z.y; }
+    // [deep28] the Hadal Zone (the bottom stretch of the abyss): its own 3D card on the way down
+    const had = z.id === 'abyss' && z.y >= hadalY(D.L);
+    if (had !== !!this.hadalNow) {
+      this.hadalNow = had;
+      if (had && !g.fishing?.fighting && !this.titleCard) { this.zoneCard = { t: 0, id: 'hadal', name: 'Hadal Zone', m: z.depthM }; this.cardAt = performance.now(); g.emit?.('hadalZone', { depthM: z.depthM }); }
+    }
     const cz = this.camZone();
     const amb = cz && (cz.id === 'midnight' || cz.id === 'abyss') && cz.deep ? 'deep' : 'home';
     if (amb !== this.ambNow) {
@@ -530,7 +536,7 @@ export class Ocean {
     const a = Math.min(1, c.t * 2.5, (D - c.t) * 1.4);
     const col = (ZONE_COLORS[c.id] || ZONE_COLORS.sunlit)[2];
     const y = Math.round(this.H * 0.24 - (1 - Math.min(1, c.t * 2.5)) * 8);
-    const sh = c.id === 'abyss' ? Math.round(Math.sin(c.t * 40) * Math.max(0, 0.5 - c.t) * 4) : 0;
+    const sh = c.id === 'abyss' || c.id === 'hadal' ? Math.round(Math.sin(c.t * 40) * Math.max(0, 0.5 - c.t) * 4) : 0;
     ctx.save();
     ctx.globalAlpha = Math.max(0, a);
     // [polish17] the zone name is a 3D voxel word (no flat 2D text pop-ups), the depth a small 3D tag under it
@@ -563,12 +569,13 @@ export class Ocean {
 }
 
 // [phase6:oceans] depth meter colours per zone: [top, bottom, accent]
-const ZONE_POP = { sunlit: 'sky', twilight: 'white', midnight: 'white', abyss: 'coral' }; // [polish17] 3D zone card palettes
+const ZONE_POP = { sunlit: 'sky', twilight: 'white', midnight: 'white', abyss: 'coral', hadal: 'coral' }; // [polish17] 3D zone card palettes
 const ZONE_COLORS = {
   sunlit: ['#8ae8ff', '#1e8ad8', '#bff6ff'],
   twilight: ['#4a5ac0', '#2a2470', '#c8b8ff'],
   midnight: ['#18145a', '#07071e', '#8aa8ff'],
   abyss: ['#06050c', '#000000', '#ff6a5a'],
+  hadal: ['#020104', '#000000', '#ff3a4a'], // [deep28]
 };
 void ZONE_IDS;
 

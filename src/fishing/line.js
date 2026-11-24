@@ -10,12 +10,14 @@
 //   TACKLE_LINE {tackleId: add} Workshop line spools
 //   lineReachOf(rod, stats, tackle[]) -> reach (rod base + Lab `lineReach` + tackle), clamped 1..4
 //   reachY(L, reach) -> world y of the deepest point the hook may reach in a depthzones.js layout (Infinity without one)
-//   lineLabel(reach) -> 'Sunlit' | 'Twilight' | 'Midnight' | 'Abyss' | 'Abyss floor' (the deepest zone it gets into)
+//   lineLabel(reach) -> 'Sunlit' | 'Twilight' | 'Midnight' | 'Abyss' | 'Hadal' | 'Abyss floor' (the deepest zone it gets into)
 //   lineInfo(reach) -> {label, zone, pct}  (pct = how far into that zone)
 
 export const LINE_ZONES = ['sunlit', 'twilight', 'midnight', 'abyss'];
 export const LINE_ZONE_NAMES = ['Sunlit', 'Twilight', 'Midnight', 'Abyss'];
 export const LINE_MAX = 4;
+// [deep28] the Hadal Zone starts this far down (depthzones.js HADAL_K of the abyss zone)
+export const HADAL_REACH = 3.7;
 // The starter Twig & String reaches the Sunlit Zone and the rocky lip below it; each rod tier spools a little more.
 export const LINE_BASE = 1.1;
 export const LINE_PER_TIER = 0.07;
@@ -52,6 +54,7 @@ export function reachY(L, reach) {
 export function lineInfo(reach) {
   const r = Math.max(1, Math.min(LINE_MAX, Number(reach) || 1));
   if (r >= LINE_MAX - 0.01) return { label: 'Abyss floor', zone: 'abyss', pct: 100 };
+  if (r >= HADAL_REACH) return { label: 'Hadal', zone: 'abyss', pct: Math.round(Math.min(1, r - 3) * 100) };
   // the deepest zone the line gets at least 15 % into (the twig's peek over the rocky lip still says Sunlit)
   const i = Math.max(0, Math.min(3, Math.floor(r - 0.15)));
   const pct = i === 0 ? 100 : Math.round(Math.min(1, r - i) * 100);

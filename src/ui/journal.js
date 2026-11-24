@@ -466,7 +466,7 @@ export class JournalPanel {
     const act = ACTIVITY[sp.activity] || ACTIVITY.any;
     const dep = sp.move?.depth ? (sp.move.depth[0] + sp.move.depth[1]) / 2 : 0.5;
     let depthTxt = sp.move?.style === 'crawl' ? 'Seabed' : dep < 0.3 ? 'Surface' : dep < 0.62 ? 'Mid-water' : 'Deep';
-    if (sp.zone) depthTxt = { twilight: 'Twilight', midnight: 'Midnight', abyss: 'Abyss' }[[].concat(sp.zone).slice(-1)[0]] || depthTxt; // [deep26] deep-zone species
+    if (sp.zone) depthTxt = { twilight: 'Twilight', midnight: 'Midnight', abyss: 'Abyss', hadal: 'Hadal' }[[].concat(sp.zone).slice(-1)[0]] || depthTxt; // [deep26] deep-zone species ([deep28] hadal)
     const half = Math.floor((w - 4) / 2);
     const CH = CHIP_H();
     chip(ctx, x, y, half, 'map', k === 'unknown' ? '???' : depthTxt);
@@ -571,7 +571,7 @@ function hintFor(sp) {
   else if (s.time === 'day') bits.push('daylight');
   if (s.requires === 'golden') bits.push('Golden Bait');
   else if (s.requires) bits.push('special bait');
-  if (sp.zone) bits.unshift({ twilight: 'Twilight Zone', midnight: 'Midnight Zone', abyss: 'The Abyss' }[[].concat(sp.zone)[0]] || ''); // [deep26]
+  if (sp.zone) bits.unshift({ twilight: 'Twilight Zone', midnight: 'Midnight Zone', abyss: 'The Abyss', hadal: 'Hadal Zone' }[[].concat(sp.zone)[0]] || ''); // [deep26]
   return `${B?.name || 'Somewhere'}${bits.length ? ' - ' + bits.filter(Boolean).join(', ') : ''}`;
 }
 

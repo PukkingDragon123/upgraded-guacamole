@@ -19,15 +19,31 @@
 import { clamp, clamp01, lerp } from '../core/math.js';
 
 export const ZONE_IDS = ['sunlit', 'twilight', 'midnight', 'abyss'];
-export const ZONE_NAMES = { sunlit: 'Sunlit Zone', twilight: 'Twilight Zone', midnight: 'Midnight Zone', abyss: 'The Abyss' };
-export const ZONE_POP = { sunlit: 1, twilight: 0.75, midnight: 0.55, abyss: 0.4 };
+export const ZONE_NAMES = { sunlit: 'Sunlit Zone', twilight: 'Twilight Zone', midnight: 'Midnight Zone', abyss: 'The Abyss', hadal: 'Hadal Zone' };
+// [deep28] the deep is busier now (more, scarier fish), the Hadal band at the bottom of the abyss too
+export const ZONE_POP = { sunlit: 1, twilight: 0.8, midnight: 0.66, abyss: 0.52, hadal: 0.5 };
 // rarity weight multipliers per zone: the deep favours the rare
 export const ZONE_RARITY = {
   sunlit: { common: 1, uncommon: 1, rare: 1, epic: 1, legendary: 1 },
   twilight: { common: 0.7, uncommon: 1.1, rare: 1.6, epic: 1.6, legendary: 1.2 },
   midnight: { common: 0.45, uncommon: 0.9, rare: 1.9, epic: 2.4, legendary: 1.8 },
   abyss: { common: 0.25, uncommon: 0.6, rare: 1.8, epic: 3, legendary: 3.5 },
+  hadal: { common: 0.2, uncommon: 0.5, rare: 2.2, epic: 3.4, legendary: 4.5 },
 };
+// [deep28] scary species (sp.scary, or deep predators with a lunge / lure) are favoured the deeper you go
+export const ZONE_SCARY = { sunlit: 1, twilight: 1.2, midnight: 1.6, abyss: 1.9, hadal: 2.2 };
+export const isScary = (sp) => sp.scary ?? !!(sp.quirks?.includes?.('lunge') || (sp.zone && sp.quirks?.includes?.('lure')));
+
+// [deep28] The Hadal Zone: not a zone of its own in the layout but the bottom stretch of the abyss zone (from HADAL_K of
+// the way down to the floor), where only a maxed-out line reaches (line.js HADAL_REACH). Species with zone 'hadal'
+// live only there; abyss species come down too. hadalY(L) -> world y where it starts; inHadal(L, y).
+export const HADAL_K = 0.7;
+export function hadalY(L) {
+  const z = L?.zones?.[L.zones.length - 1];
+  if (!z || z.id !== 'abyss') return Infinity;
+  return z.y0 + (z.y1 - z.y0) * HADAL_K;
+}
+export const inHadal = (L, y) => y >= hadalY(L);
 
 // Per ocean: metres at the zone boundaries [sunlit top, twilight, midnight, abyss, bottom], deep zone heights in world
 // px (twilight, midnight, abyss incl. the floor), and colours: water (top, bottom) per deep zone, rock (lit tone) per

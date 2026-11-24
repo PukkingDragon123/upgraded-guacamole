@@ -858,7 +858,7 @@ mimics" and "make your strings have max length too, need to upgrade".
   `traits.valueMultiplier`. `lunge` behaviour = burst at the hook with jaw snaps; lures blink faster near the hook.
   Deep ambience (`src/world/deepsea.js`, `depthzones.js`): darker zones, more watching eyes, passing silhouettes,
   pitched-down sample rumbles, bioluminescent plankton wake behind the hook. Reaching deep zones needs line upgrades
-  ([crate26]).
+  ([crate26]). [deep28] adds 16 more species, the Hadal Zone, ambushes / packs / the big eye and fight twists.
 
 ## Performance pass [perf27]
 - Profiling: `PW_PATH=/opt/node-tools/node_modules/playwright node tools/perf.mjs [--secs 6] [--only ocean,lab] [--profile]
@@ -893,3 +893,55 @@ mimics" and "make your strings have max length too, need to upgrade".
   ocean twice: ~0.5 s less to the first frame).
 - Bounded caches: colour / ramp / pack caches keyed by blended colours and the glow / bubble sprite caches now evict
   their oldest entries past a cap.
+
+## More deep-sea species, the Hadal Zone, scares and fight twists [deep28]
+User direction: "deeper zones have more scary fishes too, add more deep sea fish".
+- Species (`src/fish/species-deep28.js`, joined after the GROW pass like [deep26]): giant squid (legendary), colossal
+  squid (legendary, fjord), Humboldt squid, firefly squid (schools), Dana octopus squid, sea pig, Atolla jelly, bobbit
+  worm, hagfish, cusk eel, Pacific blackdragon, longnose lancetfish, sabertooth fish, deep-sea lizardfish,
+  Lasiognathus and the Hadal Matriarch (legendary trophy after Ceratias holboelli / the triplewart seadevil). Fields as
+  [deep26] plus `fight.twist` and `scary` (default true; the sea pig and firefly squid are false).
+  `valueMul` hadal = 1.8. Anatomy: fish plans `A.hagfish, cuskeel, blackdragon, lancetfish, sabertooth, lizardfish,
+  lasiognathus, matriarch` (anatomy.js) and realvox SOLIDS `teuthid` (one squid builder: mantle + fins
+  diamond / broad / round, big eyes with eyeshine, a fanned crown of eight arms with sucker rows (`hooks` for the
+  colossal), clubbed tentacles (`tentLen`), photophore studs (`photo`), chromatophore speckles, Dana's blinking
+  arm-tip light organs (`armLights`)), `seapig`, `atolla` (its blue alarm lights chase round the rim across the swim
+  frames) and `bobbit` (rising from a sediment mound, scissor jaws snapping across the frames). lowpolyfish.js adds
+  `lure.drop` (a line hanging from the rod tip) + `lure.hooks` (J hooks under the bait), `S.bumps` (glowing caruncles
+  on the back, `S.bumpCol`) and `S.males` (dwarf males fused to the belly). Looks reuse `kind` squid / jelly / crab so
+  the tank sim and the rig treat them like their relatives.
+- The Hadal Zone (`depthzones.js`): not a layout zone but the bottom stretch of the abyss zone, from `HADAL_K` (0.7)
+  of the way down to the floor (`hadalY(L)`, `inHadal`). Line reach `HADAL_REACH` 3.7 (line.js; `lineInfo` says
+  'Hadal'), so it needs a maxed-out line (Abyss Spool or a Titan spool on a high-tier rod). Species with
+  `zone: ['hadal']` only spawn there (cusk eel, matriarch); abyss species come down too. `ZoneSpawner.sub()` reports
+  'hadal' while the view looks below hadalY; `band()` then spawns and keeps fish in the hadal band. Ocean.updateZone
+  shows a 3D 'HADAL ZONE' card (emits 'hadalZone'); the FishDex shows 'Hadal'.
+- More, scarier fish: `ZONE_POP` twilight 0.8, midnight 0.66, abyss 0.52, hadal 0.5 (was 0.75 / 0.55 / 0.4);
+  `ZONE_RARITY.hadal`; `ZONE_SCARY` (midnight 1.6, abyss 1.9, hadal 2.2) multiplies the spawn weight of scary species
+  (`isScary`: `sp.scary`, else a lunge or a zone + lure) in `rarityMul`. More watching eyes (abyss 7, hadal 9).
+- Ambience and scares (`src/world/deepscares.js`, `DeepSea.scares`; capped, objects reused, creatures built through
+  `DeepSea.makeCreature` and kept warm with `warmUp` so their voxel sheets build ahead): glowing schools (two flocks
+  of up to 16 tiny fish: photophore rows or pairs of eyeshine) and a giant squid tentacle drifting across the far
+  dark (a voxel silhouette with a cold rim and suckers, kept out of the hook's light pool) in the glow pass; after the
+  lighting pass, lit through `Ocean.lightAt`: floor ambushes (the hook near the abyss floor: a bobbit worm rears out of
+  the floor beside the hook to its height and snaps, clipped at the floor line, or a lizardfish darts up through the
+  hook and back) and a Humboldt pack (4-6 squid racing past the hook, flickering red, with red lights). The big eye:
+  `DeepSea.startScare` picks it (abyss 30 %, hadal 45 %; scares now also in the midnight zone, rarer): a 184x102 px
+  voxel eye (2 px blocks, cached once: eyeball, three slit pupils, eight lid steps that dither out into the dark)
+  opens right behind the hook, the pupil tightens and tracks the hook, blinks once, closes and fades (4.4 s).
+  Settings > Deep scares (`state.settings.deepScares`, default on) turns off the jump scares (eyes, lunges, the big
+  eye), ambushes and packs; schools, tentacles, giants and distant eyes stay. Calm softens the shakes.
+- Fight twists (`src/fishing/deeptwist.js`, `makeTwist(B)` in the Battle constructor; never for bosses, crates or the
+  lesson): `fight.twist` or `TWIST_OF` for older deep fish. Battle reads `grip` (multiplies the spin), `reactK`,
+  `springK`, `twistPull`, `twistAmp`, `twistSpeed`, `twistJit`, `teleK`, `lungeDurK`, `zoneW` (from `zoneW0`) and calls
+  `twist.update / onLunge / onHit / onHookset`; meter.js `drawTwist` draws the overlays and a 3D voxel word. slime
+  (hagfish: a slime cloud at the hook set, a slippery marker, slime bursts weaken the grip, drips on the pin), blink
+  (firefly squid, cockeye, vampire squid: the zone goes dark with blue sparkles), frenzy (Humboldt: rapid lunges with
+  short warnings, the marker flashes red), wrap (giant / colossal / bigfin squid: voxel tentacles creep in and squeeze
+  the zone to 60 %, a GOOD / CRITICAL shock breaks free), dazzle (Dana squid, matriarch, anglers: lights build, a white
+  flash, then the reel barely bites), ambush (bobbit, lizardfish, frilled and goblin sharks: a lunge right at the
+  start, quicker lunges), alarm (atolla: red / blue lamps blink at the meter ends while the pull goes wild), waddle
+  (sea pig: a steppy comic pull), vanta (blackdragon, dragonfish: the marker turns ultra-black, only a pink chin light
+  shows), thrash (lancetfish: big jitter), bite (sabertooth, viperfish, loosejaw, fangtooth: each lunge takes 2.5 %
+  off the catch bar), reverse (Lasiognathus: it reels YOU in for 1.5 s, stop spinning), dive (cusk eel, sixgill: a
+  long heavy pull). Timed twists wait for shock beats and stuns.

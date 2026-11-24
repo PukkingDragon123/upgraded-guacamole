@@ -238,7 +238,7 @@ with a minigame.
   - **Sunken Metropolis**
   - **Lava Rift**
   - **The Deep Ocean**
-- **128 realistic voxel fish** plus dolphins, whales, orcas, seals and turtles in high-resolution voxel art, with
+- **144 realistic voxel fish** plus dolphins, whales, orcas, seals and turtles in high-resolution voxel art, with
   natural eyes, glossy shine and see-through fins. Their names are internet and meme
   puns:
   - Wi-Fish
@@ -256,9 +256,17 @@ with a minigame.
   - the Wakka Fish is a retro chomper that runs a grid eating pellets
   - the Flopikarp evolves in your tank
 
-  The deep zones (twilight, midnight, abyss) under every ocean hold 17 creepier deep-sea species based on
+  The deep zones (twilight, midnight, abyss) under every ocean hold 33 creepier deep-sea species based on
   real animals, such as the Needle Drop Viperfish, Sleep Paralysis Seadevil, Goblin Mode Shark, Lore Accurate
-  Frilled Shark and the trophy Backrooms Bigfin Squid. Their lures and eyes glow, and they snap at your hook.
+  Frilled Shark, the Release-the-Kraken Giant Squid, the Hooked On You Colossal Squid, the Slime Season Hagfish,
+  the Uno Reverse Anglerfish (it fishes with a line and hooks) and the trophy Backrooms Bigfin Squid. Their lures
+  and eyes glow, and they snap at your hook. The deeper you go, the more of the scary ones turn up. At the very
+  bottom of the abyss, only a maxed-out line reaches the Hadal Zone, home of the Rock Bottom Cusk Eel and the
+  Mother of All Anglers. Deep fish fight with their own twist: hagfish slime makes your grip slippery, firefly
+  squid blink the zone dark, Humboldt squid lunge again and again, and giant squid wrap your zone tight.
+  Down there you may meet glowing schools, a passing giant tentacle, a bobbit worm striking from the floor, a
+  Humboldt pack flashing past, or a huge eye opening right behind your hook (Settings > Deep scares turns the
+  jump scares off).
 
   Fish also come with mutations, shinies and giants.
 - **You are a bubble person**, with 140 cosmetics and a glossy wardrobe.

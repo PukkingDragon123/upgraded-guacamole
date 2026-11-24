@@ -17,6 +17,7 @@
 import { EXTRA_SPECIES } from './species-extra.js';
 import { OSCEAN_SPECIES } from './species-oscean.js';
 import { DEEP_SPECIES } from './species-deep.js'; // [deep26]
+import { DEEP28_SPECIES } from './species-deep28.js'; // [deep28]
 import { SPEC as REAL_SPEC } from './anatomy.js';
 
 const S = [];
@@ -2282,7 +2283,7 @@ for (const sp of S) if (SPEC_EXTRA[sp.id]) Object.assign(sp, SPEC_EXTRA[sp.id]);
 
 // The newer oceans (Frosty Fjord, Lava Rift, Sunken Metropolis) and the (OS)cean arrivals ship at final
 // size, so they join after the GROW pass above.
-for (const sp of [...EXTRA_SPECIES, ...OSCEAN_SPECIES, ...DEEP_SPECIES]) {
+for (const sp of [...EXTRA_SPECIES, ...OSCEAN_SPECIES, ...DEEP_SPECIES, ...DEEP28_SPECIES]) {
   if (S.some((o) => o.id === sp.id)) continue;
   S.push(sp);
 }

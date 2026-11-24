@@ -25,6 +25,7 @@ import { TAU, clamp, clamp01, lerp, dist, damp } from '../core/math.js';
 import { rng } from '../core/rng.js';
 import { RPM_UNIT } from './gear.js';
 import { BossFight } from './boss.js';
+import { makeTwist } from './deeptwist.js'; // [deep28] deep-sea fight personalities
 
 export const TRICK_TITLES = { lunge: 'LUNGE!', dash: 'DASH!', run: 'RUN!' };
 
@@ -170,6 +171,8 @@ export class Battle {
     this.phases = []; this.pi = 0; this.events = [];
     this.boss = f.boss ? new BossFight(this, f.boss) : null;
     if (this.boss) { this.secs = 38 * (f.boss.hp || 1) * (1 + (f.boss.tier - 1) * 0.04) / reelStat; this.progress = 0; this.ghost = 0; this.zoneW = clamp(this.zoneW * 1.15, 0.16, 0.42); }
+    // [deep28] a deep fish's fight personality (never for bosses, crates or the lesson)
+    try { this.twist = makeTwist(this); } catch (e) { this.twist = null; console.warn('twist', e); }
   }
 
   get phase() { return this; }
@@ -234,9 +237,10 @@ export class Battle {
       this.modeT -= F.rdt;
       this.thrash(dt, 3);
       this.marker = damp(this.marker, -0.2, 3, dt);
-      if (this.modeT <= 0) this.mode = 'fight';
+      if (this.modeT <= 0) { this.mode = 'fight'; this.twist?.onHookset?.(); }
       return 'ok';
     }
+    this.twist?.update(dt); // [deep28]
     this.updatePull(dt);
     this.updateShock(dt);
     this.updateMarker(dt);
@@ -249,7 +253,8 @@ export class Battle {
   // The fish's pull (spin units): a slow wander, a little jitter, telegraphed lunges, the boss's phase on top.
   updatePull(dt) {
     const F = this.F, f = this.fish, B = this.boss?.mods?.() || null;
-    const speed = this.pullSpeed * (B?.speed ?? 1), amp = this.pullAmp * (B?.amp ?? 1) + (B?.ampAdd ?? 0), jitA = this.jitAmp + (B?.jit ?? 0);
+    const tw = this.twist ? this : null; // [deep28] twist modifiers (deeptwist.js)
+    const speed = this.pullSpeed * (B?.speed ?? 1) * (tw?.twistSpeed ?? 1), amp = (this.pullAmp * (B?.amp ?? 1) + (B?.ampAdd ?? 0)) * (tw?.twistAmp ?? 1), jitA = this.jitAmp + (B?.jit ?? 0) + (tw?.twistJit ?? 0);
     this.pt += dt * speed;
     const p = this.ph, t = this.pt;
     const wave = Math.sin(t + p[0]) * 0.6 + Math.sin(t * 2.3 + p[1]) * 0.3 + Math.sin(t * 4.1 + p[2]) * 0.1;
@@ -261,7 +266,7 @@ export class Battle {
     this.lungeCool -= dt;
     if (!this.lunge && !this.beat && !this.stunned && rate > 0 && this.lungeCool <= 0 && rng.chance(dt * rate * 1.6)) {
       const dir = this.marker > 0.25 ? 1 : this.marker < -0.25 ? -1 : rng.sign(); // shoves you further the way you lean
-      this.lunge = { stage: 'tele', t: 0, tele: PACE.tele[this.pi4] * (B?.tele ?? 1) * this.teleMul, dir, dur: 0.7 + this.power * 0.3, k: 0 };
+      this.lunge = { stage: 'tele', t: 0, tele: PACE.tele[this.pi4] * (B?.tele ?? 1) * this.teleMul * (tw?.teleK ?? 1), dir, dur: (0.7 + this.power * 0.3) * (tw?.lungeDurK ?? 1), k: 0 };
       f.say('!!', this.lunge.tele); f.feel('angry', 1.2);
       F.sfx('grunt', { vol: 0.4, pitch: 1.1 });
       F.onLungeWarn?.(this.lunge);
@@ -270,22 +275,22 @@ export class Battle {
     const L = this.lunge;
     if (L) {
       L.t += dt;
-      if (L.stage === 'tele' && L.t >= L.tele) { L.stage = 'go'; L.t = 0; F.onLunge?.(L); }
+      if (L.stage === 'tele' && L.t >= L.tele) { L.stage = 'go'; L.t = 0; F.onLunge?.(L); this.twist?.onLunge(L); }
       else if (L.stage === 'go') {
         L.k = Math.sin(clamp01(L.t / L.dur) * Math.PI);
         lungeN = -L.dir * (0.55 + this.power * 0.2) * L.k;
         if (L.t >= L.dur) { this.lunge = null; this.lungeCool = rng.float(2.2, 4); }
       }
     }
-    this.need = this.pullBase + (B?.base ?? 0) + amp * wave + this.jit + lungeN;
+    this.need = this.pullBase + (B?.base ?? 0) + amp * wave + this.jit + lungeN + (tw?.twistPull ?? 0);
   }
 
   updateMarker(dt) {
     let vt;
     if (this.stunned) vt = -this.marker * 3.2; // stunned: no pull, the marker floats home
     else if (this.beat) vt = 0; // the beat: everything holds still
-    else vt = (this.spin - this.need) * GAIN - this.marker * this.spring;
-    this.mv = damp(this.mv, vt, this.beat ? 9 : this.react, dt);
+    else vt = (this.spin * (this.grip ?? 1) - this.need) * GAIN - this.marker * this.spring * (this.springK ?? 1);
+    this.mv = damp(this.mv, vt, this.beat ? 9 : this.react * (this.reactK ?? 1), dt);
     this.marker = clamp(this.marker + this.mv * dt, -1, 1);
     if ((this.marker <= -1 && this.mv < 0) || (this.marker >= 1 && this.mv > 0)) this.mv = 0;
     const was = this.inZone;
@@ -429,6 +434,7 @@ export class Battle {
     f.feel('dizzy', this.stunT + 0.5);
     f.squashV += crit ? 16 : 8; f.wiggle = 1;
     this.boss?.onShock?.(grade);
+    this.twist?.onHit(grade); // [deep28]
     if (LP) LP.hit = true;
     F.onShockHit?.(grade, dmg, chain, weak);
     F.onStun?.(grade);
