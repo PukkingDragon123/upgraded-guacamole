@@ -8,6 +8,11 @@
 // and checks: every gate names a real node / quest, no gating quest is an order, milestone or online-only story, the graph
 // has no cycle, every node and quest is reachable from a fresh save (ignoring prices), and every gating quest opens no
 // later than the node is needed (a main quest asking for it) or, for optional nodes, one chapter after its price tier.
+// [hot26] Hotbar unlocks (src/game/hotbar.js): every locked hotbar button is a graph key b:<id> (its prop is always
+// buildable in the tank). Lab nodes and research / tank / boat goals need b:lab, sailing (visit / dest / Workshop rods)
+// needs b:map, chests b:inventory, the Wardrobe b:wardrobe, online goals b:multiplayer; {t: 'hotbar', id} needs b:<id>.
+// Each unlock prop must exist as tank decor, and a main quest that needs a locked button must come no later than a main
+// quest asking to build it (same active window or earlier), so the story always guides the build first.
 // Exits 1 on any failure. Prints the gate table and the ocean expeditions.
 
 // ---- a tiny DOM stub so the data modules (which pull in art code) import under node
@@ -37,6 +42,8 @@ const quiet = process.argv.includes('--quiet');
 const LAB = await import('../src/game/lab.js');
 const Q = await import('../src/game/quests.js');
 const BOSS = await import('../src/fish/bosses.js');
+const HOT = await import('../src/game/hotbar.js'); // [hot26]
+const { PROPS } = await import('../src/gfx/props.js');
 
 const errors = [], warns = [];
 const err = (s) => errors.push(s), warn = (s) => warns.push(s);
@@ -61,11 +68,35 @@ const objNeeds = (o) => {
     default: return [];
   }
 };
+// [hot26] the hotbar buttons an objective needs (keys b:<id>, only those that start locked)
+const HOT_LOCKED = new Set(Object.keys(HOT.HOTBAR_UNLOCKS));
+const btnNeeds = (o) => {
+  const ids = [];
+  switch (o.t) {
+    case 'hotbar': ids.push(o.id); break;
+    case 'research': case 'tank': case 'boat': case 'labDone': ids.push('lab'); break;
+    case 'visit': if (o.biome && o.biome !== 'oscean') ids.push('map'); break;
+    case 'dest': case 'craftRod': case 'rodUp': case 'tackle': ids.push('map'); break;
+    case 'chest': ids.push('inventory'); break;
+    case 'dress': ids.push('wardrobe'); break;
+    case 'online': ids.push('multiplayer'); break;
+    case 'depth': return o.alt ? btnNeeds(o.alt) : [];
+    default: break;
+  }
+  return ids.filter((id) => HOT_LOCKED.has(id)).map((id) => 'b:' + id);
+};
+for (const id of HOT_LOCKED) need('b:' + id);
+for (const [id, u] of Object.entries(HOT.HOTBAR_UNLOCKS)) {
+  if (!PROPS[u.prop]?.decor) err(`hotbar ${id}: unlock prop ${u.prop} is not tank decor`);
+  if (!(u.price > 0)) err(`hotbar ${id}: no unlock price`);
+  if (HOT.HOTBAR_START.includes(id)) err(`hotbar ${id}: both a start button and an unlock`);
+}
 for (const nd of LAB_NODES) {
   if (nd.id === ROOT_ID) continue;
   const k = 'n:' + nd.id;
   need(k);
   for (const r of nd.req) need(k, 'n:' + r);
+  if (HOT_LOCKED.has('lab')) need(k, 'b:lab'); // [hot26] research happens in The Lab
   if (nd.qgate) need(k, 'q:' + nd.qgate);
   if (nd.gate?.boss) { const b = BOSS.BOSS_BY_ID[nd.gate.boss]; if (b?.quest) need(k, 'q:' + b.quest); }
 }
@@ -76,14 +107,14 @@ CHAPTERS.forEach((c, ci) => {
     need(k);
     for (const e of earlier) need(k, e);
     for (let j = 0; j <= i - ACTIVE; j++) need(k, 'q:' + c.quests[j].id); // must be in the active window to complete
-    for (const o of q.objectives) for (const d of objNeeds(o)) need(k, d);
+    for (const o of q.objectives) for (const d of [...objNeeds(o), ...btnNeeds(o)]) need(k, d); // [hot26] + buttons
   });
   for (const q of c.side) {
     const k = 'q:' + q.id;
     need(k);
     for (const e of earlier) need(k, e);
     if (q.after) need(k, 'q:' + q.after);
-    for (const o of q.objectives) for (const d of objNeeds(o)) need(k, d);
+    for (const o of q.objectives) for (const d of [...objNeeds(o), ...btnNeeds(o)]) need(k, d); // [hot26] + buttons
   }
 });
 
@@ -144,6 +175,27 @@ for (const [nid, qid] of Object.entries(LAB_QUEST_GATE)) {
   rows.push({ nid, nd, qid, q, gch, stage, nb });
 }
 
+// ---------------------------------------------------------------- [hot26] the story guides each build before it is needed
+const mainSeq = CHAPTERS.flatMap((c, ci) => c.quests.map((q, i) => ({ q, ci, i })));
+const buildAt = {}; // btn -> {q, ci, i} of the first main quest asking to build it
+for (const m of mainSeq) for (const o of m.q.objectives) if (o.t === 'hotbar' && !buildAt[o.id]) buildAt[o.id] = m;
+const hotRows = [];
+for (const m of mainSeq) {
+  for (const o of m.q.objectives) {
+    if (o.t === 'hotbar') continue;
+    for (const b of btnNeeds(o)) {
+      const id = b.slice(2), at = buildAt[id];
+      if (!at) { err(`${m.q.id} needs the ${id} button but no main quest asks to build its ${HOT.HOTBAR_UNLOCKS[id].build}`); continue; }
+      if (at.ci > m.ci || (at.ci === m.ci && at.i >= m.i + ACTIVE)) err(`${m.q.id} needs the ${id} button before ${at.q.id} asks to build its ${HOT.HOTBAR_UNLOCKS[id].build}`);
+    }
+  }
+}
+for (const [id, u] of Object.entries(HOT.HOTBAR_UNLOCKS)) {
+  const at = buildAt[id];
+  const side = at ? null : CHAPTERS.flatMap((c) => c.side).find((q) => q.objectives.some((o) => o.t === 'hotbar' && o.id === id));
+  hotRows.push({ id, u, via: at ? `${at.q.id} (ch${at.ci + 1}, main)` : side ? `${side.id} (${side.chapter}, side)` : 'tips only' });
+}
+
 // ---------------------------------------------------------------- oceans: expensive, steep, boss-gated
 const seas = LAB_NODES.filter((nd) => nd.ocean).sort((a, b) => a.tier - b.tier);
 let prev = 0;
@@ -166,6 +218,8 @@ if (!quiet) {
     const kind = r.q.objectives.some((o) => o.t === 'boss') ? 'boss' : r.q.kind;
     console.log(pad(r.nd.name, 22) + pad(r.nd.branch, 10) + pad(r.nd.tier, 5) + pad(`${r.qid} "${r.q.title}"`, 34) + pad(Q.NPC_NAMES[r.q.giver] || r.q.giver, 15) + pad(kind, 6) + pad('ch' + r.gch, 7) + (r.nb ? `${r.nb.via} (ch${r.nb.ch})` : `optional (priced for ch${r.stage})`));
   }
+  console.log('\n== Hotbar unlocks (start: ' + HOT.HOTBAR_START.join(', ') + ' + ' + HOT.HOTBAR_ALWAYS.join(', ') + ') ==');
+  for (const r of hotRows) console.log(pad(r.u.label, 13) + pad(r.u.build, 20) + pad(r.u.price + ' Aero', 9) + r.via);
   console.log('\n== Ocean expeditions ==');
   for (const nd of seas) {
     const it = Object.entries(nd.cost.items).map(([k, v]) => `${v} ${k}`).join(', ');

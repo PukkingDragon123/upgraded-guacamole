@@ -14,6 +14,8 @@
 //   pixStill(name, w, h = w) -> canvas | null   the art scaled to fit a w x h logical box (canvas may be 1 px larger),
 //                                        `.hi` twin, `.__icon3d = name` (getUiIcon treats it as final)
 //   pixSpin(name) -> 'full' | 'wobble' | null
+//   pixName(name, px) -> the sprite actually shown at px (alias target or its `_s` twin)
+//   PIX_NAMES() -> every authored sprite name (gallery)
 //   pixKeyName(key) -> sprite name | null   maps model keys ('ui3d:x', 'fish3d:x', 'lab:boat:x', 'item:x', ...) to sprites
 //   pixRegister(name, def)               add a sprite at run time (families: rods, gems, cut gems, globes)
 //   pickScale(native, devicePx) -> k     the integer device-pixel scale used for an art grid
@@ -197,11 +199,24 @@ function logicalOf(sp, name, k, shadow, state, S, fr) {
   return c;
 }
 
+// the sprite to show at D device px: an alias resolves to its target; a `_s` twin stands in when the big art would
+// drop below 2 device px per art pixel
+function canonical(name) { let n = String(name); for (let i = 0; i < 4 && !defs.has(n) && ALIAS[n]; i++) n = ALIAS[n]; return n; }
+function pickName(name, D) {
+  const n = canonical(name);
+  const sp = compile(n);
+  if (!sp) return null;
+  if (pickScale(Math.max(sp.w, sp.h), D) < 2 && compile(n + '_s')) return n + '_s';
+  return n;
+}
+export function pixName(name, px) { return pickName(name, Math.max(4, Math.round(px * HI))); }
+
 const frameCache = new Map();
 export function pixFrame(name, px, turn = 0, o = {}) {
-  const sp = compile(String(name));
-  if (!sp) return null;
   const D = Math.max(4, Math.round(px * HI));
+  name = pickName(name, D);
+  const sp = name && compile(name);
+  if (!sp) return null;
   const k = pickScale(Math.max(sp.w, sp.h), D);
   const fr = frameIndex(sp.spin, turn);
   const shadow = o.shadow !== false && k >= 3;
@@ -226,12 +241,13 @@ export function pixFrame(name, px, turn = 0, o = {}) {
 
 const stillCache = new Map();
 export function pixStill(name, w, h = w, o = {}) {
-  const sp = compile(String(name));
+  const D = Math.max(4, Math.round(Math.min(w, h) * HI));
+  name = pickName(name, D);
+  const sp = name && compile(name);
   if (!sp) return null;
   const key = name + '|' + w + 'x' + h + '|' + (o.shadow ? 1 : 0);
   let c = stillCache.get(key);
   if (c) return c;
-  const D = Math.max(4, Math.round(Math.min(w, h) * HI));
   const k = pickScale(Math.max(sp.w, sp.h), D);
   const shadow = !!o.shadow && k >= 3;
   const art = scaled(name, sp, k, shadow, 'normal');
@@ -268,3 +284,6 @@ export function pixKeyName(key) {
 
 /** Brighten helper used by callers that tint a still (kept tiny on purpose). */
 export function pixTint(hex, t) { return mix(hex, '#ffffff', t); }
+
+export function PIX_NAMES() { return [...defs.keys()]; }
+export { ALIAS as PIX_ALIAS };

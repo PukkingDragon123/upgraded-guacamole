@@ -18,6 +18,7 @@
 //          mutant?, flawless? (no weak / fizzled / backfired zap, at least one PERFECT one), party? (online friends)}
 //   zap {n} PERFECT shocks   feed {n}   build {n} tank placements   hatch {n}   evolve {n}   collect {n} tank Aero
 //   tankFish {n} fish in the tank now   gearLv {id, lv} tank gear level   dress {n} outfit changes   box {n, biome?}
+//   [hot26] hotbar {id} that hotbar button is unlocked (its prop built in the tank; src/game/hotbar.js)
 //   labDone {n} research finished from now on   total {k, n} lifetime (k: caught species aero research bosses zaps
 //   flawless chests fed built crafted oceans released shiny mutant giant cosmetics rods orders quests boxes hatched
 //   zones)   online (multiplayer, optional)   + the older ones: keep release bait craft {cat?} equip species {biome?}
@@ -40,7 +41,10 @@ export const SIDE_STORIES = {
     S('s1_grouper', 'fizz', 'Grass Toucher', "The Touch Grass Grouper lives by the meadow. Rumour says it has touched actual grass. We must confirm!", [{ t: 'catch', n: 1, species: 'grouper' }], { aero: 4, items: { driftwood: 2 } }),
     S('s1_bait', 'seal', 'Fancy Snacks', "Crumbs are fine... but real bait is FANCY. Catch two fish with proper bait. Pinkies out!", [{ t: 'catch', n: 2, bait: 'any' }], { bait: { worm: 2 }, items: { shell: 1 } }),
     S('s1_dex', 'fizz', 'Meadow Census', "Science needs numbers! Discover six species that live in the (OS)cean. Clipboard ready!", [{ t: 'species', n: 6, biome: 'oscean' }], { aero: 7, items: { clover_leaf: 1 } }),
-    S('s1_dress', 'seal', 'Dress to Impress', "Try something new in the Wardrobe! A hat? Goggles? I'm wearing my very best lip paint today.", [{ t: 'dress', n: 1 }], { aero: 2, items: { fish_scale: 2 } }),
+    S('s1_dress', 'seal', 'Dress to Impress', "Build a Mirror in your tank, then try something new in the Wardrobe! A hat? Goggles? I'm wearing my very best lip paint today.", [{ t: 'hotbar', id: 'wardrobe' }, { t: 'dress', n: 1 }], { aero: 22, items: { fish_scale: 2 } }), // [hot26] the Mirror unlocks the Wardrobe
+    // [hot26] building the props that unlock hotbar buttons
+    S('s1_tackle', 'seal', 'Tackle Tidy', "My fins can't hold all these lures! Build a Tackle Box in your tank and your Bait button pops up. Tidy tackle, happy angler!", [{ t: 'hotbar', id: 'bait' }], { aero: 15, bait: { worm: 2 } }),
+    S('s1_net', 'seal', 'Net Worth', "Want to check on every fish you keep? Build a Net Rack in your tank. Then My Fish is one click away. Wheee!", [{ t: 'hotbar', id: 'fishmgr' }], { aero: 20, items: { shell: 2 } }),
     S('s1_trophy', 'fizz', 'Measure Twice', "Measure twice, catch once! Bring me a fish from the very top of its size chart. A trophy!", [{ t: 'catch', n: 1, trophy: true }], { aero: 6, items: { shell: 2, fish_scale: 1 } }),
     S('s1_night', 'seal', 'Starry Splash', "At night the (OS)cean twinkles like a screensaver. Catch a fish under the stars! (Night-time only, sleepyhead.)", [{ t: 'catch', n: 1, time: 'night' }], { aero: 4, bait: { worm: 1 } }),
     S('s1_evolve', 'seal', 'Glow Up', "Psst! Noobikarps have BIG dreams. Keep one in your tank for a while and see what it turns into!", [{ t: 'evolve', n: 1 }], { aero: 11, items: { pearl: 1 } }),
@@ -52,6 +56,7 @@ export const SIDE_STORIES = {
     S('s2_rain', 'marina', 'Rain or Shine', "Rain or shine, a sailor fishes! Mostly shine. Today: wild weather. Catch three while it's grey!", [{ t: 'catch', n: 3, biome: 'shallows', weather: 'any' }], { aero: 11, items: { sea_glass: 2 } }),
     S('s2_shop', 'dot', 'Shop Till You Drop', "BEEP! Customer detected. Purchase three bait packs to unlock: my happy face. BOOP.", [{ t: 'bait', n: 3 }], { aero: 5, bait: { bread: 3 } }),
     S('s2_app', 'dot', 'Download Complete', "BEEP. App bait installed. Please catch three fish with it and rate five stars.", [{ t: 'catch', n: 3, bait: 'app' }], { aero: 9, bait: { worm: 2 } }, { after: 's2_shop' }),
+    S('s2_phone', 'seal', 'Party Line', "Ring ring! Build a Phone Booth in your tank and you can fish with other anglers. I'll do the voices. All of them.", [{ t: 'hotbar', id: 'multiplayer' }], { aero: 45, items: { shell: 2 } }), // [hot26]
     S('s2_party', 'seal', 'Tank Party', "Your tank is so quiet! Four fish swimming together makes it a party. I'll bring the bubbles.", [{ t: 'tankFish', n: 4 }], { aero: 9, items: { coral_chunk: 1 } }),
     S('s2_crafty', 'marina', 'Handy Paws', "My workbench needs a workout. Craft any two things. Sawdust is basically confetti!", [{ t: 'craft', n: 2 }], { aero: 9, items: { driftwood: 3 } }, { after: 'c2_workshop' }),
     S('s2_newrod', 'seal', 'New Rod Smell', "Ooh, try out a new rod! It smells like adventure. And a little bit like rubber duck.", [{ t: 'equip', n: 1 }], { aero: 5, items: { fish_scale: 3 } }, { after: 'c2_craftrod' }),

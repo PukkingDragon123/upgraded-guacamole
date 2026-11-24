@@ -2462,22 +2462,87 @@ def('sunken_pc', { name: 'Sunken PC', biome: 'aquarium', tags: ['computer', 'scr
 const LAVA = [['#ff4a8a', '#ffd84a'], ['#2ac8d8', '#e0ff6a'], ['#8a4aff', '#ffa0e0'], ['#3ac83a', '#e8ff5a'], ['#ff6a2a', '#ffd0e0'], ['#1a2a6a', '#a8c0ff']];
 def('lava_lamp', { name: 'Lava Lamp', biome: 'aquarium', tags: ['glow', 'retro'], decor: { price: 240, size: 1 }, decorOnly: true }, ({ variant, frame }) => lavaLamp(LAVA[variant % LAVA.length], frame));
 
+// ---------- the shared rubber duck [duck26] ----------
+// One chunky, low-res voxel toy duck (15 x 14 x 11 voxels, beak toward +x): round body, round head, flat orange
+// bill, a little tail flick, a raised wing and a single-voxel dot eye. Flat 3-tone ramps (shadow / base / light,
+// no gloss or jitter) so the big voxels read as clean blocks. Used by the Rubber Duck decor (rendered with big
+// voxels), the junkyard floater (same prop, scaled) and the tub ducks (miniDuck: the same template resampled).
+const DUCK_TONES = {
+  body: ['#eda420', '#ffd23a', '#ffeb70'],
+  wing: ['#d9821a', '#f5b52a', '#ffd23a'],
+  beak: ['#d8641a', '#ff8a2a', '#ffb04a'],
+  eye: ['#13234a', '#13234a', '#13234a'],
+};
+const DUCK_KEYS = ['body', 'wing', 'beak', 'eye'];
+const DUCK_ORIGIN = [6.5, 0, 5.5]; // bottom centre of the body
+let DUCK_VOX = null;
+function duckTemplate() {
+  if (DUCK_VOX) return DUCK_VOX;
+  const g = new Map();
+  const put = (x, y, z, k) => g.set(x + ',' + y + ',' + z, k);
+  const has = (x, y, z) => g.has(x + ',' + y + ',' + z);
+  // rounded boxes: big flat faces, round corners (reads as a clean chunky toy rather than a stair-stepped blob)
+  const rbox = (x0, y0, z0, x1, y1, z1, r, k) => {
+    const c = [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2], hw = [(x1 - x0) / 2 - r, (y1 - y0) / 2 - r, (z1 - z0) / 2 - r];
+    for (let y = y0; y < y1; y++) for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) {
+      const q = [x + 0.5 - c[0], y + 0.5 - c[1], z + 0.5 - c[2]].map((v, i) => Math.max(0, Math.abs(v) - hw[i]));
+      if (Math.hypot(...q) <= r + 0.15) put(x, y, z, k);
+    }
+  };
+  rbox(0, 0, 1, 13, 7, 10, 3.3, 'body'); // round body, flat bottom
+  rbox(7, 6, 2, 13, 13, 9, 2.9, 'body'); // round head, perched high so the neck dips
+  // tail flick: a little wedge rising off the back
+  for (const [x, y0, y1] of [[0, 5, 8], [1, 5, 7], [2, 5, 6]]) for (let y = y0; y <= y1; y++) for (let z = 4; z <= 6; z++) put(x, y, z, 'body');
+  put(0, 9, 5, 'body');
+  // flat bill: wide top plate, shorter lower plate
+  for (let z = 3; z <= 7; z++) { put(12, 9, z, 'beak'); put(13, 9, z, 'beak'); put(12, 8, z, 'beak'); }
+  for (let z = 4; z <= 6; z++) { put(14, 9, z, 'beak'); put(13, 8, z, 'beak'); }
+  // wings: a hand-drawn side patch one voxel proud of each flank, tip flicked up toward the tail
+  const WING = { 5: [2, 3], 4: [2, 6], 3: [3, 7], 2: [4, 6] };
+  for (const [y, [xa, xb]] of Object.entries(WING)) for (let x = xa; x <= xb; x++) for (const s of [-1, 1]) {
+    let z = s < 0 ? 0 : 10;
+    while (z >= 0 && z <= 10 && !has(x, +y, z)) z -= s;
+    put(x, +y, z + s, 'wing');
+  }
+  // dot eyes on the head's surface
+  for (const s of [-1, 1]) { let z = s < 0 ? 0 : 10; while (z >= 0 && z <= 10 && !has(11, 10, z)) z -= s; put(11, 10, z, 'eye'); }
+  DUCK_VOX = [...g].map(([k, c]) => [...k.split(',').map(Number), c]);
+  return DUCK_VOX;
+}
+function duckPal(m) {
+  const pal = {};
+  for (const k of DUCK_KEYS) { const [a, b, c] = DUCK_TONES[k]; pal[k] = m.color(b, { ramp: [a, a, a, b, c, c, c], jitter: 0, smooth: 0, aoMul: 0.5, edge: 0 }); }
+  pal.all = DUCK_KEYS.map((k) => pal[k]);
+  return pal;
+}
+// Stamp the duck with its bottom-centre at (x, y, z), s = voxels per template voxel (nearest resample; the dot
+// eyes are re-placed so they survive), face = 1 beak toward +x, -1 toward -x.
+function stampDuck(m, x, y, z, s, pal, face = 1) {
+  const T = duckTemplate();
+  const src = new Map(T.map(([a, b, c, k]) => [a + ',' + b + ',' + c, k]));
+  const n = (v) => Math.ceil(v * s);
+  const bx = Math.round(x - DUCK_ORIGIN[0] * s), by = Math.round(y), bz = Math.round(z - DUCK_ORIGIN[2] * s);
+  const W = n(15), H = n(14), D = n(11);
+  for (let j = 0; j < H; j++) for (let k = 0; k < D; k++) for (let i = 0; i < W; i++) {
+    const key = src.get(Math.floor((i + 0.5) / s) + ',' + Math.floor((j + 0.5) / s) + ',' + Math.floor((k + 0.5) / s));
+    if (key) m.put(face > 0 ? bx + i : bx + W - 1 - i, by + j, bz + k, pal[key === 'eye' && s < 1 ? 'body' : key]);
+  }
+  if (s < 1) {
+    // keep the eyes: one voxel each, on the head's surface
+    const ex = Math.floor(11.5 * s), ey = Math.floor(10.5 * s);
+    for (const sd of [-1, 1]) {
+      const X = face > 0 ? bx + ex : bx + W - 1 - ex;
+      let zz = sd < 0 ? bz : bz + D - 1;
+      while (zz >= bz && zz < bz + D && !m.get(X, by + ey, zz)) zz -= sd;
+      m.set(X, by + ey, zz, pal.eye);
+    }
+  }
+}
+
 def('rubber_duck', { name: 'Rubber Duck', biome: 'aquarium', tags: ['toy'], decor: { price: 30, size: 1 }, decorOnly: true }, () => {
-  const m = new VoxelModel(40, 36, 30);
-  const yel = [m.color('#ffd23a', { smooth: 0.85, jitter: 0.03, spec: 1.6, specPow: 14 }), m.color('#f2b42a', { smooth: 0.85, jitter: 0.03 })];
-  const beak = m.color('#ff8a2a', { smooth: 0.7, jitter: 0.02 });
-  const eye = m.color('#1a1a22', { jitter: 0 });
-  const glint = m.color('#ffffff', { jitter: 0 });
-  m.ellipsoid(18, 8, 15, 13, 8.5, 10.5, yel[0]);
-  m.sub(() => m.box(0, 0, 0, 39, 1, 29));
-  m.ellipsoid(6, 13, 15, 4, 4, 5, yel[0]); // tail
-  m.sphere(25, 21, 15, 7.5, yel[0]);
-  m.ellipsoid(32, 19.5, 15, 4.5, 1.6, 3.4, beak);
-  m.ellipsoid(31.5, 17.8, 15, 3.6, 1, 2.6, beak);
-  for (const s of [-1, 1]) { m.box(27, 23, 15 + s * 5.5, 28, 24, 15 + s * 5.5, eye); m.set(28, 24, 15 + s * 5.5 + (s > 0 ? 1 : -1) * 0, glint); }
-  m.ellipsoid(15, 11, 23.5, 6, 3.5, 2, yel[1]); // wing
-  m.ellipsoid(15, 11, 6.5, 6, 3.5, 2, yel[1]);
-  return { m, yaw: 30 };
+  const m = new VoxelModel(17, 15, 13);
+  stampDuck(m, 7.5, 0, 6.5, 1, duckPal(m));
+  return { m, yaw: 30, vs: 3.6, render: { jitter: 0, ao: 0, edges: 0, sideEdges: 0 } };
 });
 
 def('pagoda_lantern', { name: 'Stone Lantern', biome: 'aquarium', tags: ['glow', 'statue'], decor: { price: 320, size: 1 }, decorOnly: true }, ({ rng }) => {
@@ -2683,14 +2748,9 @@ function frontZ(cx, cy, cz, r, x, y) {
   return q >= 0 ? Math.floor(cz + Math.sqrt(q) - 0.3) : null;
 }
 
-// A little rubber duck facing +x (face = -1 faces -x).
-function miniDuck(m, x, y, z, s, yel, beak, eye, face = 1) {
-  m.ellipsoid(x, y + 1.6 * s, z, 3 * s, 2 * s, 2.4 * s, yel);
-  m.ellipsoid(x - 2.6 * s * face, y + 2.7 * s, z, 1.3 * s, 1.3 * s, 1.5 * s, yel);
-  m.sphere(x + 1.5 * s * face, y + 4.3 * s, z, 1.8 * s, yel);
-  m.ellipsoid(x + 3.3 * s * face, y + 4 * s, z, 1.3 * s, 0.6 * s, 1 * s, beak);
-  m.set(x + 2.1 * s * face, y + 4.9 * s, z + 1.4 * s, eye);
-  m.set(x + 2.1 * s * face, y + 4.9 * s, z - 1.4 * s, eye);
+// A little rubber duck facing +x (face = -1 faces -x): the shared duck, resampled to tub size.
+function miniDuck(m, x, y, z, s, pal, face = 1) {
+  stampDuck(m, x, y, z, s * 0.55, pal, face);
 }
 
 // Tiny 3x5 pixel font written in the x-y plane at depth z (top-left at x, y).
@@ -3117,9 +3177,7 @@ def('bathtub', {
   const chrome = m.color('#d0d8e2', { spec: 2.2, smooth: 0.5 });
   const water = m.color('#7ad0f0', { emissive: 0.2, smooth: 0.4 });
   const foam = [m.color('#ffffff', { smooth: 0.9, jitter: 0.02 }), m.color('#e8f4fc', { smooth: 0.9, jitter: 0.02 })];
-  const yel = m.color('#ffd23a', { smooth: 0.85, spec: 1.4 });
-  const beak = m.color('#ff8a2a', { smooth: 0.6 });
-  const eye = m.color('#1a1a22', { jitter: 0 });
+  const duck = duckPal(m);
   const mat = [m.color('#5ab0e8', { jitter: 0.04 }), m.color('#f4f8fc', { jitter: 0.03 })];
   const stream = m.color('#c8f4ff', { emissive: 0.5, jitter: 0 });
   const cx = 32, cz = 20, rx = 24, rz = 12;
@@ -3141,15 +3199,15 @@ def('bathtub', {
     m.sphere(x, y, z, 1.6 + h3(i, 4, 2, 3) * 2.2 + frame * 0.2, foam[i % 2]);
   }
   const bobY = [0, 1, 2][frame];
-  miniDuck(m, cx - 9, 22 + bobY, cz + 3, 1, yel, beak, eye, 1);
-  miniDuck(m, cx + 6, 23 + (2 - bobY), cz - 2, 0.85, yel, beak, eye, -1);
-  miniDuck(m, cx + 1 + frame, 24 + bobY, cz + 6, 0.75, yel, beak, eye, 1);
+  miniDuck(m, cx - 9, 22 + bobY, cz + 3, 1, duck, 1);
+  miniDuck(m, cx + 6, 23 + (2 - bobY), cz - 2, 0.85, duck, -1);
+  miniDuck(m, cx + 1 + frame, 24 + bobY, cz + 6, 0.75, duck, 1);
   // Faucet with a stream on the busiest frame.
   m.tube([[5, 12, cz, 1.1], [5, 26, cz, 1.1], [9, 28, cz, 1.1], [12, 26, cz, 1]], chrome, 4);
   for (const s of [-1, 1]) m.sphere(5, 23, cz + s * 2.6, 1.3, chrome);
   if (frame === 2) m.line(12, 25, cz, 13, 19, cz, stream, 0.6);
   m.box(cx - 10, 0, 34, cx + 10, 0, 40, (x) => mat[x % 4 < 2 ? 0 : 1]);
-  const inner = new Set([water, foam[0], foam[1], yel, beak, eye, stream]);
+  const inner = new Set([water, foam[0], foam[1], ...duck.all, stream]);
   const front = (x, y, z) => z + 0.5 > cz - 1 && !inner.has(m.get(x, y, z));
   return { m, yaw: 30, ground: [cx, 0, cz + 4], front, anchors: { water: [cx + 2, 21, cz], foam: [cx, 26, cz] } };
 });
@@ -4275,7 +4333,7 @@ def('hot_tub', {
   const glass = m.color('#d8f4ff', { spec: 2 });
   const drink = m.color('#ff9a3a', { emissive: 0.2 });
   const umb = m.color('#ff4a8a', { smooth: 0.3 });
-  const yel = m.color('#ffd23a', { smooth: 0.85, spec: 1.4 }), beak = m.color('#ff8a2a'), eye = m.color('#1a1a22', { jitter: 0 });
+  const duck = duckPal(m);
   const cx = 31, cz = 28, R = 22;
   const oct = (x, z, r) => { const dx = Math.abs(x - cx), dz = Math.abs(z - cz); return Math.max(dx, dz, (dx + dz) * 0.7071) <= r; };
   shape(m, cx - R, 0, cz - R, cx + R, 18, cz + R, (x, y, z) => oct(x, z, R), (x, y, z) => (y === 4 || y === 14 ? band : cedar[Math.floor((Math.atan2(z + 0.5 - cz, x + 0.5 - cx) + Math.PI) * 6) % 2]));
@@ -4287,7 +4345,7 @@ def('hot_tub', {
     const a = h3(i, frame, 1, 4) * Math.PI * 2, r = Math.sqrt(h3(i, frame, 2, 4)) * (R - 6);
     m.sphere(cx + Math.cos(a) * r, 16, cz + Math.sin(a) * r, 0.9 + h3(i, frame, 3, 4) * (frame ? 1.1 : 0.4), foam);
   }
-  miniDuck(m, cx - 6, 15, cz + 6, 0.9, yel, beak, eye, 1);
+  miniDuck(m, cx - 6, 15, cz + 6, 0.9, duck, 1);
   // Steps in front, towel over the side, a cocktail on the rim.
   m.box(cx - 8, 0, cz + R + 1, cx + 8, 5, cz + R + 7, (x, y, z) => step[z % 3 === 0 ? 1 : 0]);
   m.box(cx - 8, 6, cz + R + 1, cx + 8, 11, cz + R + 3, (x, y, z) => step[z % 3 === 0 ? 1 : 0]);
@@ -4299,7 +4357,7 @@ def('hot_tub', {
   m.line(gx, 26, gz, gx + 1, 30, gz, glass, 0);
   m.cone(gx + 1, gz, 30, 31, 2.4, 0.3, umb);
   // Front walls only: drawn over a fish soaking in the tub.
-  const inner = new Set([water, foam, yel, beak, eye]);
+  const inner = new Set([water, foam, ...duck.all]);
   const front = (x, y, z) => z + 0.5 > cz - 2 && !inner.has(m.get(x, y, z));
   return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], light: '#4ad8e0', front, anchors: { water: [cx, 17, cz], top: [cx, 24, cz] } };
 });

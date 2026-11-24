@@ -84,6 +84,7 @@ export class Fish {
     // walkers in sneakers stand on their soles, not their bellies
     const sk = !this.c.real && species.look?.sneakers; // phase 4: realistic models wear no sneakers
     this.legs = sk ? (species.look.body?.h ?? 18) * 0.5 + (sk.h ?? 10) * 1.05 : 0;
+    if (species.look?.stilts) this.legs = species.look.stilts; // [deep26] the tripod fish stands on its fin rays
     this.hopY = 0; this.hopV = 0;
   }
 
@@ -93,6 +94,8 @@ export class Fish {
     this.state = s;
     this.stateT = t;
     this.target = null;
+    this.lungeT = 0;
+    if (s === 'interest') this.lunged = false; // [deep26] one lunge per approach
   }
 
   // Emotions drive the rig's face; locked emotions persist for a duration.
@@ -314,6 +317,20 @@ export class Fish {
     if (this.talkT > 0) mouth = 0.25 + 0.6 * Math.abs(Math.sin(this.age * 18));
     if (this.chompT > 0) mouth = Math.abs(Math.sin(this.age * 14));
     this.mouth = damp(this.mouth, mouth, 20, dt);
+    // [deep26] deep predators snap their jaws now and then; lure fish flash their lights (faster near the hook)
+    if (this.quirks.has('lunge') && !this.controlled && !this.hero && this.state === 'wander' && rng.chance(dt * 0.07)) this.chompT = 0.3;
+    if (this.quirks.has('lure') && !this.hero) {
+      const h = this.world.hook;
+      const near = h?.active && h.inWater && Math.abs(h.x - this.x) + Math.abs(h.y - this.y) < 180;
+      this.flashT = (this.flashT ?? rng.float(1, 5)) - dt;
+      if (this.flashT <= 0) {
+        this.flashT = rng.float(3, 8) * (near ? 0.35 : 1);
+        this.flash = 0.7;
+        const a = this.anchors?.lure;
+        if (a && (this.world.glowLevel ?? 0) > 0.3) this.world.particles?.pixelBurst?.('sparkle', a[0], a[1], 3, { layer: 'fg' });
+      }
+      this.flash = Math.max(0, (this.flash || 0) - dt);
+    }
 
     // inflate decay
     if (this.inflateHold > 0) this.inflateHold -= dt;
@@ -583,6 +600,20 @@ export class Fish {
     this.target = { x: tx, y: ty, z: 0 };
     if (this.world.cursor.speed > 300) { this.startle(h.x, h.y); return [0, 0]; }
     const d = dist(this.x, this.y, tx, ty);
+    // [deep26] lunge: deep predators close the last stretch in one burst, jaws snapping open
+    if (this.quirks.has('lunge')) {
+      if (!this.lunged && d > 24 && d < 90 + 30 * this.scale && this.stateT > 0.6 && this.z < 0.3) {
+        this.lunged = true; this.lungeT = 0.42; this.chompT = 0.5;
+        this.squashV += 5;
+        this.world.audio?.play?.('gulp', { vol: 0.3, pitch: rng.float(0.55, 0.7) });
+        this.world.particles?.aeroBubbles?.(this.x, this.y, 5, { w: 8, h: 6, sizes: [1, 2, 2, 3], speed: [14, 34] });
+      }
+      if (this.lungeT > 0) {
+        this.lungeT -= dt;
+        this.lookAt(h.x, h.y);
+        return this.steer(tx, ty, this.burst * 2.2, 80);
+      }
+    }
     if (d < 6 && this.z < 0.15) {
       this.setState('sniff');
       this.sniffT = rng.float(1, 2.6) / (0.5 + this.greed);
@@ -839,7 +870,9 @@ export class Fish {
   draw(ctx, wash, time) {
     if (this.alpha <= 0) return null;
     if (this.wiggle) this.wiggle = Math.max(0, this.wiggle - 0.02);
-    const st = this.rigState({ wash, glow: this.world.glowLevel ?? 0, time, ...(this.wk ? wakkaRig(this) : null) });
+    let glow = this.world.glowLevel ?? 0;
+    if (this.flash > 0) glow *= Math.sin(this.flash * 34) > 0 ? 1 : 0.12; // [deep26] lure flash: the light blinks
+    const st = this.rigState({ wash, glow, time, ...(this.wk ? wakkaRig(this) : null) });
     let alpha = this.alpha;
     if (this.camo > 0.05) alpha *= 1 - this.camo * 0.8;
     if (this.rec.variant?.mutation === 'ghost') alpha *= 0.65;

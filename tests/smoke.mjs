@@ -326,8 +326,24 @@ await until(() => window.FISHTOP.tutorial.step === 'lab', 30000);
 // ---------------------------------------------------------------- The Lab
 await wait(700);
 await shot('14_tut_lab.png');
-const labR = await iconRect('lab');
+let labR = await iconRect('lab');
 check('Lab button revealed', !!labR);
+// [hot26] a new game starts with 3 hotbar buttons; The Lab's slot is locked: clicking it opens the tank's build mode on
+// the Research Bench, placing the bench unlocks the button (NEW BUTTON moment), then the button opens The Lab
+if (await G(`!!(g.hud.locked && g.hud.locked(g.hud.find('lab')))`)) {
+  check('new game: 3 hotbar buttons unlocked', (await G(`g.hud.items.filter((it) => it.id !== 'settings' && !g.hud.locked(it)).map((it) => it.id).join(',')`)) === 'quests,aquarium,baitshop', await G(`g.hud.items.filter((it) => !g.hud.locked(it)).map((it) => it.id).join(',')`));
+  await clickRect(labR);
+  check('locked Lab slot opens build mode on the Research Bench', await until(() => { const b = window.FISHTOP.aquarium.build; return !!(b.on && b.entry && b.entry.id === 'research_bench'); }, 8000));
+  await wait(1500);
+  await shot('14b_build_bench.png');
+  const [SW, SH] = await G('[g.screen.W, g.screen.H]');
+  for (let k = 0; k < 8 && (await G(`!!g.hud.locked(g.hud.find('lab'))`)); k++) { await clickL(SW * (0.42 + k * 0.03), SH * 0.5); await wait(600); }
+  check('Research Bench built -> The Lab unlocked', await until(() => !window.FISHTOP.hud.locked(window.FISHTOP.hud.find('lab')), 6000));
+  check('NEW BUTTON moment plays', await until(() => !!window.FISHTOP.hud.celebrating, 10000));
+  await wait(900);
+  await shot('14c_new_button.png');
+  labR = await iconRect('lab');
+}
 await clickRect(labR);
 check('Lab opens', await until(() => window.FISHTOP.ui.isOpen('lab'), 6000));
 await wait(1200);

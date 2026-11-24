@@ -151,7 +151,7 @@ export class TankScene {
   ensure() {
     const st = this.aq.st, T = this.shape;
     const sand = gearLevel(st, 'sand'), light = gearLevel(st, 'light');
-    const key = [this.layoutKey, sand, light, TANK_TIERS[T.tier]?.plants].join('|');
+    const key = [this.layoutKey, sand, light, TANK_TIERS[T.tier]?.plants, st.tank?.bare ? 'bare' : 'lush'].join('|'); // [hot26]
     if (key === this.key) return;
     const tierChanged = !this.key || this.key.split('|')[0] !== key.split('|')[0];
     this.key = key;
@@ -190,6 +190,11 @@ export class TankScene {
     const R = new RNG(1234 + tier * 77);
     const W = T.W;
     this.scenery = [];
+    for (const f of this.fields) f.list.length = 0;
+    this.fieldsAt = null;
+    // [hot26] a new game's tank starts EMPTY: clean sand, the back glass, water and the filter's bubbles; the player
+    // builds and decorates it (saves from before keep their rocks and plants: state.js sets tank.bare = false)
+    if (st.tank?.bare) return;
     const rocks = 2 + tier * 2;
     const kinds = ['boulder', 'stack', 'slate', 'mossy', 'boulder', 'mossy'];
     for (let i = 0; i < rocks; i++) {

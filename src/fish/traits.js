@@ -3,6 +3,7 @@
 import { rng, uid } from '../core/rng.js';
 import { clamp, lerp } from '../core/math.js';
 import { OCEAN_VALUE } from '../game/shopdata.js';
+import { SPECIES_BY_ID } from './species.js';
 
 export const MUTATIONS = {
   albino: { name: 'Albino', coin: 1.5, weight: 10 },
@@ -111,6 +112,7 @@ export function personalityOf(rec) {
 // [balance] sp (optional) gives the home ocean of records without rec.biome (bred fish); OCEAN_VALUE = later oceans pay more
 export function valueMultiplier(rec, sp = null) {
   let m = OCEAN_VALUE[rec?.biome || sp?.biome] || 1;
+  m *= (sp || SPECIES_BY_ID[rec?.species])?.valueMul ?? 1; // [deep26] deep-water species pay a depth bonus
   if (rec.variant?.mutation) m *= MUTATIONS[rec.variant.mutation]?.coin || 1.3;
   if (rec.variant?.pattern) m *= 1.2;
   if (rec.variant?.shiny) m *= 4;

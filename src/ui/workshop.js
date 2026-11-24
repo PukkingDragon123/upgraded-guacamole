@@ -22,6 +22,8 @@ import { ROD_BY_ID, ROD_STAT_KEYS, TACKLE_BY_ID, TACKLE_SLOTS, TACKLE_SLOT_NAMES
 import { lineLabel } from '../fishing/line.js'; // [crate26] line length
 import { aeroSurface, aeroCached, drawAeroFrame, drawAeroCard, drawAeroCoin, fmtAero, drawAeroGlow, drawAeroBadge } from './aero.js';
 import { panelRect } from './ui.js';
+import { gemSkipButton } from './gemui.js'; // [cur26]
+import { wsSkipCost, wsSkip } from '../game/skips.js'; // [cur26]
 
 const BENCH_CATS = new Set(['build', 'decor', 'bait']);
 const CAT_ALIAS = { building: 'build', plans: 'decor', special: 'bait' }; // src/build/crafting.js categories
@@ -294,13 +296,16 @@ export class WorkshopPanel {
       if (ham) { ctx.save(); ctx.translate(x + 34, y + 10); ctx.rotate(ang); ctx.drawImage(ham, -4, -12); ctx.restore(); }
       if (ang < 0 && Math.random() < 0.3) this.fx.add({ x: x + 28, y: y + 14, vx: (Math.random() - 0.5) * 80, vy: -60 - Math.random() * 40, g: 300, life: 0.4, kind: 'spark', color: '#ffe27a' });
       let nm = e.name || '';
-      while (measureText(nm, 'small') > sw - 100 && nm.length > 3) nm = nm.slice(0, -1);
+      const roomy = sw >= 190, bw0 = sw - (roomy ? 152 : 100); // [cur26] room for the gem Skip button beside the Aero Bucks rush
+      while (measureText(nm, 'small') > bw0 && nm.length > 3) nm = nm.slice(0, -1);
       drawText(ctx, nm, x + 44, y + 4, { font: 'small', color: '#ffffff' });
-      ctx.fillStyle = '#0a2440'; ctx.fillRect(x + 44, y + 15, sw - 100, 7);
-      ctx.fillStyle = '#ffb43c'; ctx.fillRect(x + 45, y + 16, Math.round((sw - 102) * k), 5);
-      ctx.fillStyle = '#ffe8b0'; ctx.fillRect(x + 45, y + 16, Math.round((sw - 102) * k), 1);
+      ctx.fillStyle = '#0a2440'; ctx.fillRect(x + 44, y + 15, bw0, 7);
+      ctx.fillStyle = '#ffb43c'; ctx.fillRect(x + 45, y + 16, Math.round((bw0 - 2) * k), 5);
+      ctx.fillStyle = '#ffe8b0'; ctx.fillRect(x + 45, y + 16, Math.round((bw0 - 2) * k), 1);
       drawText(ctx, fmtT(rem), x + 44, y + 25, { font: 'small', color: '#bfeaff' });
       const cost = wsRushCost(e);
+      const gc = wsSkipCost(e); // [cur26] Byte Gems skip
+      if (gc && roomy && gemSkipButton(ui, ctx, x + sw - 102, y + 4, 48, h - 8, { label: '', cost: gc, tip: `Skip: finish it now for ${gc} Byte Gems` })) { const rc = wsRecipe(st, e.rid); if (wsSkip(g, i)) this.celebrate(rc); }
       if (ui.button(ctx, x + sw - 52, y + 4, 48, h - 8, `${cost}`, { style: 'orange', icon: 'clock', disabled: st.coins < cost, tip: `Rush it for ${cost} Aero Bucks` })) { if (wsRush(g, i)) this.celebrate(wsRecipe(st, e.rid)); }
     }
   }

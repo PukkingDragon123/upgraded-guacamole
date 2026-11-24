@@ -27,6 +27,11 @@
 // [phase9:fishing] Bosses (boss.js): a BossDirector (this.boss) brings each ocean's boss to a hook in the deepest zone
 // once its quest is active; the Battle carries a BossFight (health, phases, attacks); summonBoss(id?) for tests.
 // All pop-ups are cinematic 3D voxel words (cinematics.js Titles / word3D), never flat 2D text.
+// [crate26] Floating crates are fought on the same meter (cratefight.js CrateBattle: click the crate under the hook to
+// snag it, spin, shock); some grow legs or turn out to be MIMICS. Landed crates pop out to the rod and go to
+// game.onBoxCaught (loot / the chest-cracking minigame) as before. Line LENGTH (line.js): the hook only goes as deep as
+// the rod's line reaches (rods.js stats.line + Lab lineReach + Workshop line spools); at the limit the line goes taut,
+// the hook stops and a 3D MAX LINE sign shows (lineMaxY(), atMaxLine).
 
 import { TAU, clamp, clamp01, dist, damp, lerp } from '../core/math.js';
 import { rng } from '../core/rng.js';
@@ -41,7 +46,10 @@ import { meterLayout, meterRect, hitShockButton } from './meter.js'; // [simple2
 import { Titles, Finale, EscapeCine, Outro } from './cinematics.js';
 import { drawFightScene, drawFightBands, drawBiteCue, drawMessage } from './hud.js';
 import { Gear } from './gear.js';
-import { BoxReel, landBoxLoot, drawBoxHover } from './boxreel.js';
+import { landBoxLoot, drawBoxHover } from './boxreel.js';
+import { CrateFish, CrateBattle, CratePop, CrateEscape, upgradeTier } from './cratefight.js'; // [crate26]
+import { reachY, LINE_BASE } from './line.js'; // [crate26] line length
+import { word3D } from './cinematics.js';
 import { rodStats, equippedRod } from '../game/rods.js';
 import { SPECIES } from '../fish/species.js';
 
@@ -90,6 +98,15 @@ export class Fishing {
     this.lostBait = null;
     this.boss = new BossDirector(this); // [phase9:fishing]
     this.bossWin = null; // the boss victory overlay
+    this.atMaxLine = false; this.maxK = 0; this.maxCool = 0; this.maxGhost = null; // [crate26] line length
+  }
+
+  // [crate26] Line length: reach in zones (line.js) and the deepest world y the hook may go (Infinity = no limit).
+  lineReach() { return this.rod.line ?? LINE_BASE; }
+  lineMaxY() {
+    let L = null;
+    try { L = this.game.ocean?.biome?.deep?.L || null; } catch (e) { L = null; }
+    return L ? reachY(L, this.lineReach()) : Infinity;
   }
 
   // ------------------------------------------------------------------ accessors
@@ -293,6 +310,7 @@ export class Fishing {
       if (emote) f.say?.(emote, 1.5);
     }
     if (this.box) this.box.cancel();
+    if (this.battle?.crate) this.battle.cancel(); // [crate26]
     this.box = null;
     this.fish = null;
     this.battle = null;
@@ -358,6 +376,9 @@ export class Fishing {
       if (this.poseHold.t <= 0) { this.poseHold = null; if (this.boat) this.boat.pose = this.pose || 'idle'; }
     }
     if (this.lostBait) { this.lostBait.t += rdt; if (this.lostBait.t > 1.2) this.lostBait = null; }
+    this.maxCool = Math.max(0, this.maxCool - rdt); // [crate26]
+    if (!(this.state === 'idle' || this.state === 'nibble')) this.atMaxLine = false;
+    this.maxK = damp(this.maxK, this.atMaxLine && this.hook.visible ? 1 : 0, 8, rdt);
 
     const canHook = worldInput && !g.paused && !g.fishingDisabled && !this.cine?.blocksHook;
     // hook follows the cursor (during a bite the fish holds it and the mouse spins the gear)
@@ -367,7 +388,13 @@ export class Fishing {
       if (canHook) {
         h.visible = true;
         const px = h.x;
-        h.x = c.x; h.y = c.y + h.dip;
+        // [crate26] the line only reaches so deep: past it the hook stops and the line goes taut
+        const maxY = this.lineMaxY();
+        const over = c.y > maxY + 1;
+        if (over && !this.atMaxLine && this.maxCool <= 0) this.onMaxLine();
+        this.atMaxLine = over;
+        this.maxGhost = over ? [c.x, c.y] : null;
+        h.x = c.x; h.y = Math.min(c.y, maxY) + h.dip;
         h.av += ((px - h.x) * 0.02 - h.angle * 9 - h.av * 2.5) * dt * 10;
       } else if (this.state === 'idle') {
         h.visible = false;
@@ -430,7 +457,7 @@ export class Fishing {
       default: break;
     }
     if (this.zapLine) { this.zapLine.t += rdt; if (this.zapLine.t > this.zapLine.dur + 0.15) this.zapLine = null; }
-    this.gear.update(rdt, this.state === 'fight' ? this.battle : this.state === 'box' ? this.box : null);
+    this.gear.update(rdt, this.state === 'fight' ? this.battle : this.state === 'box' && this.box?.gearMode === 'box' ? this.box : null);
     if ((this.state === 'idle' && h.visible) || this.state === 'nibble') this.gear.warm(1); // cache the spin frames before a bite
     try { this.boss.update(dt); } catch (e) { if (!this.bossErr) { this.bossErr = true; console.error(e); } }
     if (this.bossWin && this.bossWin.update(rdt) === 'done') this.bossWin = null;
@@ -696,6 +723,7 @@ export class Fishing {
       if (pose !== this.pose) this.setPose(pose);
     }
     if (r === 'ok') return;
+    if (B.crate) { if (r === 'land') this.landCrate(); else this.crateEscape(r); return; } // [crate26]
     if (r === 'land') this.beginLanding();
     else this.fail(r);
   }
@@ -939,12 +967,75 @@ export class Fishing {
   }
 
   // ------------------------------------------------------------------ floating boxes
+  // [crate26] Snag a floating crate: the same meter fight as a fish (cratefight.js). No bait is used.
   startBox(f) {
     const g = this.game;
-    this.state = 'box';
-    this.box = new BoxReel(this, f);
+    f.hooked = true;
+    const fish = new CrateFish(this, f);
+    this.fish = fish;
+    this.sp = fish.sp;
+    this.rodC = this.rodNow();
+    this.usedBait = null;
+    this.state = 'fight';
+    this.cine = null;
+    this.hs = null;
+    this.battle = new CrateBattle(this);
+    this.power = this.battle.power;
+    this.tension = this.battle.tension;
+    this.splats = [];
+    this.holdKind = null;
+    this.btnPress = 0; this.btnBad = 0; this.btnDenied = 0; this.meterShake = 0; this.tickT = 0; this.chainArcs = [];
     this.gear.reset();
+    this.gear.flashOn('#ffffff', 1);
+    this.gear.kick(1);
+    const cam = this.cam;
+    this.focusCam(f.x, f.y, this.fightZoom() + 0.3, 4.2);
+    cam?.setLetterbox?.(true);
+    cam?.slowmo?.(0.35, 0.6);
+    cam?.flash?.('#e8fbff', 0.3);
+    this.shake(4);
+    this.sfx('hookset', { pitch: 1.3 });
+    this.sfx('box_close', { vol: 0.7, pitch: 1.1 });
+    const P = this.particles;
+    P.impact?.(f.x, f.y, 1, { ramp: 'aqua' });
+    P.aeroBubbles?.(f.x, f.y, 6, { w: 6 });
+    P.glints?.(f.x, f.y, 3, { w: 8, h: 6 });
+    g.water?.disturb?.(f.x, f.y, 1, 10);
+    this.titles.add('fishon', 'SNAGGED!', { rarity: fish.sp.rarity });
+    this.setPose('yank', 0.35);
+    this.setPose('pull');
     g.emit?.('boxHooked', f);
+  }
+
+  // [crate26] the crate is won: it bursts out of the water to the rod, then the usual box hand-off
+  landCrate() {
+    const B = this.battle, f = B.box;
+    if (B.surprise === 'mimic' && B.revealed) { f.tier = upgradeTier(f.tier); f.mimicLoot = true; } // a tamed mimic: better loot
+    this.stopLoops();
+    this.state = 'box';
+    this.box = new CratePop(this, f, B);
+    this.battle = null;
+    this.fish = null;
+    this.zapLine = null;
+    this.splats = [];
+  }
+
+  // [crate26] lost: the line goes, the crate gets away (legs: it runs off across the seabed)
+  crateEscape(reason) {
+    const B = this.battle, f = B.box, g = this.game;
+    if (g.timeScaleTarget !== undefined) g.timeScaleTarget = 1;
+    const [rx, ry] = this.rodTip();
+    const line = { x0: rx, y0: ry, x1: f.x, y1: f.y - 7 };
+    if (g.state?.stats && reason === 'snap') g.state.stats.snapped++;
+    this.particles.burst(f.x, f.y, 10, { colors: ['#ffffff', '#9ad8ff'], speed: 60, g: 0, life: 0.4 });
+    this.stopLoops();
+    this.state = 'idle';
+    this.fish = null;
+    this.battle = null;
+    this.tension = 0;
+    this.splats = [];
+    this.zapLine = null;
+    this.cine = new CrateEscape(this, f, reason, line, B.revealed ? B.surprise : null);
   }
 
   updateBox(dt) {
@@ -994,7 +1085,8 @@ export class Fishing {
       this.box.drawWorld(ctx);
     } else if (h.visible) {
       const [rx, ry] = this.rodTip();
-      this.drawRope(ctx, rx, ry, h.x, h.y - 5, this.state === 'bite' && this.hs ? 0.5 : 0.2, false);
+      this.drawRope(ctx, rx, ry, h.x, h.y - 5, this.state === 'bite' && this.hs ? 0.5 : this.maxK > 0.5 ? 1 : 0.2, false);
+      if (this.maxK > 0.02) this.drawMaxLineWorld(ctx); // [crate26]
       this.drawHookAndBait(ctx);
       if (this.boxHover) drawBoxHover(ctx, this, this.boxHover);
     }
@@ -1011,6 +1103,7 @@ export class Fishing {
     try {
       this.boss.drawWorld(ctx); // a boss swimming in
       if (this.state === 'fight') B?.boss?.drawWorld(ctx); // the hooked boss: aura, minions
+      if (this.state === 'fight') B?.drawWorld?.(ctx); // [crate26] a self-drawn crate
     } catch (e) { if (!this.bossDrawErr) { this.bossDrawErr = true; console.error(e); } }
     if (B && this.fish && (B.stunned || B.zap)) this.drawStunnedFish(ctx, B);
     // [simple24] chain lightning: arcs leaping from the fish to bubbles beside it
@@ -1180,7 +1273,54 @@ export class Fishing {
     if (this.state === 'box' && this.box) this.box.drawHud(ctx);
     if (this.state === 'bite' && this.fish) drawBiteCue(ctx, this);
     if (this.msg) drawMessage(ctx, this, this.msg);
+    if (this.maxK > 0.02 && this.hook.visible && (this.state === 'idle' || this.state === 'nibble')) this.drawMaxLineHud(ctx); // [crate26]
     if (!this.hostCineHud) this.drawCinematicHudInner(ctx);
+  }
+
+  // ------------------------------------------------------------------ [crate26] MAX LINE
+  onMaxLine() {
+    this.maxCool = 2.5;
+    this.sfx('slack_warn', { vol: 0.45, pitch: 0.8 });
+    this.sfx('reel_tick', { vol: 0.5, pitch: 0.5 });
+    const h = this.hook;
+    this.particles.aeroBubbles?.(h.x, h.y, 3, { w: 3 });
+    this.game.emit?.('maxLine', { reach: this.lineReach() });
+  }
+
+  // in the world: a little red crimp bead on the taut line above the hook and a dotted ghost line down to where you aim
+  drawMaxLineWorld(ctx) {
+    const h = this.hook, a = this.maxK;
+    const bx = Math.round(h.x), by = Math.round(h.y - 9);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#0c3a52'; ctx.fillRect(bx - 2, by - 2, 4, 5);
+    ctx.fillStyle = Math.floor(this.t * 6) % 2 ? '#ff5a4a' : '#ff8a7a'; ctx.fillRect(bx - 1, by - 1, 2, 3);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(bx - 1, by - 1, 1, 1);
+    const gp = this.maxGhost;
+    if (gp) {
+      const n = Math.floor(Math.hypot(gp[0] - h.x, gp[1] - h.y) / 4);
+      ctx.fillStyle = 'rgba(255,138,122,0.55)';
+      for (let i = 1; i < n; i++) {
+        if ((i + Math.floor(this.t * 8)) % 2) continue;
+        const k = i / n;
+        ctx.fillRect(Math.round(lerp(h.x, gp[0], k)), Math.round(lerp(h.y, gp[1], k)), 1, 1);
+      }
+    }
+    ctx.restore();
+  }
+
+  // on screen: a 3D voxel MAX LINE sign under the hook (pinned to the screen edge when the hook is out of view)
+  drawMaxLineHud(ctx) {
+    const h = this.hook, a = this.maxK, t = this.t;
+    const S = this.H / 540;
+    let [sx, sy] = this.toScreen(h.x, h.y);
+    sx = clamp(sx, 90 * S, this.W - 90 * S);
+    sy = clamp(sy + 30 * S, 40 * S, this.H - 70 * S);
+    ctx.save();
+    ctx.globalAlpha = a;
+    word3D(ctx, 'MAX LINE', sx, sy, { t, pop: a, scale: 0.75 * S, pal: 'red', wobble: 0.8, rot: Math.sin(t * 3) * 0.03 });
+    word3D(ctx, 'LAB: LONGER LINE', sx, sy + 22 * S, { t: t + 1, scale: 0.42 * S, pal: 'white', wobble: 0.4, alpha: 0.9 });
+    ctx.restore();
   }
 
   drawCinematicHud(ctx) {
@@ -1192,6 +1332,7 @@ export class Fishing {
     if (this.state === 'fight' && this.battle && this.fish && this.battle.boss?.stage !== 'intro') drawFightBands(ctx, this, this.battle);
     else if (this.state !== 'box' && this.gear.show > 0.01) this.gear.draw(ctx, null, 1);
     if (this.state === 'box' && this.box) this.box.drawBands(ctx);
+    if (this.state === 'fight' && this.battle?.drawHud) this.battle.drawHud(ctx); // [crate26] LEGS?! / MIMIC!
     if (this.state === 'fight' && this.battle?.boss) { try { this.battle.boss.drawHud(ctx); } catch (e) { if (!this.bossHudErr) { this.bossHudErr = true; console.error(e); } } }
     this.finale?.drawHud(ctx);
     this.bossWin?.draw(ctx);

@@ -53,6 +53,9 @@ import { iconFrame } from '../gfx/bigicons.js';
 import { drawPop3D, text3dCanvas } from '../ui/pop3d.js';
 import { mix, shade, rgba } from '../core/color.js';
 import { unlockByProp } from '../game/hotbar.js'; // [hot26]
+import { drawEggChip, fmtClock } from '../ui/gemui.js'; // [cur26] egg timer chips
+import { eggSkipCost, eggSkip } from '../game/skips.js'; // [cur26]
+import { GEM_NAME, gems, canSpendGems } from '../game/gems.js'; // [cur26]
 
 const HUNGER_RATE = 1 / 2000; // 0 -> 0.6 ("hungry") in 20 minutes
 const FEED_COUNT_GAP = 20; // [food24] seconds between manual feedings that count for 'feed' quests
@@ -1135,6 +1138,14 @@ export class Aquarium {
       { id: 'light', icon: lampOff ? 'moon' : 'sun', label: 'Light', tip: lampOff ? 'Light on' : 'Light off', run: () => { this.st.tank.lampOff = !this.st.tank.lampOff; this.sfx('click', { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 }); this.game.save?.(); }, tint: lampOff ? '#6a7ae8' : '#ffc83a' },
     ];
     dock.forEach((b, i) => out.push({ ...b, x: D.x + D.pad, y: D.ty + D.pad + i * D.cell, w: D.B, h: D.B + D.lab, tile: D.B, dock: true, kd: D.kd }));
+    // [cur26] egg clutches: a timer chip each under the top plate; click = skip the wait for Byte Gems
+    (this.st.tank.eggs || []).forEach((e, i) => {
+      const k = L.k, w = Math.round(112 * k), h = Math.round(20 * k);
+      const cost = eggSkipCost(e), left = Math.max(0, e.dur - e.t);
+      out.push({ id: 'egg' + i, eggChip: i, x: L.plate.x + i * (w + Math.round(6 * k)), y: L.top + Math.round(2 * k), w, h, cost, left,
+        tip: `Eggs hatch in ${fmtClock(left)}\nClick: hatch now for ${cost} ${GEM_NAME}`,
+        run: () => { if (eggSkip(g, i)) this.sfx('sparkle', { vol: 0.6 }); else { this.sfx('ui_error'); g.toast?.(`Need ${cost - gems(g.state)} more ${GEM_NAME}: finish quests to earn them!`, 'lock'); } } });
+    });
     return out;
   }
 
@@ -1705,6 +1716,7 @@ export class Aquarium {
     drawAeroButton(ctx, bb.x, bb.y, bb.w, bb.h, { label: 'Ocean', icon: getUiIcon('hook'), state: this.hoverBtn === 'back' ? 'hover' : 'normal', tone: 'aqua', radius: R(8 * k) });
     this.drawScrollbar(ctx, cam, L);
     this.drawDock(ctx, this.fullButtons().filter((b) => b.dock), L);
+    for (const b of this.fullButtons()) if (b.eggChip !== undefined) drawEggChip(ctx, b, { left: b.left, cost: b.cost, hover: this.hoverBtn === b.id, t, color: this.st.tank.eggs[b.eggChip]?.color, afford: canSpendGems(this.st, b.cost) }); // [cur26]
     if (this.panel === 'feed') this.drawFeedPanel(ctx);
     if (this.panel === 'gear') this.drawGearPanel(ctx);
     const ga = this.growAnim;

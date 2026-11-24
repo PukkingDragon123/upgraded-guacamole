@@ -246,7 +246,7 @@ export function drawMeter(ctx, F, B) {
 }
 
 function drawTrack(ctx, F, B, L, t) {
-  const S = L.S, zoneW = B.zoneW, shield = !!B.boss?.shielded;
+  const S = L.S, zoneW = B.zoneW, shield = !!(B.boss?.shielded || B.shielded); // [crate26] a mimic's shield too
   const y0 = L.cy - L.h / 2;
   const beat = B.beat;
   // glass backing plate (readable over sky and abyss alike)
@@ -325,7 +325,7 @@ function drawMarker(ctx, F, B, L, t) {
   const S = L.S, y0 = L.cy - L.h / 2;
   const m = B.marker;
   const x = Math.round(mx(L, m));
-  const inZ = B.inZone && !B.boss?.shielded;
+  const inZ = B.inZone && !B.boss?.shielded && !B.shielded;
   const col = B.stunned ? '#bff8ff' : inZ ? (B.centre ? '#ffffff' : '#e2ffb0') : Math.abs(m) > 0.8 ? '#ff8a7a' : '#ffffff';
   // the pin across the track
   const pw = Math.max(4, Math.round(5 * S));
@@ -335,7 +335,7 @@ function drawMarker(ctx, F, B, L, t) {
   // the fish riding on top, facing where it pulls
   const fw = Math.round(56 * S), fh = Math.round(34 * S);
   const facing = m < -0.05 ? -1 : 1;
-  const ic = voxelFishIcon(F.sp, fw, fh, { dir: facing });
+  const ic = B.markerIcon?.(fw, fh, facing, t) || voxelFishIcon(F.sp, fw, fh, { dir: facing }); // [crate26] a crate rides as itself
   const wob = B.stunned ? Math.round(Math.sin(t * 40) * 1.5) : Math.round(Math.sin(t * (inZ ? 4 : 9)) * (inZ ? 1 : 2));
   if (inZ) glow(ctx, x, y0 - fh * 0.5, Math.round(fh * 0.9), B.centre ? '#ffffff' : '#c8f56a', 0.4 + 0.2 * Math.sin(t * 8));
   if (ic) ctx.drawImage(ic, Math.round(x - ic.width / 2 + wob), Math.round(y0 - ic.height - 4 * S));
@@ -343,7 +343,7 @@ function drawMarker(ctx, F, B, L, t) {
   ctx.fillStyle = INK;
   for (let i = 0; i < 4; i++) ctx.fillRect(x - 4 + i, y0 - Math.round(6 * S) - 4 + i, 9 - i * 2, 1);
   // SPIN! / EASY! coaching arrows when the marker strays (not during a beat or stun)
-  if (!B.beat && !B.stunned && !B.boss?.shielded && Math.abs(m) > B.zoneW + 0.04 && B.mode !== 'hookset') {
+  if (!B.beat && !B.stunned && !B.boss?.shielded && !B.shielded && Math.abs(m) > B.zoneW + 0.04 && B.mode !== 'hookset') {
     const right = m < 0; // the marker is left: spin harder to push it right
     const ax = right ? Math.max(x, mx(L, -0.95)) + Math.round(34 * S) : Math.min(x, mx(L, 0.95)) - Math.round(34 * S);
     const blink = Math.floor(t * 4) % 2;

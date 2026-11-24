@@ -61,6 +61,7 @@ import * as ITEMS from '../build/items.js';
 import * as WORLD from '../world/biomes/index.js';
 import * as STORE from '../store/index.js';
 import * as BM from '../world/boatmodels.js';
+import { hotbarLock, HOTBAR_UNLOCKS } from './hotbar.js'; // [hot26] The Lab is unlocked by building a Research Bench
 
 const START_BIOME = 'oscean';
 const START_BAIT = 'crumbs';
@@ -76,14 +77,15 @@ const LESSON_HOLD = { spin: 1.8, shock: 1.4, land: 0.8 };
 const LESSON_POP = {
   cast: ['CAST!', 'aqua'], hook: ['BITE!', 'gold'], spin: ['SPIN!', 'leaf'], shock: ['SHOCK!', 'gold'], land: ['LAND IT!', 'leaf'],
 };
-// HUD buttons revealed so far, per step (the lesson shows only the loaded bait)
+// HUD buttons revealed so far, per step. [hot26] A new game has only Bait Shop, Quests and Aquarium unlocked
+// (src/game/hotbar.js); the 'lab' step shows The Lab's padlocked slot and has the player build a Research Bench.
 const SHOWN = {
   intro: [],
   bait: ['baitshop'],
-  card: ['baitshop', 'bait', 'aquarium'], tank: ['baitshop', 'bait', 'aquarium'], coin: ['baitshop', 'bait', 'aquarium'],
-  lab: ['baitshop', 'bait', 'aquarium', 'lab'], research: ['baitshop', 'bait', 'aquarium', 'lab'],
+  card: ['baitshop', 'aquarium'], tank: ['baitshop', 'aquarium'], coin: ['baitshop', 'aquarium'],
+  lab: ['baitshop', 'aquarium', 'lab'], research: ['baitshop', 'aquarium', 'lab'],
 };
-for (const s of FISHING_STEPS) SHOWN[s] = ['bait'];
+for (const s of FISHING_STEPS) SHOWN[s] = ['baitshop'];
 // the progress dots: the first session, or a replayed lesson
 const DOTS_FULL = ['bait', ...LESSON_STEPS, 'tank', 'coin', 'lab', 'research'];
 const DOTS_LESSON = LESSON_STEPS;
@@ -130,6 +132,10 @@ const SAY = {
   ] },
   coin: { text: 'Fish make Aero Bucks! Grab the drop.', pose: 'point', mood: 'happy' },
   lab: { text: 'Spend it in The Lab!', pose: 'point', mood: 'excited' },
+  // [hot26] The Lab starts locked: build a Research Bench in the tank
+  labBuild: { text: 'The Lab is locked! Click it, then build a Research Bench in your tank!', pose: 'point', mood: 'excited', stay: true },
+  labPlace: { text: 'Click in your tank to build the bench!', pose: 'point', mood: 'happy', stay: true },
+  labOpen: { text: 'A new button! Now open The Lab!', pose: 'cheer', mood: 'excited', stay: true },
   research: { text: 'Start your first research!', pose: 'point', mood: 'happy' },
   done: { text: "You're a natural, {name}! Keep me around for tips?", pose: 'cheer', mood: 'excited', choices: [
     { text: 'Yes please!', value: true, mood: 'love', reply: 'Yay! Click me any time.' },
@@ -530,7 +536,9 @@ export class Tutorial {
         break;
       case 'lab':
         try { g.aquarium?.closeWindow?.(); } catch (e) { /* optional */ }
-        this.say('lab');
+        this.benchT = null;
+        if (this.labLocked()) { this.benchAffordable(); this.say('labBuild'); } // [hot26]
+        else this.say('lab');
         break;
       case 'research': {
         const id = this.firstResearch();
@@ -587,6 +595,27 @@ export class Tutorial {
     g.audio?.play?.('ui_unlock', { vol: 0.5 });
     g.toast?.('+10 Bread Crumbs', 'bait');
     g.emit?.('baitBought', { id: START_BAIT, bait: START_BAIT, qty: 10, price: 0, gift: true });
+  }
+
+  // [hot26] The Lab's hotbar button is still locked (a new game): the 'lab' step has the player build a Research Bench.
+  labLocked() { try { return !!hotbarLock(this.game.state, 'lab'); } catch { return false; } }
+  // the bench always fits the first catch's Aero
+  benchAffordable() {
+    const st = this.game.state, need = HOTBAR_UNLOCKS.lab.price;
+    if ((st.coins || 0) < need) st.coins = need;
+  }
+  // 'lab' step while the button is locked: click the padlock -> build mode on the bench -> place it -> it unlocks, the
+  // build mode closes, the button pops into the hotbar and Bubbles asks to open The Lab
+  updateBench() {
+    const g = this.game, aq = g.aquarium, editing = !!(aq?.build?.on && g.state.view === 'aquarium');
+    if (this.labLocked()) {
+      if (editing) this.say('labPlace');
+      else if (this.guide.key !== 'labBuild') { this.benchAffordable(); this.say('labBuild'); }
+      return;
+    }
+    if (this.benchT == null) { this.benchT = this.t; this.seal.emote('cheer', 1.2); }
+    if (editing && this.t - this.benchT > 0.9) { try { aq.build.exit(); } catch (e) { console.error(e); } }
+    if (!editing && this.guide.key !== 'labOpen' && this.guide.key !== 'lab') this.say('labOpen');
   }
 
   // The cheapest research that is available right now (Aero first), defaulting to the Lab's sharper hook.
@@ -715,6 +744,7 @@ export class Tutorial {
       case 'lab':
         if (g.ui?.isOpen?.('lab')) this.go('research');
         else if (!g.ui?.panels?.lab && this.t > 2) this.go('done');
+        else this.updateBench(); // [hot26]
         break;
       case 'research':
         if (this.researchId && LAB.labStatus?.(g.state, this.researchId) === 'researching') this.go('done');
@@ -898,9 +928,15 @@ export class Tutorial {
     if (bait <= 0) return { text: 'Out of bait? Visit the Bait Shop!', at: 'baitshop' };
     // [balance] every other tip: the next big upgrade (rod / tank / boat) and what it still needs
     if (this.helper.tipI % 2 === 0) { const gt = this.goalTip(); if (gt) { this.helper.tipI++; return gt; } }
+    // [hot26] every third tip: the next hotbar button to build (the cheapest one still locked)
+    if (this.helper.tipI % 3 === 1) {
+      const lk = Object.keys(HOTBAR_UNLOCKS).map((id) => hotbarLock(st, id)).filter(Boolean).sort((x, y) => x.price - y.price)[0];
+      if (lk) { this.helper.tipI++; return { text: `Build a ${lk.build} in your tank to unlock ${lk.label}!`, at: lk.id }; }
+    }
     for (let n = 0; n < TIPS.length; n++) {
       const tip = TIPS[this.helper.tipI++ % TIPS.length];
       if (tip.at === 'quests' && !this.iconRect('quests')) continue;
+      if (tip.at && hotbarLock(st, tip.at)) continue; // [hot26] no tips about a locked button
       return tip;
     }
     return TIPS[0];
@@ -1035,7 +1071,9 @@ export class Tutorial {
         if (!r) return { edge: true };
         return { rect: r, aim: hint || ctr(r), avoid: [r], outside: r, noRing: this.step === 'tank' };
       }
-      case 'lab': return R(this.iconRect('lab'));
+      case 'lab': // [hot26] in build mode (the hotbar is hidden) Bubbles rests at the edge while the bench is placed
+        if (g.aquarium?.build?.on && g.state.view === 'aquarium') return { edge: true, side: -1 };
+        return R(this.iconRect('lab'));
       case 'research': {
         const P = g.ui?.panels?.lab;
         let r = null;

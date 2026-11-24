@@ -822,11 +822,12 @@ export class DeepSea {
     const reduced = !!g.state?.settings?.reducedMotion;
     // distant eyes: pairs of glints in the dark that blink, watch the hook and vanish when it comes close
     this.eyeT -= dt;
-    const maxEyes = deep === 'abyss' ? 4 : deep === 'midnight' ? 2 : 0;
+    // [deep26] more watchers the deeper you go (a lone pair even in the twilight)
+    const maxEyes = deep === 'abyss' ? 6 : deep === 'midnight' ? 3 : deep === 'twilight' ? 1 : 0;
     if (this.eyeT <= 0) {
-      this.eyeT = deep === 'abyss' ? 2.5 + Math.random() * 4 : 6 + Math.random() * 8;
+      this.eyeT = deep === 'abyss' ? 1.6 + Math.random() * 3 : deep === 'midnight' ? 3.5 + Math.random() * 5 : 9 + Math.random() * 10;
       if (this.eyes.length < maxEyes) {
-        const big = Math.random() < (deep === 'abyss' ? 0.3 : 0.12);
+        const big = Math.random() < (deep === 'abyss' ? 0.35 : deep === 'midnight' ? 0.18 : 0.05);
         const x = lerp(v.x0 + 12, v.x1 - 12, Math.random()), y = lerp(v.y0 + 14, v.y1 - 14, Math.random());
         const far = !h?.visible || Math.hypot(x - h.x, y - h.y) > 90;
         if (far && y > this.H + 60) {
@@ -842,7 +843,7 @@ export class DeepSea {
       const fadeIn = clamp01(e.t / 1.2), fadeOut = clamp01((e.life - e.t) / (e.flee ? 0.25 : 0.8));
       e.a = Math.min(fadeIn, fadeOut) * (deep ? 1 : 0);
       e.blink = Math.max(0, e.blink - dt);
-      if (Math.random() < dt * 0.35) e.blink = 0.14;
+      if (Math.random() < dt * 0.5) e.blink = Math.random() < 0.25 ? 0.5 : 0.13; // [deep26] slow, deliberate blinks too
       if (h?.visible) e.dx = damp(e.dx, clamp((h.x - e.x) * 0.02, -1, 1), 2, dt);
       e.x += Math.sin(this.t * 0.3 + e.sep) * dt * 1.5;
     }
@@ -855,12 +856,13 @@ export class DeepSea {
       G.f.x = G.x; G.f.y = G.y + Math.sin(this.t * 0.4) * 6; G.f.vx = G.dir * G.v; G.f.vy = 0;
       try { G.f.animate?.(dt); } catch { /* rig not ready */ }
       if ((G.dir > 0 && G.x - G.len > v.x1 + 80) || (G.dir < 0 && G.x + G.len < v.x0 - 80) || Math.abs(G.y - cy) > 400) this.giant = null;
-    } else if (this.giantT <= 0 && (deep === 'midnight' || deep === 'abyss') && !busy) {
-      this.giantT = 30 + Math.random() * 40;
+    } else if (this.giantT <= 0 && deep && !busy) {
+      // [deep26] huge silhouettes pass more often (rarely already in the twilight)
+      this.giantT = deep === 'abyss' ? 16 + Math.random() * 22 : deep === 'midnight' ? 22 + Math.random() * 28 : 45 + Math.random() * 40;
       this.spawnGiant(v, deep);
     }
     // keep the next giant / lunge creature warm while down there (their low-poly frames build ahead of time)
-    if (deep === 'midnight' || deep === 'abyss') {
+    if (deep) {
       const W = this.warm ||= { giant: null, lunge: null, t: 0 };
       W.t -= dt;
       if (W.t <= 0) {
@@ -874,16 +876,38 @@ export class DeepSea {
     // rumbles, creaks and moans
     this.rumbleT -= dt;
     if (this.rumbleT <= 0) {
-      this.rumbleT = deep === 'abyss' ? 7 + Math.random() * 10 : deep === 'midnight' ? 12 + Math.random() * 14 : 20;
+      this.rumbleT = deep === 'abyss' ? 6 + Math.random() * 8 : deep === 'midnight' ? 9 + Math.random() * 11 : 16 + Math.random() * 14;
       const a = g.audio;
+      const pick = Math.random();
+      const pan = Math.random() * 1.6 - 0.8;
       if (deep === 'abyss' || deep === 'midnight') {
-        const pick = Math.random();
-        const pan = Math.random() * 1.6 - 0.8;
-        if (pick < 0.4) a?.play?.('thunder', { vol: deep === 'abyss' ? 0.35 : 0.2, pitch: 0.32 + Math.random() * 0.1, pan });
-        else if (pick < 0.7) a?.play?.('ice_crack', { vol: 0.16, pitch: 0.28 + Math.random() * 0.12, pan });
-        else a?.play?.('whale_call', { vol: deep === 'abyss' ? 0.3 : 0.18, pitch: 0.38 + Math.random() * 0.12, pan });
-        if (deep === 'abyss' && pick < 0.4) g.camera?.shake?.(reduced ? 0.4 : 1.2);
+        // [deep26] deep low rumbles (thunder / an eruption far away, pitched way down), creaks, moans and a slow ping
+        const lv = deep === 'abyss' ? 1 : 0.6;
+        if (pick < 0.3) a?.play?.('thunder', { vol: 0.35 * lv, pitch: 0.26 + Math.random() * 0.1, pan });
+        else if (pick < 0.45) a?.play?.('eruption_boom', { vol: 0.22 * lv, pitch: 0.3 + Math.random() * 0.08, pan });
+        else if (pick < 0.62) a?.play?.('ice_crack', { vol: 0.14, pitch: 0.26 + Math.random() * 0.12, pan });
+        else if (pick < 0.82) a?.play?.('whale_call', { vol: 0.3 * lv, pitch: 0.32 + Math.random() * 0.12, pan });
+        else a?.play?.('sonar', { vol: 0.12 * lv, pitch: 0.42 + Math.random() * 0.08, pan });
+        if (deep === 'abyss' && pick < 0.45) g.camera?.shake?.(reduced ? 0.4 : 1.2);
+      } else if (deep === 'twilight' && pick < 0.6) a?.play?.('thunder', { vol: 0.12, pitch: 0.3 + Math.random() * 0.08, pan });
+    }
+    // [deep26] bioluminescent plankton: a moving hook lights up a sparkling wake in the dark
+    if (deep && h?.visible && !reduced) {
+      const ph = this.hookPrev || (this.hookPrev = { x: h.x, y: h.y });
+      const sp = Math.hypot(h.x - ph.x, h.y - ph.y) / Math.max(1e-3, dt);
+      ph.x = h.x; ph.y = h.y;
+      const wake = this.wake || (this.wake = []);
+      this.wakeT = (this.wakeT || 0) + dt * Math.min(30, sp * 0.25) * (deep === 'twilight' ? 0.5 : 1);
+      while (this.wakeT > 1 && wake.length < 90) {
+        this.wakeT -= 1;
+        const c = L.def.glow[Math.floor(Math.random() * L.def.glow.length)];
+        wake.push({ x: h.x + (Math.random() - 0.5) * 10, y: h.y + (Math.random() - 0.5) * 10, t: 0, life: 0.8 + Math.random() * 1.4, c, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 4 - 2 });
       }
+      this.wakeT = Math.min(this.wakeT, 2);
+    }
+    if (this.wake?.length) {
+      for (const p of this.wake) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - dt * 1.5; }
+      this.wake = this.wake.filter((p) => p.t < p.life);
     }
     // jump-scare-lite: a pair of huge eyes opens right beside the light, or something big lunges through it
     this.scareT -= dt;
@@ -906,6 +930,9 @@ export class DeepSea {
     const id = this.b.id;
     const big = (s) => Math.max(s.look?.body?.len || 0, (s.look?.body?.h || 0) * 0.8);
     const ok = (s) => s.look && s.look.kind !== 'chain' && s.move?.style !== 'crawl' && s.move?.style !== 'hop' && !s.quirks?.includes?.('intro');
+    // [deep26] the deep's own monsters first: sixgills, goblin and frilled sharks, gulpers, seadevils, bigfin squid
+    const scary = SPECIES.filter((s) => ok(s) && s.zone && [].concat(s.zone).some((zz) => zz === 'midnight' || zz === 'abyss') && big(s) >= 40 && s.move?.style !== 'drift');
+    if (scary.length >= 3 && Math.random() < 0.7) return scary.sort((a, b) => big(b) - big(a)).slice(0, 6);
     let pool = SPECIES.filter((s) => ok(s) && (s.biome === id || s.biome === 'abyss') && big(s) >= 40);
     if (!pool.length) pool = SPECIES.filter((s) => ok(s) && big(s) >= 40);
     pool.sort((a, b) => big(b) - big(a));
@@ -1243,6 +1270,13 @@ export class DeepSea {
           if (k % 3 === 0) { const gs = glowSprite(3, c); ctx.globalAlpha = a * 0.5; ctx.drawImage(gs, Math.round(x + 0.5) - (gs.width >> 1), Math.round(y + 0.5) - (gs.height >> 1)); }
         }
       }
+    }
+    // [deep26] the hook's plankton wake: pixel sparkles that flare and fade
+    for (const p of this.wake || []) {
+      const k = Math.sin(Math.PI * clamp01(p.t / p.life)) * (0.7 + 0.3 * Math.sin(t * 20 + p.x));
+      if (k < 0.05) continue;
+      ctx.globalAlpha = k; ctx.fillStyle = p.c; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
+      if (k > 0.6) { const gs = glowSprite(3, p.c); ctx.globalAlpha = (k - 0.6) * 1.2; ctx.drawImage(gs, Math.round(p.x + 0.5) - (gs.width >> 1), Math.round(p.y + 0.5) - (gs.height >> 1)); }
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';

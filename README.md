@@ -177,7 +177,7 @@ with a minigame.
   - **Sunken Metropolis**
   - **Lava Rift**
   - **The Deep Ocean**
-- **111 realistic voxel fish** plus dolphins, whales, orcas, seals and turtles in high-resolution voxel art, with
+- **128 realistic voxel fish** plus dolphins, whales, orcas, seals and turtles in high-resolution voxel art, with
   natural eyes, glossy shine and see-through fins. Their names are internet and meme
   puns:
   - Wi-Fish
@@ -194,6 +194,10 @@ with a minigame.
   - the Sneakerhead walks in white high-tops
   - the Wakka Fish is a retro chomper that runs a grid eating pellets
   - the Flopikarp evolves in your tank
+
+  The deep zones (twilight, midnight, abyss) under every ocean hold 17 creepier deep-sea species based on
+  real animals, such as the Needle Drop Viperfish, Sleep Paralysis Seadevil, Goblin Mode Shark, Lore Accurate
+  Frilled Shark and the trophy Backrooms Bigfin Squid. Their lures and eyes glow, and they snap at your hook.
 
   Fish also come with mutations, shinies and giants.
 - **You are a bubble person**, with 140 cosmetics and a glossy wardrobe.

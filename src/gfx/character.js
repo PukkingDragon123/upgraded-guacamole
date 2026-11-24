@@ -97,8 +97,8 @@ export const WARDROBE = [
   it('tint', 'gold', 'Golden Orb', 'legendary', null, 'Solid shine. Legendary crates only.', pkg),
   it('tint', 'galaxy', 'Galaxy Bubble', 'legendary', null, 'A tiny universe on your shoulders.', pkg),
   // eyes
-  it('eyes', 'bean', 'Glossy Beans', 'common', 0, 'Big, dark and shiny.'),
-  it('eyes', 'sparkle', 'Sparkle Eyes', 'common', 50, 'Bright aqua irises.'),
+  it('eyes', 'bean', 'Bean Eyes', 'common', 0, 'Two little ink beans with a twinkle.'),
+  it('eyes', 'sparkle', 'Sparkle Eyes', 'common', 50, 'An extra twinkle in each eye.'),
   it('eyes', 'dot', 'Dot Eyes', 'common', 40, 'Simple. Iconic. Tiny.'),
   it('eyes', 'happy', 'Happy Arcs', 'uncommon', 120, 'Always smiling with the eyes.'),
   it('eyes', 'sleepy', 'Sleepy Eyes', 'uncommon', 120, 'Five more minutes...'),
@@ -1758,6 +1758,12 @@ export function drawEye(ctx, X, Y, f, E, mask) {
     const ch = rows[y][x];
     if (ch !== '.') put(x0 + x * k, y0 + y * k, ch === '+' ? (set === 'led' && y % 2 ? '#b8fbff' : col) : EYE_COL[ch]);
   }
+  if (E.lashes && !OUTLINED.has(set) && set !== 'led') {
+    // 'lashes' face item: two ink flicks off the outer top corner
+    const out = E.inner > 0 ? -1 : 1, ox = out < 0 ? 0 : W - 1;
+    put(x0 + (ox + out) * k, y0, INK);
+    put(x0 + (ox + out * 2) * k, y0 - k, INK);
+  }
 }
 
 // Mouth. Mo: {style, state ('rest'|'open'|'grit'|'frown'|'grin'|'o'|'smirk'), open 0..1, px}
@@ -1880,13 +1886,7 @@ function accPixel(id, which, u, v, A) {
     if (lobe || curl) return v < -0.55 ? '#7a5a3a' : '#5a3a22';
     return null;
   }
-  if (id === 'lashes' && eye) {
-    const s = which === 'eyeL' ? 1 : -1;
-    for (const [lx, ly, dx, dy] of [[0.55, -0.85, 0.45, -0.35], [0.85, -0.55, 0.5, -0.15]]) {
-      const t = ((u * s - lx) * dx + (v - ly) * dy) / (dx * dx + dy * dy);
-      if (t > 0 && t < 1 && Math.hypot(u * s - lx - dx * t, v - ly - dy * t) < th) return INK;
-    }
-  }
+  // 'lashes' are drawn by drawEye (they hug the pixel eye)
   return null;
 }
 
@@ -1944,7 +1944,7 @@ export function drawFaceLayer(ctx, face, X, Y, o) {
     if (k === 'eyeL' || k === 'eyeR') {
       const [gu, gv] = localDir(f, st.gx, st.gy);
       const gl = Math.min(1, Math.hypot(st.gx, st.gy));
-      const E = { style: eyes, gu: gu * gl, gv: gv * gl, lid, blink, wide: md.wide && !blink, mood: o.mood, t: o.t || 0, side: k === 'eyeL' ? 1 : -1, inner: Math.sign((F.mid || F[k === 'eyeL' ? 'eyeR' : 'eyeL'] || f).x - f.x) || 1, px, mode: blink ? null : p.eyeMode };
+      const E = { style: eyes, gu: gu * gl, gv: gv * gl, lid, blink, wide: md.wide && !blink, mood: o.mood, t: o.t || 0, side: k === 'eyeL' ? 1 : -1, inner: Math.sign((F.mid || F[k === 'eyeL' ? 'eyeR' : 'eyeL'] || f).x - f.x) || 1, lashes: acc === 'lashes', px, mode: blink ? null : p.eyeMode };
       drawEye(ctx, X, Y, f, E, face.mask);
     } else if (k === 'mouth') {
       const mpx = Math.hypot(f.ax, f.ay);
@@ -1955,7 +1955,7 @@ export function drawFaceLayer(ctx, face, X, Y, o) {
     }
     if (acc !== 'none') {
       ctx.globalAlpha = a0 * vis;
-      const A = { px: k === 'mid' ? Math.hypot(f.ax, f.ay) : Math.hypot(f.ax, f.ay), t: o.t || 0 };
+      const A = { px: Math.hypot(f.ax, f.ay), t: o.t || 0 };
       const ext = k === 'mid' ? 11 : 1.7;
       rasterFeature(ctx, X, Y, f, 1, ext, face.mask, (u, v) => accPixel(acc, k, u, v, A));
     }

@@ -19,12 +19,16 @@ import { ITEMS, countItem, removeItem, addItem } from '../build/items.js';
 import { buildingSprite } from '../build/buildingmodels.js';
 import { buildingDef } from '../build/buildings.js';
 import { unlocked, nodeFor } from '../game/lab.js';
+import { unlockPrice, UNLOCK_BY_PROP, HOTBAR_UNLOCKS } from '../game/hotbar.js'; // [hot26] props that unlock hotbar buttons
+import { iconFrame } from '../gfx/bigicons.js'; // [hot26] the hotbar button a prop unlocks, on its tile
 
 const CATS = [
-  { id: 'all', label: 'All' }, { id: 'owned', label: 'Owned' }, { id: 'build', label: 'Buildings' }, { id: 'nature', label: 'Nature' },
+  { id: 'all', label: 'All' }, { id: 'unlock', label: 'Unlocks' }, { id: 'owned', label: 'Owned' }, // [hot26] Unlocks: props that unlock hotbar buttons
+  { id: 'build', label: 'Buildings' }, { id: 'nature', label: 'Nature' },
   { id: 'ruin', label: 'Ruins' }, { id: 'glow', label: 'Glow' }, { id: 'fun', label: 'Fun' },
 ];
 const catOf = (id) => {
+  if (UNLOCK_BY_PROP[id]) return 'unlock'; // [hot26]
   const t = PROPS[id]?.tags || [];
   if (t.includes('rock') || t.includes('bone') || t.includes('coral') || t.includes('plant')) return 'nature';
   if (t.includes('ruin') || t.includes('treasure') || t.includes('wreck') || t.includes('ship')) return 'ruin';
@@ -65,7 +69,7 @@ export class Build2D {
       const it = ITEMS[o.place];
       const key = it?.kind === 'blueprint' ? 'bp:' + o.place : 'decor:' + (it?.prop || o.place);
       const e = this.entries().find((q) => q.key === key);
-      if (e) { this.pick(e); this.cat = e.kind === 'blueprint' ? 'build' : 'all'; this.revealTile(e); }
+      if (e) { this.pick(e); this.cat = e.kind === 'blueprint' ? 'build' : e.cat === 'unlock' ? 'unlock' : 'all'; this.revealTile(e); } // [hot26]
     }
     if (o.select) {
       const p = aq.pieceOf(o.select);
@@ -85,6 +89,8 @@ export class Build2D {
   offer(id) {
     const n = this.owned(id);
     if (n > 0) return { kind: 'owned', n };
+    const up = unlockPrice(this.st, id); // [hot26] its hotbar button is still locked: an early, cheap price
+    if (up != null) return { kind: 'buy', price: up, unlock: UNLOCK_BY_PROP[id] };
     const price = PROPS[id]?.decor?.price || 100;
     let ok = price < 220;
     try { if (!ok && unlocked(this.st, 'recipe', 'decor_' + id)) ok = true; } catch { /* lab not ready */ }
@@ -108,8 +114,9 @@ export class Build2D {
   }
   visibleEntries() {
     const rank = { owned: 0, buy: 1, locked: 2 };
+    const unl = (e) => (e.offer.unlock ? 0 : 1); // [hot26] props that unlock a hotbar button come first
     return this.entries().filter((e) => this.cat === 'all' || (this.cat === 'owned' ? e.offer.kind === 'owned' : e.cat === this.cat))
-      .sort((a, b) => rank[a.offer.kind] - rank[b.offer.kind] || (a.kind === 'blueprint' ? -1 : 0) - (b.kind === 'blueprint' ? -1 : 0));
+      .sort((a, b) => unl(a) - unl(b) || rank[a.offer.kind] - rank[b.offer.kind] || (a.kind === 'blueprint' ? -1 : 0) - (b.kind === 'blueprint' ? -1 : 0));
   }
   pick(e) {
     if (e.offer.kind === 'locked') { this.game.toast?.(e.offer.why, 'lock'); this.aq.sfx('ui_error'); return; }
@@ -181,6 +188,7 @@ export class Build2D {
       if (p) p.lift = Math.min(aq.shape.H * 0.4, 120);
       this.push({ op: 'place', rec, paid });
       if (paid.kind !== 'aero' && this.owned(e.id) <= 0 && this.offer(e.id).kind === 'locked') this.entry = null;
+      if (e.offer?.unlock) this.entry = null; // [hot26] built: its button is unlocked (the next one would cost the full price)
     }
     aq.sfx('icon_drop', { vol: 0.6 });
     this.game.emit?.('tankBuilt', { id: e.id, kind: e.kind });
@@ -367,7 +375,7 @@ export class Build2D {
         if (!rectContains(t, inp.x, inp.y)) continue;
         this.hoverTile = t.e.key;
         const o = t.e.offer;
-        tip(`${t.e.name}\n${t.e.kind === 'blueprint' ? `Blueprint x${o.n}` : o.kind === 'owned' ? `You own ${o.n}` : o.kind === 'buy' ? `{coin} ${fmtAero(o.price)} Aero` : o.why}`);
+        tip(`${t.e.name}\n${t.e.kind === 'blueprint' ? `Blueprint x${o.n}` : o.kind === 'owned' ? `You own ${o.n}` : o.kind === 'buy' ? `{coin} ${fmtAero(o.price)} Aero` : o.why}${o.unlock ? `\nBuild it to unlock ${HOTBAR_UNLOCKS[o.unlock].label}!` : ''}`); // [hot26]
         if (inp.pressed) { inp.consume(); this.pick(t.e); }
         return;
       }
@@ -490,6 +498,13 @@ export class Build2D {
       if (e.kind === 'blueprint') drawText(ctx, `{home}x${o.n}`, tl.x + 4, sy, { font: 'small', color: ink });
       else if (o.kind === 'owned') drawText(ctx, `x${o.n}`, tl.x + 4, sy, { font: 'small', color: ink });
       else if (o.kind === 'buy') { drawAeroCoin(ctx, tl.x + 7, sy + 3, 3, 0); drawText(ctx, fmtAero(o.price), tl.x + 12, sy, { font: 'small', color: (this.st.coins || 0) >= o.price ? ink : '#c03040' }); }
+      if (o.unlock) { // [hot26] the hotbar button it unlocks, bobbing in the tile's corner
+        const u = HOTBAR_UNLOCKS[o.unlock], s = Math.round(tl.w * 0.42);
+        let f = null;
+        try { f = iconFrame(u.icon, s, Math.sin(t * 2 + tl.x) * 0.3); } catch { f = null; }
+        if (f) ctx.drawImage(f.canvas, Math.round(tl.x + tl.w - s * 0.42 - f.ox), Math.round(tl.y + s * 0.45 - f.oy + Math.sin(t * 3 + tl.x) * 1));
+        if ((t * 1.3 + tl.x * 0.01) % 1 < 0.4) drawSparkle(ctx, tl.x + tl.w - 5, tl.y + 4, 2, 1);
+      }
       if (on) drawPixelBrackets(ctx, tl.x - 2, tl.y - 2, tl.w + 4, tl.h + 4, t, { col: '#ffffff', k: 1 });
     }
     void aq;

@@ -1687,14 +1687,14 @@ SOLIDS.crab = (S, L, ph) => {
     if (S.setae) {
       const hc = P(S.setae), hc2 = shadeP(S.setae, -0.12);
       const along = [shoulder, elbow, wrist, pc];
-      for (let k = 0; k < 30; k++) {
-        const t = (k + 0.5) / 30 * 3, i = Math.min(2, Math.floor(t)), f = t - i;
+      for (let k = 0; k < 54; k++) {
+        const t = (k + 0.5) / 54 * 3, i = Math.min(2, Math.floor(t)), f = t - i;
         const b = lerp3(along[i], along[i + 1], f);
         const h1 = hash2(k, sd > 0 ? 3 : 7, 41), h2 = hash2(k, 11, 43);
-        const dir = vnorm(-0.3 + 0.6 * h1, -1 + 0.5 * h2, sd * (0.5 + 0.5 * h1));
-        const ln = L * (0.06 + 0.05 * h2) * Math.sqrt(ck);
+        const dir = vnorm(-0.5 + 1.0 * h1, -0.9 + 1.1 * h2, sd * (0.6 + 0.6 * hash2(k, 5, 47)));
+        const ln = L * (0.1 + 0.08 * h2) * Math.sqrt(ck);
         const sway = 0.15 * Math.sin(TAU * ph + k);
-        sol.cap(add3(b, dir, L * 0.025), add3(b, [dir[0] + sway, dir[1], dir[2]], ln), L * 0.007, L * 0.0035, { col: k % 3 ? hc : hc2 });
+        sol.cap(add3(b, dir, L * 0.025), add3(b, [dir[0] + sway, dir[1], dir[2]], ln), L * 0.016, L * 0.009, { col: k % 3 ? hc : hc2 });
       }
     }
     const db = add3(add3(pc, e0, pl * 0.6), e1, ph2 * 0.45);
@@ -2096,7 +2096,7 @@ SOLIDS.cockeye = (S, L, ph) => {
     const pts = [];
     for (let k = 0; k <= 8; k++) {
       const t = k / 8;
-      pts.push([L * 0.15 + L * 0.75 * t, -L * 0.04 - L * 0.12 * t + Math.sin(P2 - t * 3 + sd) * L * 0.04 * t, sd * L * 0.03 * (1 + t)]);
+      pts.push([L * 0.15 + L * 0.5 * t, -L * 0.04 - L * 0.1 * t + Math.sin(P2 - t * 3 + sd) * L * 0.04 * t, sd * L * 0.03 * (1 + t)]);
     }
     sol.tube(pts, (t) => L * (t > 0.85 ? 0.022 : 0.009), { col: (q) => packRGB(q[2] > 0.85 ? ph3 : tone3([...body], 0.1)), glow: (q) => q[2] > 0.9 });
   }

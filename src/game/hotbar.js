@@ -4,7 +4,7 @@
 // Unlocks are permanent: storing or moving the prop afterwards never locks the button again.
 //
 //   HOTBAR_START                 ids unlocked on a new game        HOTBAR_ALWAYS  never locked (settings)
-//   HOTBAR_UNLOCKS[btnId]        {prop, build (the prop's name), price (Aero while the button is still locked), label}
+//   HOTBAR_UNLOCKS[btnId]        {prop, build (the prop's name), price (Aero while the button is still locked), label, icon}
 //   UNLOCK_BY_PROP[propId]       -> btnId
 //   ensureHotbar(state)          state.hotbar = {v, unlocked: {btnId: ts}, fresh: {btnId: ts}} (+ old-save migration)
 //   hotbarUnlocked(state, id)    true for start / always / unlocked ids and anything without an unlock rule
@@ -22,15 +22,15 @@ export const HOTBAR_ALWAYS = ['settings'];
 const ALIAS = { appsea: 'baitshop', store: 'baitshop', shop: 'baitshop', skills: 'lab', tank: 'aquarium', friends: 'multiplayer', quest: 'quests', questlog: 'quests', crafting: 'workshop', research: 'lab' };
 
 export const HOTBAR_UNLOCKS = {
-  lab: { prop: 'research_bench', build: 'Research Bench', price: 5, label: 'The Lab' },
-  inventory: { prop: 'treasure_chest', build: 'Treasure Chest', price: 10, label: 'Satchel' },
-  journal: { prop: 'bookshelf', build: 'Bookshelf', price: 15, label: 'FishDex' },
-  bait: { prop: 'tackle_box', build: 'Tackle Box', price: 15, label: 'Bait' },
-  wardrobe: { prop: 'vanity_mirror', build: 'Mirror', price: 20, label: 'Wardrobe' },
-  fishmgr: { prop: 'net_rack', build: 'Net Rack', price: 20, label: 'My Fish' },
-  map: { prop: 'map_table', build: 'Treasure Map Table', price: 40, label: 'Map' },
-  multiplayer: { prop: 'phone_booth', build: 'Phone Booth', price: 50, label: 'Multiplayer' },
-  workshop: { prop: 'workbench', build: 'Workbench', price: 60, label: 'Workshop' },
+  lab: { prop: 'research_bench', build: 'Research Bench', price: 5, label: 'The Lab', icon: 'lab' },
+  inventory: { prop: 'treasure_chest', build: 'Treasure Chest', price: 10, label: 'Satchel', icon: 'inventory' },
+  journal: { prop: 'bookshelf', build: 'Bookshelf', price: 15, label: 'FishDex', icon: 'journal' },
+  bait: { prop: 'tackle_box', build: 'Tackle Box', price: 15, label: 'Bait', icon: 'bait' },
+  wardrobe: { prop: 'vanity_mirror', build: 'Mirror', price: 20, label: 'Wardrobe', icon: 'wardrobe' },
+  fishmgr: { prop: 'net_rack', build: 'Net Rack', price: 20, label: 'My Fish', icon: 'fishmgr' },
+  map: { prop: 'map_table', build: 'Treasure Map Table', price: 40, label: 'Map', icon: 'map' },
+  multiplayer: { prop: 'phone_booth', build: 'Phone Booth', price: 50, label: 'Multiplayer', icon: 'multiplayer' },
+  workshop: { prop: 'workbench', build: 'Workbench', price: 60, label: 'Workshop', icon: 'build' },
 };
 export const HOTBAR_ORDER = Object.keys(HOTBAR_UNLOCKS);
 export const UNLOCK_BY_PROP = Object.fromEntries(Object.entries(HOTBAR_UNLOCKS).map(([id, u]) => [u.prop, id]));

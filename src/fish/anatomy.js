@@ -883,7 +883,7 @@ A.gulper = {
   plan: 'fish',
   body: { top: [[0, 0.04], [0.1, 0.06], [0.28, 0.07], [0.45, 0.05], [0.7, 0.03], [1, 0.014]], bot: [[0, -0.1], [0.12, -0.16], [0.26, -0.15], [0.38, -0.07], [0.6, -0.03], [1, -0.014]], wid: [[0, 0.05], [0.2, 0.07], [0.4, 0.04], [1, 0.01]], nose: 0.02, xs: 1.8, wy: 0.5 },
   eye: { u: 0.025, v: 0.86, r: 0.008, iris: '#3a3a50' },
-  mouth: { u: 0.36, v: 0.72, drop: 0.02, curve: -0.02, dark: 0.7 },
+  mouth: { u: 0.36, v: 0.74, drop: 0.012, curve: -0.015, dark: 0.85, gapeK: 0.95, rest: 0.42, lips: '#6a4aa0', teeth: { n: 14, len: 0.008, col: '#d8d0f0' } }, // [deep26] the pelican eel's huge jaw hangs open
   op: null, noGill: true, nostril: false,
   fins: [fin('top', 0.4, 0.98, 0.012, 'low', 0.2, 30), fin('bot', 0.5, 0.98, 0.01, 'low', 0.2, 30)],
   pec: null, pel: null,
@@ -1155,8 +1155,8 @@ A.viperfish = {
   plan: 'fish',
   body: { top: [[0, 0.03], [0.05, 0.068], [0.14, 0.085], [0.3, 0.078], [0.6, 0.058], [0.85, 0.036], [1, 0.022]], bot: [[0, 0.004], [0.04, -0.04], [0.14, -0.072], [0.3, -0.07], [0.6, -0.052], [0.85, -0.032], [1, -0.02]], wid: [[0, 0.02], [0.1, 0.042], [0.3, 0.046], [0.7, 0.03], [1, 0.012]], nose: 0.02, xs: 2, wy: 0.45 },
   eye: { u: 0.072, v: 0.72, r: 0.027, iris: '#6a9ad8', pupil: 0.72, glow: true, glowCol: '#8ad8ff' },
-  mouth: { u: 0.16, v: 0.58, drop: -0.024, curve: 0.004, dark: 0.8, gapeK: 0.95, rest: 0.2, teeth: { n: 8, len: 0.016, col: '#eaf6ff' } },
-  fangs: [{ u: 0.014, len: 0.115, up: 1, lean: 0.2 }, { u: 0.032, len: 0.08, up: -1, lean: 0.1 }, { u: 0.058, len: 0.06, up: 1, lean: 0.15 }, { u: 0.09, len: 0.04, up: -1 }],
+  mouth: { u: 0.16, v: 0.58, drop: -0.024, curve: 0.004, dark: 0.8, gapeK: 0.95, rest: 0.38, teeth: { n: 8, len: 0.016, col: '#eaf6ff' } },
+  fangs: [{ u: 0.01, len: 0.11, up: 1, lean: -0.5, w: 0.05, out: 0.95 }, { u: 0.05, len: 0.06, up: -1, lean: 0.1, w: 0.06 }, { u: 0.075, len: 0.045, up: 1, lean: -0.3, w: 0.06 }],
   op: { u: 0.17, top: 0.84, bot: 0.16, bulge: 0.012, dark: 0.18 },
   fins: [fin('top', 0.17, 0.22, 0.05, 'tri', 0.3, 6), fin('top', 0.9, 0.93, 0.02, 'round', 0.3, 1, { adipose: true }), fin('bot', 0.8, 0.9, 0.05, 'tri', 0.4, 9)],
   pec: { u: 0.18, v: 0.3, len: 0.07, w: 0.015, ang: -15, rays: 8 },
@@ -1175,8 +1175,8 @@ A.loosejaw = {
   plan: 'fish',
   body: { top: [[0, 0.04], [0.06, 0.085], [0.18, 0.105], [0.4, 0.1], [0.7, 0.075], [0.88, 0.045], [1, 0.03]], bot: [[0, 0.012], [0.06, -0.055], [0.2, -0.09], [0.4, -0.085], [0.7, -0.065], [0.88, -0.04], [1, -0.03]], wid: [[0, 0.02], [0.12, 0.05], [0.35, 0.05], [0.8, 0.03], [1, 0.014]], nose: 0.02, xs: 2, wy: 0.45 },
   eye: { u: 0.07, v: 0.74, r: 0.024, iris: '#4a5a7a', pupil: 0.7, glow: true, glowCol: '#ff8a7a' },
-  mouth: { u: 0.25, v: 0.6, drop: -0.045, curve: 0, dark: 0.85, gapeK: 1.05, rest: 0.34, teeth: { n: 11, len: 0.03, col: '#f4f0ff' } },
-  fangs: [{ u: 0.02, len: 0.06, up: 1, lean: 0.25 }, { u: 0.05, len: 0.05, up: -1 }, { u: 0.11, len: 0.045, up: 1 }],
+  mouth: { u: 0.25, v: 0.6, drop: -0.045, curve: 0, dark: 0.85, gapeK: 1.05, rest: 0.45, teeth: { n: 11, len: 0.03, col: '#f4f0ff' } },
+  fangs: [{ u: 0.02, len: 0.065, up: 1, lean: -0.3, w: 0.06 }, { u: 0.06, len: 0.05, up: -1, lean: -0.2, w: 0.06 }, { u: 0.12, len: 0.045, up: 1, lean: -0.2, w: 0.06 }],
   op: { u: 0.27, top: 0.82, bot: 0.2, bulge: 0.015, dark: 0.2 },
   fins: [fin('top', 0.78, 0.9, 0.1, 'round', 0.45, 14), fin('bot', 0.74, 0.9, 0.09, 'round', 0.45, 14)],
   pec: { u: 0.28, v: 0.3, len: 0.06, w: 0.012, ang: -15, rays: 6 },
@@ -1197,9 +1197,9 @@ A.loosejaw = {
 A.frilled = {
   ...A.shark,
   body: { D: 0.1, up: 0.52, at: 0.22, ped: 0.48, tip: 0.002, fore: 1.25, chin: 1.25, back: 0.55, W: 0.052, pw: 0.024, nose: 0.03, xs: 2, wy: 0.46 },
-  eye: { u: 0.045, v: 0.68, r: 0.015, iris: '#6ad89a', pupil: 0.6, glow: true, glowCol: '#7affb0' },
+  eye: { u: 0.04, v: 0.68, r: 0.019, iris: '#6ad89a', pupil: 0.6, glow: true, glowCol: '#7affb0' },
   mouth: { type: 'terminal', u: 0.075, v: 0.44, drop: -0.006, curve: 0.004, dark: 0.85, gapeK: 0.8, rest: 0.14, teeth: { n: 11, len: 0.016, col: '#f6f2e8', out: 1 } },
-  slits: { n: 6, u0: 0.1, u1: 0.17, v0: 0.1, v1: 0.88, frill: '#e08a90', frillW: 2.2 },
+  slits: { n: 6, u0: 0.085, u1: 0.17, v0: 0.04, v1: 0.92, dv: 0.012, frill: '#d87a84', frillW: 1.5 },
   fins: [fin('top', 0.7, 0.78, 0.045, 'round', 0.55, 1, { thick: 0.006 }), fin('bot', 0.56, 0.64, 0.04, 'round', 0.55, 1, { thick: 0.006 }), fin('bot', 0.72, 0.82, 0.045, 'round', 0.55, 1, { thick: 0.006 })],
   pec: { u: 0.19, v: 0.22, len: 0.07, w: 0.035, ang: -30, spread: 30, shape: 'wing', rays: 1, opaque: true, flap: 0.4 },
   pel: null,
@@ -1215,7 +1215,7 @@ A.frilled = {
 A.goblin = {
   ...A.shark,
   body: { D: 0.165, up: 0.52, at: 0.36, ped: 0.24, tip: -0.012, fore: 1.6, chin: 1.25, back: 0.95, W: 0.075, pw: 0.03, nose: 0.04, xs: 2, wy: 0.45 },
-  bill: { len: 0.19, h: 0.016, w: 0.034, y: 0.018 },
+  bill: { len: 0.17, h: 0.035, w: 0.05, y: 0.022 },
   eye: { u: 0.075, v: 0.66, r: 0.011, iris: '#c8d0e0', pupil: 0.6, glow: true, glowCol: '#c8e8ff' },
   mouth: { type: 'terminal', u: 0.15, v: 0.22, drop: -0.012, curve: 0.012, dark: 0.8, gapeK: 0.85, rest: 0.22, thrust: 0.05, lips: '#e88a98', teeth: { n: 12, len: 0.03, col: '#f4f0e8', out: 1.05 } },
   slits: { n: 5, u0: 0.21, u1: 0.28, v0: 0.25, v1: 0.72 },
@@ -1285,8 +1285,8 @@ A.seadevil = {
   ...A.angler,
   body: { top: [[0, 0.2], [0.05, 0.31], [0.18, 0.38], [0.4, 0.37], [0.62, 0.27], [0.84, 0.11], [1, 0.045]], bot: [[0, 0.02], [0.03, -0.16], [0.16, -0.31], [0.4, -0.34], [0.64, -0.24], [0.86, -0.1], [1, -0.045]], W: 0.27, pw: 0.04, nose: 0.06, xs: 2.2, wy: 0.45 },
   eye: { u: 0.2, v: 0.84, r: 0.024, iris: '#5a6a8a', pupil: 0.6, glow: true, glowCol: '#9ad8ff' },
-  mouth: { u: 0.34, v: 0.78, drop: -0.22, curve: -0.03, dark: 0.85, gapeK: 0.55, rest: 0.4, teeth: { n: 16, len: 0.07, col: '#e8f4ff', out: 1.02 } },
-  fangs: [{ u: 0.03, len: 0.13, up: 1, lean: 0.25 }, { u: 0.07, len: 0.11, up: -1, lean: 0.2 }, { u: 0.12, len: 0.1, up: 1, lean: 0.1 }, { u: 0.17, len: 0.08, up: -1 }],
+  mouth: { u: 0.34, v: 0.78, drop: -0.22, curve: -0.03, dark: 0.85, gapeK: 0.55, rest: 0.55, teeth: { n: 16, len: 0.07, col: '#e8f4ff', out: 1.02 } },
+  fangs: [{ u: 0.03, len: 0.12, up: 1, lean: -0.3 }, { u: 0.07, len: 0.1, up: -1, lean: -0.25 }, { u: 0.12, len: 0.1, up: 1, lean: -0.2 }, { u: 0.17, len: 0.08, up: -1, lean: -0.2 }, { u: 0.22, len: 0.07, up: 1, lean: -0.2 }],
   lure: { u: 0.1, len: 0.26, ang: 100, curve: 1.7, bulb: 0.034, col: '#b8f8ff', rod: '#1a1420', filaments: 3 },
   col: { back: '#0e0c14', flank: '#18141e', belly: '#221c28', fin: '#16121c', vb: 0.6, vbel: 0.3 },
   pat: [{ type: 'speckle', tone: 0.12, density: 0.06 }],
@@ -1520,7 +1520,7 @@ S('tripodfish', 'tripod');
 SPEC_IN.bigfin = solid('bigfin', { back: '#e8a48e', flank: '#f2bca8', belly: '#f8dcd0', fin: '#f0b8a8', eye: '#1a1020' }, { glow: true, photo: '#ffd8c8' });
 SPEC_IN.telescope = solid('telescope', { back: '#bfeaf4', flank: '#d8f6fb', belly: '#eefcff', gland: '#ff9a3a', eye: '#141a24' }, { chunk: 1.2 });
 SPEC_IN.cockeye = solid('cockeye', { back: '#c8203a', flank: '#de3a50', belly: '#f07888', fin: '#b81830', eye: '#ffd86a', eye2: '#5aa8ff' }, { photo: '#9affff', glow: true });
-SPEC_IN.yeticrab = solid('crab', { back: '#f2ead8', flank: '#f6f0e2', belly: '#fbf8ee', leg: '#f0e6d2', claw: '#f4ecdc', tip: '#d8c8a8', eye: '#c8b8a0' }, { setae: '#fff6dc', claw: 1.45, legLen: 0.5, wide: 0.4, depth: 0.42, stalk: 0.5, eyeR: 0.02, teeth: 2 });
+SPEC_IN.yeticrab = solid('crab', { back: '#f2ead8', flank: '#f6f0e2', belly: '#fbf8ee', leg: '#f0e6d2', claw: '#f4ecdc', tip: '#d8c8a8', eye: '#c8b8a0' }, { setae: '#ecd49a', claw: 1.45, legLen: 0.5, wide: 0.4, depth: 0.42, stalk: 0.5, eyeR: 0.02, teeth: 2 });
 SPEC_IN.giantisopod = solid('isopod', { back: '#d8ccc0', flank: '#bcaea6', belly: '#efe6de', eye: '#1a1418' }, { eyeR: 1.6, eyeshine: '#ffd86a', voxK: 1.3 });
 
 // eels (chain creatures): a realistic head model; the body segments follow the game's path

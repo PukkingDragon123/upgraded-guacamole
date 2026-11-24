@@ -146,7 +146,7 @@ export function run(params) {
       });
       drawSeal(g, { x: 800, y: 380, t, size: 128, k: 1.1, anim: 'idle', mood: 'happy', talk: anim ? 0.5 + 0.5 * Math.sin(t * 9) : 0, id: 'big', view: 'front', noseBubble: 1 });
     } else if (mode === 'icons') {
-      SPECIES.slice(0, 60).forEach((sp, i) => {
+      (ids ? list : SPECIES.slice(0, 60)).forEach((sp, i) => { // [deep26] &ids= picks the icons
         const ic = lpFishIcon(sp, 64, 40);
         if (ic) g.drawImage(ic, (i % 12) * 78 + 10, Math.floor(i / 12) * 60 + 20, 64, 40);
       });

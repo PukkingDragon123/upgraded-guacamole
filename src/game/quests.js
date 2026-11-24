@@ -10,6 +10,7 @@
 //           {t: 'species', n}  distinct species caught      {t: 'research', n | id}  Lab nodes done (count or one)
 //           {t: 'tank', tier}  {t: 'boat', tier}             {t: 'visit', biome}  {t: 'depth', zone, alt: obj}
 //           {t: 'aero', n}  Aero earned since the quest started    {t: 'tutorial'}  {t: 'open', panel}
+//           [hot26] {t: 'hotbar', id}  that hotbar button is unlocked (build its prop in the tank: src/game/hotbar.js)
 //     reward {aero, gems ([cur26] Byte Gems), items: {matId: n}, bait: {baitId: n}, cosmetics: [wardrobe ids], lab: [node ids], unlock: [{kind, id}]}
 //   [phase8:prog] objectives {t: 'chest', n, tier?} (chests cracked open, tier or better) {t: 'have', id, n, take?} (items in
 //     the Satchel; take = handed over on completion) {t: 'dest', id} (sailed to the Lab / Workshop) {t: 'craftRod', n | id}
@@ -54,6 +55,7 @@ import { SIDE_STORIES, MILESTONES, MILESTONE_LINES, ORDER_POOL, DAILY_AERO, ORDE
 import { gearLevel, GEAR_BY_ID } from '../aquarium/tanks.js'; // [quests16] tank gear goals
 import { RNG } from '../core/rng.js'; // [quests16] the daily order board's seed
 import { addGems, GEM_NAME, GEM_ONE } from './gems.js'; // [cur26] Byte Gems
+import { hotbarUnlocked, HOTBAR_UNLOCKS } from './hotbar.js'; // [hot26] {t: 'hotbar', id}: build the prop that unlocks a hotbar button
 
 export const ZONES = ['sunlit', 'twilight', 'midnight', 'abyss'];
 const CHEST_RANK = ['crate', 'iron', 'golden', 'orb']; // [phase8:prog]
@@ -74,10 +76,14 @@ export const CHAPTERS = [
     reward: { aero: 250, chart: 'shallows', cosmetics: ['hat_leafcrown'], unlock: [{ kind: 'recipe', id: 'ws_rod_clover' }] }, // [phase8:prog] + a rod recipe
     quests: [
       Q('c1_lesson', 'seal', 'Fishing 101', 'Hook, reel, shock! I\'ll show you everything.', [{ t: 'tutorial' }], { aero: 10, bait: { crumbs: 5 } }),
+      // [hot26] hotbar buttons are unlocked by building: Bubbles walks you through the first ones
+      Q('c1_bench', 'seal', 'Bench Press', 'Psst! The Lab needs a Research Bench. Build one in your tank and Professor Fizz moves right in!', [{ t: 'hotbar', id: 'lab' }], { aero: 8 }),
       Q('c1_catch', 'seal', 'First Splash', 'Three fish. You can do it!', [{ t: 'catch', n: 3 }], { aero: 15, items: { driftwood: 2 } }),
       Q('c1_keep', 'seal', 'Home Sweet Tank', 'Keep a fish! It makes Aero Bucks while you fish.', [{ t: 'keep', n: 1 }], { aero: 10, items: { shell: 2 } }),
+      Q('c1_satchel', 'seal', 'Loot Box', 'Ooh, goodies! Build a Treasure Chest in your tank. It opens your Satchel, where all your loot lives!', [{ t: 'hotbar', id: 'inventory' }], { aero: 12, items: { pkg_crate: 1 } }),
       Q('c1_chest', 'seal', 'Crack It Open!', 'There\'s a crate in your Satchel. Tap the glowing knots to crack it!', [{ t: 'chest', n: 1 }], { aero: 10, items: { fish_scale: 3 } }), // [phase8:prog]
       Q('c1_lab', 'fizz', 'Lab Coat On', 'Plan a tile in The Lab, then press Confirm!', [{ t: 'research', n: 1 }], { items: { driftwood: 3, kelp_fibre: 2 } }),
+      Q('c1_shelf', 'seal', 'Bookworm', 'Every fish deserves its own page! Build a Bookshelf in your tank to open your FishDex. I\'ll dust it with my fins.', [{ t: 'hotbar', id: 'journal' }], { aero: 15 }),
       Q('c1_dex', 'seal', 'FishDex Rookie', 'Every new fish goes in your FishDex.', [{ t: 'species', n: 4 }], { aero: 25 }),
       Q('c1_bowl', 'fizz', 'A Bigger Tank', 'That Nano Tank is cramped. Research the Bubble Tank!', [{ t: 'tank', tier: 1 }], { aero: 30, items: { shell: 3, kelp_fibre: 2 } }),
       Q('c1_boss', 'seal', 'Boss: Turbine Shark', 'Something HUGE spins at the very bottom. Drop your hook into the Abyssal Zone!', [{ t: 'boss', id: 'bruce' }], { aero: 40, items: { fish_scale: 4 } }), // [phase9:fishing]
@@ -92,9 +98,11 @@ export const CHAPTERS = [
     outro: { npc: 'bloat', text: 'Hrrumph! Captain Bloat. Up north, the Frosty Fjord hides a tale or two... Fizz has the chart. Bring Aero Bucks!' },
     reward: { aero: 800, chart: 'fjord', cosmetics: ['top_sailor'], items: { sea_glass: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_frost' }] }, // [phase8:prog]
     quests: [
+      Q('c2_chart', 'seal', 'X Marks the Snack', 'Sailing time! Build a Treasure Map Table in your tank and your Map opens up. X marks the snacks!', [{ t: 'hotbar', id: 'map' }], { aero: 30 }), // [hot26]
       Q('c2_sail', 'marina', 'Set Sail', 'Fund the Sunny Shallows expedition in The Lab, then sail there from the Map.', [{ t: 'research', id: 'sea_shallows' }, { t: 'visit', biome: 'shallows' }], { aero: 20 }), // [prog18] oceans are bought
       Q('c2_catch', 'marina', 'Shallow Waters', 'The shallows are teeming. Fill that bucket!', [{ t: 'catch', n: 6, biome: 'shallows' }], { items: { driftwood: 3, sea_glass: 2 } }),
       Q('c2_workshop', 'marina', 'Marina\'s Workshop', 'My crafting dock is a mess! Bring me 8 Driftwood and 3 Shells to fix it up.', [{ t: 'have', id: 'driftwood', n: 8, take: true }, { t: 'have', id: 'shell', n: 3, take: true }], { aero: 30, items: { fish_scale: 3, kelp_fibre: 2 }, unlock: [{ kind: 'feature', id: 'workshop' }] }), // [phase8:prog]
+      Q('c2_bench', 'marina', 'Spare Bench', 'Take my spare Workbench! Build it in your tank and my Workshop is one click away. Sawdust not included.', [{ t: 'hotbar', id: 'workshop' }], { aero: 40 }), // [hot26]
       Q('c2_bait', 'seal', 'Shop Specials', 'Buy any bait at the Bait Shop. Yum!', [{ t: 'bait', n: 1 }], { bait: { worm: 3 } }),
       Q('c2_dock', 'marina', 'All Aboard!', 'Open the Map and sail to my Workshop dock!', [{ t: 'dest', id: 'workshop' }], { aero: 20, items: { driftwood: 4 } }), // [phase8:prog]
       Q('c2_craftrod', 'marina', 'Your First Rod', 'Craft the Rubber Duck Rod at the Workshop. Squeak!', [{ t: 'craftRod', n: 1 }], { aero: 40, items: { fish_scale: 4, kelp_fibre: 2 } }), // [phase8:prog]
@@ -340,6 +348,7 @@ export function objLabel(o) {
     case 'depth': return `Reach the ${ZONE_NAMES[o.zone] || o.zone}`;
     case 'aero': return `Earn ${o.n.toLocaleString('en-US')} Aero Bucks`;
     case 'tutorial': return 'Finish Bubbles\' fishing lesson';
+    case 'hotbar': { const u = HOTBAR_UNLOCKS[o.id]; return u ? `Build a ${u.build} (unlocks ${u.label})` : 'Build something new'; } // [hot26]
     case 'open': return `Open the ${o.panel}`;
     case 'chest': return o.tier ? (o.n > 1 ? `Crack open ${o.n} ${CHEST_NAMES[o.tier] || o.tier}s (or better)` : `Crack open a ${CHEST_NAMES[o.tier] || o.tier}`) : o.n > 1 ? `Crack open ${o.n} chests` : 'Crack open a chest'; // [phase8:prog]
     case 'have': return `Bring ${o.n} ${ITEMS.ITEMS?.[o.id]?.name || o.id}`;
@@ -391,6 +400,7 @@ export function objIcon(o) {
     case 'aero': return 'coin';
     case 'bait': return 'bait:worm';
     case 'tutorial': return 'hook';
+    case 'hotbar': return 'decor'; // [hot26]
     case 'chest': return 'mat:pkg_' + (o.tier || 'crate'); // [phase8:prog]
     case 'have': return 'mat:' + o.id;
     case 'dest': return o.id === 'lab' ? 'beaker' : 'hammer';
@@ -588,6 +598,7 @@ export class QuestBook {
       case 'depth': return { have: S.zones[o.zone] || ZONES.indexOf(o.zone) <= this.maxZone() ? 1 : 0, need: 1 };
       case 'aero': return { have: Math.max(0, Math.min(o.n, (st.totalCoins || 0) - (S.started[q.id]?.coins ?? st.totalCoins ?? 0))), need: o.n };
       case 'tutorial': return { have: st.tutorialDone ? 1 : 0, need: 1 };
+      case 'hotbar': return { have: hotbarUnlocked(st, o.id) ? 1 : 0, need: 1 }; // [hot26]
       // [phase8:prog] Workshop, chests, destinations
       case 'chest': return { have: cnt, need: o.n || 1 };
       case 'have': return { have: Math.min(o.n, ITEMS.countItem?.(st, o.id) || 0), need: o.n };
@@ -737,7 +748,7 @@ export class QuestBook {
     for (const ev of ['rodCrafted', 'rodUpgraded', 'tackleEquipped', 'crafted', 'gearBought', 'kept', 'tankUpgraded']) on(ev, () => this.check());
     on('travel', (d) => { const id = typeof d === 'string' ? d : d?.to || d?.id || d?.biome; if (id) this.S.visited[id] = 1; this.check(); });
     on('depthZone', (d) => { const z = zoneId(d); if (z) { this.S.zones[z] = 1; this.check(); } }); // the Oceans agent's zone changes
-    for (const ev of ['labDone', 'unlocked', 'tankUpgraded', 'tutorialDone', 'boatUpgraded']) on(ev, () => this.check());
+    for (const ev of ['labDone', 'unlocked', 'tankUpgraded', 'tutorialDone', 'boatUpgraded', 'hotbarUnlocked']) on(ev, () => this.check()); // [hot26] hotbarUnlocked
   }
 
   // light poll: oceans, depth, absolute goals, the order board's day

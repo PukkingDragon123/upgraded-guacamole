@@ -270,3 +270,35 @@ export function gemSkipButton(ui, ctx, x, y, w, h, o = {}) {
   }
   return false;
 }
+
+// ---------------------------------------------------------------- tank egg clutch chip [cur26]
+// A small pixel plate: a speckled egg, the time left and a violet "gem cost" end. r = {x, y, w, h}; o: {left (s),
+// cost, hover, t, color, afford}. The whole chip is the button (the Aquarium routes the click to skips.eggSkip).
+const fmtClock = (s) => { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+export function drawEggChip(ctx, r, o = {}) {
+  const p = r.h >= 26 ? 2 : 1.5;
+  const lift = o.hover ? p : 0;
+  const y = r.y - lift;
+  ctx.fillStyle = 'rgba(4,22,44,0.3)'; ctx.fillRect(snap(r.x + p), snap(r.y + r.h), snap(r.w - 2 * p), p);
+  pixelPlate(ctx, r.x, y, r.w, r.h, p, { ink: '#3a2a1a', top: '#fff4d8', body: '#ffe6b4', bot: '#e8c48a', hi: '#ffffff' });
+  // the egg (pixel oval with speckles, wobbling as it gets close to hatching)
+  const ep = Math.max(1, snap(r.h / 9));
+  const ecx = r.x + 3 * p + 2.5 * ep, ecy = y + r.h / 2;
+  const wob = o.left < 20 ? Math.sin((o.t || 0) * 18) * p * 0.5 : 0;
+  const E = ['.ooo.', 'oWLLo', 'oLLSo', 'oLSLo', 'oLLDo', '.ooo.'];
+  const pal = { o: '#4a3418', W: '#ffffff', L: o.color || '#ffd8a8', S: '#c87a4a', D: '#e0a878' };
+  const ex = snap(ecx - 2.5 * ep + wob), ey = snap(ecy - 3 * ep);
+  for (let yy = 0; yy < E.length; yy++) for (let xx = 0; xx < 5; xx++) { const c = pal[E[yy][xx]]; if (!c) continue; ctx.fillStyle = c; ctx.fillRect(ex + xx * ep, ey + yy * ep, ep, ep); }
+  const font = r.h >= 24 ? 'big' : 'normal', cap = font === 'big' ? 9 : 7;
+  const ty = R(y + (r.h - cap) / 2);
+  drawText(ctx, fmtClock(o.left), R(r.x + 6 * p + 5 * ep), ty, { font, color: '#5a3410' });
+  // the violet gem end
+  const cw = R(r.w * 0.46), cx = r.x + r.w - cw - p;
+  pixelPlate(ctx, cx, y + p, cw, r.h - 2 * p, p, o.afford === false ? BTN_TONES.disabled : o.hover ? BTN_TONES.hover : BTN_TONES.normal);
+  const gp = Math.max(1, Math.round(((r.h - 6 * p) / 11) * 2) / 2);
+  const txt = String(o.cost || 0), tw = measureText(txt, font);
+  const gx = cx + cw / 2 - (13 * gp + 2 * p + tw) / 2;
+  drawGem(ctx, gx + 6.5 * gp, y + r.h / 2 - p * 0.5, gp, { glint: o.hover ? ((o.t || 0) * 0.8) % 1.4 : -1 });
+  drawText(ctx, txt, R(gx + 13 * gp + 2 * p), ty, { font, color: '#fff3a8', shadow: '#3a1478' });
+}
+export { fmtClock };

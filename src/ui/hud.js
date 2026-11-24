@@ -412,13 +412,13 @@ export class Hud {
         let total = 0;
         try { total = totalBait(g.state); } catch { total = 0; }
         this.tooltip = cur ? `${cur.name}  (${total} bait)` : 'No bait! Visit the Bait Shop';
-        if (inp.pressed) { inp.consume?.(); this.box.bounce = 0.6; g.audio.play('bubble'); if (g.ui?.panels?.bait) g.ui.toggle('bait'); else openStore(g); }
+        if (inp.pressed) { inp.consume?.(); this.box.bounce = 0.6; g.audio.play('bubble'); if (g.ui?.panels?.bait && !hotbarLock(g.state, 'bait')) g.ui.toggle('bait'); else openStore(g); } // [hot26] the Bait panel needs its Tackle Box
       } else if (this.gearVisible() && rectContains(this.rodSlot, inp.x, inp.y)) {
         this.rodHover = true;
         let rod = null;
         try { rod = equippedRod(g.state); } catch { rod = null; }
         this.tooltip = rod ? rod.name : 'Rod';
-        if (inp.pressed) { inp.consume?.(); g.audio.play('bubble'); this.rodPop = 1; if (g.ui?.panels?.lab) g.ui.open('lab', { tab: 'rods' }); }
+        if (inp.pressed) { inp.consume?.(); g.audio.play('bubble'); this.rodPop = 1; if (hotbarLock(g.state, 'lab')) this.activate('lab'); else if (g.ui?.panels?.lab) g.ui.open('lab', { tab: 'rods' }); } // [hot26] locked Lab: build the bench
       } else if (this.chip.w > 0 && rectContains(this.chip, inp.x, inp.y)) {
         this.chipHover = true;
         this.tooltip = g.clockTooltip?.() || '';
@@ -617,9 +617,9 @@ export class Hud {
     }
     if (lock) {
       ctx.filter = fPrev || 'none'; ctx.globalAlpha = aPrev;
-      const lk = padlockTex(R(B * 0.62));
+      const lk = padlockTex(R(B * 0.84));
       const wig = hov > 0.3 && !calm ? Math.sin(t * 14) * 1.2 * hov : 0;
-      ctx.drawImage(lk, R(cx + B * 0.2 - lk.width / 2 + wig), R(cy + B * 0.16 - (lk.cy ?? lk.height / 2)));
+      ctx.drawImage(lk, R(cx + B * 0.22 - lk.width / 2 + wig), R(cy + B * 0.2 - (lk.cy ?? lk.height / 2)));
     }
     if (active) { // [phase8:ui] bouncing pixel corner brackets + a twinkle (no ring)
       drawPixelBrackets(ctx, R(cx - B / 2), R(cy - B / 2), B, B, t, { k: Math.max(1, R(k * 0.7)) });

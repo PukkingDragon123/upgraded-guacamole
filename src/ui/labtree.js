@@ -32,6 +32,9 @@ import {
 } from '../game/lab.js';
 import { roundRectPath } from './labart.js';
 import { icon, anyIcon, pill, costTiles, costTilesHeight, chip, INK, INK_SOFT, OK, BAD } from './labkit.js';
+import { gemSkipButton } from './gemui.js'; // [cur26] Byte Gem skip
+import { labSkipCost, labSkip } from '../game/skips.js'; // [cur26]
+import { canSpendGems, GEM_NAME } from '../game/gems.js'; // [cur26]
 import { drawAnimIcon, unlockInfo } from './labrows.js';
 import { HI, dualArt, withHi, hiCtx, hiFromBuffer } from '../gfx/hires.js'; // [phase9:ui]
 import { drawPop3D } from './pop3d.js'; // [phase9:ui]
@@ -1352,6 +1355,8 @@ export class LabTree {
           drawText(ctx, rem + ' left', x + IW - measureText(rem + ' left', 'big'), y - 1, { font: 'big', color: INK });
           drawAeroBar(ctx, x, y + 14, IW, 9, labProgress(st, id), { color: '#5fd23a' });
         });
+        // [cur26] Byte Gems: skip the brewing timer (the price shrinks as it brews)
+        add(32, (x, y) => { const gc = labSkipCost(st, id); if (gc && gemSkipButton(ui, ctx, x, y + 2, IW, 28, { label: 'SKIP NOW', cost: gc, tip: canSpendGems(st, gc) ? `Skip for ${gc} ${GEM_NAME}: it's done instantly` : undefined }) && labSkip(g, id)) { g.toast?.(`${nd.name} is done!`, 'check'); } });
         const cost = instantCost(st, id);
         buttons.push({ label: `Finish ${fmtAero(cost)}`, tone: 'orange', icon: getUiIcon('aero') || getUiIcon('coin'), disabled: (st.coins || 0) < cost, sound: 'ui_unlock', tip: 'Finish it right now for Aero Bucks', fn: () => { if (instantFinish(g, id)) g.audio.play('ui_unlock'); } });
         buttons.push({ label: 'Stop', tone: 'glass', icon: getUiIcon('cross'), tip: 'Stop it (refund)', fn: () => cancelResearch(g, id) });

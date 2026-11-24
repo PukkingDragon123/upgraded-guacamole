@@ -21,7 +21,7 @@ export function defaultState() {
     files: [], // virtual bait made from dropped files: {id, name, icon, type}
     icons: {}, // icon id -> {gx, gy} custom grid positions
     fish: [], // owned fish records
-    tank: { decor: [], substrate: 'sand', theme: 'reef' },
+    tank: { decor: [], substrate: 'sand', theme: 'reef', bare: true }, // [hot26] bare: a new tank starts empty (no rocks / plants)
     journal: {}, // species id -> {seen, caught, maxSize, minSize, first, variants: {}}
     secrets: {},
     stats: { caught: 0, escaped: 0, snapped: 0, released: 0, coinsCollected: 0, playTime: 0, casts: 0 },
@@ -34,6 +34,12 @@ export function defaultState() {
     view: 'ocean', // 'ocean' | 'aquarium'
     tankWindow: { open: false, x: 0, y: 0 },
   };
+}
+
+// [hot26] saves from before the empty starter tank keep their tank's rocks and plants
+function oldTank(saved) {
+  if (saved && typeof saved === 'object' && saved.tank && typeof saved.tank === 'object' && saved.tank.bare === undefined) saved.tank.bare = false;
+  return saved;
 }
 
 function merge(base, saved) {
@@ -59,7 +65,7 @@ export function loadState() {
       }
       return st;
     }
-    return merge(defaultState(), JSON.parse(raw));
+    return merge(defaultState(), oldTank(JSON.parse(raw)));
   } catch {
     return defaultState();
   }
@@ -85,5 +91,5 @@ export function exportState(state) {
 }
 
 export function importState(code) {
-  return merge(defaultState(), JSON.parse(decodeURIComponent(escape(atob(code.trim())))));
+  return merge(defaultState(), oldTank(JSON.parse(decodeURIComponent(escape(atob(code.trim()))))));
 }

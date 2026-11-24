@@ -421,7 +421,7 @@ function buildFish(c, ph, inflStep, gape, hi) {
       const Z = hw * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / xs);
       const v = hgt > 1e-6 ? (Y - bot) / hgt : 0.5;
       const rest = jaw([X, Y, Z]);
-      ring.push({ p: D(rest), uv: sk.uvB(X, b0 + (t0 - b0) * v), z: Z });
+      ring.push({ p: D(rest), uv: sk.uvB(X, b0 + (t0 - b0) * v), z: Z, m: rest[1] !== Y ? 1 : 0 });
     }
     rings.push(ring);
   }
@@ -430,9 +430,16 @@ function buildFish(c, ph, inflStep, gape, hi) {
     if (blind && a.z + b.z + c2.z + d.z < -1e-6) part.quad(a.p, b.p, c2.p, d.p, blind, W, W, W, W);
     else part.quad(a.p, b.p, c2.p, d.p, '#ffffff', a.uv, b.uv, c2.uv, d.uv);
   };
+  // [deep26] with the jaw open, the skin stretched across the gape becomes the dark inside of the mouth
+  const gapeIn = gAng > 0.05 ? rgb01(mouth.inside || '#2a0c18') : null;
   for (let i = 0; i < rings.length - 1; i++) for (let j = 0; j < NV; j++) {
     const j2 = (j + 1) % NV;
-    emitQuad(bodyPart, rings[i][j], rings[i + 1][j], rings[i + 1][j2], rings[i][j2]);
+    const a = rings[i][j], b = rings[i + 1][j], c2 = rings[i + 1][j2], d = rings[i][j2];
+    if (gapeIn && US[i] < mouth.u * 1.02) {
+      const n = a.m + b.m + c2.m + d.m;
+      if (n > 0 && n < 4) { bodyPart.quad(a.p, b.p, c2.p, d.p, gapeIn, W, W, W, W); continue; }
+    }
+    emitQuad(bodyPart, a, b, c2, d);
   }
   {
     // close the peduncle (or the eel neck) with a cap
@@ -834,15 +841,17 @@ function buildFish(c, ph, inflStep, gape, hi) {
     for (const fg of S.fangs) {
       const u = Math.max(0.004, fg.u), X = xN - u * L, Y = mouthY(Math.min(u, mouth.u));
       const up = fg.up ?? 1, tl = fg.len * L;
-      const w = Math.max(0.0045 * L, tl * (fg.w ?? 0.14));
       const z = surf(u, Y) * (fg.out ?? 0.82);
-      const lean = (fg.lean ?? 0.12) * tl;
+      const lean = (fg.lean ?? 0.12) * tl, r0 = Math.max(0.0032 * L, tl * (fg.w ?? 0.085));
       for (const sd of [1, -1]) {
-        const y0 = Y - up * 0.004 * L;
-        const base = [[X - w, y0, sd * z], [X + w, y0, sd * z], [X, y0, sd * Math.max(0, z - w * 1.4)]];
-        const tip = [X + lean, Y + up * tl, sd * z * 1.04];
-        const fix = (p) => D(up > 0 ? jaw(p) : p);
-        part3(body, base.map(fix), fix(tip), tc, W);
+        // a curved needle: rises from inside the jaw, curls its tip (lean > 0 forward, < 0 back toward the eye)
+        const pts = [];
+        for (let k = 0; k <= 4; k++) {
+          const t = k / 4;
+          const p = [X + lean * t * t, Y - up * 0.004 * L + up * (tl + 0.004 * L) * t, sd * z * (1 + 0.06 * t)];
+          pts.push(up > 0 ? jaw(p) : p);
+        }
+        tubeInto(body, pts, (t) => r0 * (1 - 0.82 * t) + 0.0012 * L, 5, tc, D, W);
       }
     }
   }

@@ -1,12 +1,12 @@
-// Floating boxes (phase 3): hover the hook over a box drifting in the water and click to snag it, then a
-// short, light reel (circle the mouse; no fish fighting back) hauls it up, bobbing and splashing, until it
-// pops out of the water; fishing then calls game.onBoxCaught(f) (game.js: floaters.take + build.onBoxCaught
-// rolls/grants via items.rollCrate, then Fishing.showBoxLoot(f, loot) -> the glossy Aero loot pop-up).
+// Floating boxes: art, the hover cue and the loot hand-off. [crate26] Hooking a box is now a full meter fight
+// (cratefight.js CrateBattle, the same spin + SHOCK fight as a fish; legs crates and mimics included); the old light
+// box reel and its gear gauge are gone. Once landed (cratefight.js CratePop) fishing calls game.onBoxCaught(f)
+// (game.js: floaters.take + build.onBoxCaught rolls/grants via items.rollCrate, iron+ boxes become chests for the
+// chest-cracking minigame, then Fishing.showBoxLoot(f, loot) -> the glossy Aero loot pop-up).
 // Without a host onBoxCaught, landBoxLoot rolls (items.rollCrate / openPackage) and grants it itself.
 // The World floaters keep drawing a hooked box (f.hooked: fishing owns f.x / f.y); when a host has no
-// floater renderer (f.selfDraw) this module draws a glossy pixel box instead.
+// floater renderer (f.selfDraw) the crate fight draws a glossy pixel box instead.
 //
-//   new BoxReel(F, f) -> update(dt) 'ok' | 'caught'; drawWorld(ctx); drawHud(ctx); drawBands(ctx); crankHint(); cancel()
 //   landBoxLoot(F, f, loot?) -> loot list [{id, qty}]   drawBoxHover(ctx, F, f)    boxSprite(kind, tier)
 
 import { TAU, clamp, clamp01, lerp, damp, ease } from '../core/math.js';
@@ -97,160 +97,27 @@ export function boxSprite(kind = 'crate', tier = 'crate') {
   return c;
 }
 
-// Pulsing glossy ring + glints around a box under the idle hook ("click to snag").
+// "Click to snag": four pixel corner brackets that breathe around the box under the idle hook, a soft glow and glints.
+// [crate26] (was a dotted ring: no ring effects)
 export function drawBoxHover(ctx, F, f) {
   const t = F.t;
-  const r = 13 + Math.sin(t * 6) * 1.5;
+  const r = Math.round(11 + Math.max(0, Math.sin(t * 6)) * 2);
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.35 + 0.2 * Math.sin(t * 6);
+  ctx.globalAlpha = 0.3 + 0.15 * Math.sin(t * 6);
   ctx.drawImage(glowSprite(18, '#bff8ff'), Math.round(f.x - 18), Math.round(f.y - 18));
   ctx.restore();
-  ctx.fillStyle = rgba('#ffffff', 0.9);
-  for (let i = 0; i < 24; i++) {
-    if (i % 3 === 2) continue;
-    const a = (i / 24) * TAU + t * 2;
-    ctx.fillRect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r), 1, 1);
+  const x = Math.round(f.x), y = Math.round(f.y);
+  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const cx = x + sx * r, cy = y + sy * r;
+    ctx.fillStyle = '#0c3a52';
+    ctx.fillRect(Math.min(cx, cx - sx * 4) - 1, cy - 1, 6, 3);
+    ctx.fillRect(cx - 1, Math.min(cy, cy - sy * 4) - 1, 3, 6);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(Math.min(cx, cx - sx * 3), cy, 4, 1);
+    ctx.fillRect(cx, Math.min(cy, cy - sy * 3), 1, 4);
   }
   if (rng.chance(0.08)) F.particles.glint?.(f.x + rng.float(-8, 8), f.y + rng.float(-6, 6), { len: 3 });
-}
-
-// ------------------------------------------------------------------ the light reel
-export class BoxReel {
-  constructor(F, f) {
-    this.F = F; this.f = f;
-    f.hooked = true;
-    this.t = 0;
-    this.kind = f.kind || 'crate';
-    this.tier = ITEMS.TIERS?.[f.tier] ? f.tier : 'crate';
-    this.progress = 0; this.tension = 0.25; this.reelRate = 0; this.snapT = 0; this.grace = 1;
-    this.zone = { lo: 0.2, hi: 1.3 }; this.heavy = 0;
-    this.gearMode = 'box'; this.band = { lo: 30, hi: 195 }; this.canCharge = false; this.charge = null;
-    this.shockReady = false; this.shockMax = 0; this.charges = 0; this.shockCd = 0; this.shockCdMax = 1;
-    this.stunned = false; this.surging = false;
-    this.start = { x: f.x, y: f.y };
-    this.stage = 'reel';
-    this.ang = 0;
-    this.hudIn = 0;
-    const w = F.world;
-    this.surface = w.surfaceY !== null && w.surfaceY !== undefined ? w.surfaceY : null;
-    const [rx] = F.rodTip();
-    this.target = this.surface !== null ? { x: lerp(f.x, rx, 0.55), y: this.surface + 6 } : { x: f.x, y: F.toWorld(0, F.H * 0.3)[1] };
-    this.need = clamp(Math.hypot(this.target.x - f.x, this.target.y - f.y) / 160, 0.8, 2.2) * (this.tier === 'crate' ? 1 : this.tier === 'iron' ? 1.2 : 1.4);
-    F.sfx('hookset', { pitch: 1.4, vol: 0.7 });
-    F.sfx('click', { pitch: 0.8 });
-    F.particles.ringWave?.(f.x, f.y, 18, '#ffffff', { life: 0.35, w: 2 });
-    F.particles.aeroBubbles?.(f.x, f.y, 5, { w: 5 });
-    F.particles.glints?.(f.x, f.y, 3, { w: 8, h: 6 });
-    F.cam?.punch?.(f.x, f.y, 0.05, 0.25);
-    F.setPose('yank', 0.3);
-    F.setPose('reel');
-  }
-
-  crankHint() {
-    const [sx, sy] = this.F.toScreen(this.f.x, this.f.y);
-    return [clamp(sx - 80, 50, this.F.W - 200), clamp(sy, 60, this.F.H - 80)];
-  }
-
-  cancel() { this.f.hooked = false; }
-
-  update(dt) {
-    const F = this.F, f = this.f, G = F.gear;
-    this.t += dt;
-    this.hudIn = Math.min(1, this.hudIn + F.rdt * 3);
-    G.load = this.stage === 'reel' ? 12 : 0; G.brake = true;
-    if (this.stage === 'reel') {
-      const p = G.p;
-      const rate = (Math.min(p, 1.1) * 0.75) / this.need;
-      this.reelRate = rate;
-      this.progress = Math.min(1, this.progress + rate * dt);
-      this.tension = damp(this.tension, 0.18 + Math.min(p, 1.2) * 0.32 + Math.sin(this.t * 3) * 0.04, 4, dt);
-      const k = ease.inOutQuad(this.progress);
-      const bob = Math.sin(this.t * 3.1) * 3 + Math.sin(this.t * 7.3) * 1;
-      const sway = Math.sin(this.t * 1.7) * 4 * (1 - k);
-      f.x = lerp(this.start.x, this.target.x, k) + sway;
-      f.y = lerp(this.start.y, this.target.y, k) + bob * (0.4 + 0.6 * (1 - k));
-      this.ang = Math.sin(this.t * 2.4) * 0.18 + (p > 0.2 ? Math.sin(this.t * 14) * 0.05 : 0);
-      if (rng.chance(dt * (4 + p * 10))) F.particles.bubbleTrail(f.x, f.y + 5, 0, -60, { n: 1 });
-      if (p > 0.3 && rng.chance(dt * 6)) F.particles.aeroBubbles?.(f.x, f.y, 1, { w: 5, sizes: [2, 2, 3] });
-      // near the surface it splashes and foams
-      if (this.surface !== null && f.y - this.surface < 18) {
-        if (rng.chance(dt * 10)) F.particles.foam?.(f.x, this.surface, 1, { spread: 8 });
-        if (rng.chance(dt * 5)) F.particles.splash(f.x + rng.float(-6, 6), this.surface, 0.18);
-      }
-      F.focusCam(lerp(f.x, this.target.x, 0.3), f.y - 10, 1.6, 3);
-      if (!F.poseHold) F.setPose(p > 0.08 ? 'reel' : 'pull');
-      if (this.progress >= 1) {
-        this.stage = 'pop'; this.st = 0;
-        this.p0 = [f.x, f.y];
-        const sy = this.surface ?? f.y;
-        F.particles.eruption?.(f.x, sy, 0.9);
-        F.particles.splashBurst?.(f.x, sy, 1);
-        F.sfx('splash_big', { vol: 0.7 });
-        F.sfx('jump_out', { pitch: 1.2 });
-        F.shake(4);
-        F.setPose('yank', 0.35);
-      }
-    } else if (this.stage === 'pop') {
-      this.st += dt;
-      this.reelRate = 0;
-      this.tension = damp(this.tension, 0.1, 6, dt);
-      const u = clamp01(this.st / 0.75);
-      const [rx, ry] = F.rodTip();
-      const hx = lerp(this.p0[0], rx, 0.6), hy = (this.surface ?? this.p0[1]) - 30;
-      const apex = Math.min(this.p0[1], hy) - 46;
-      const mx = (this.p0[0] + hx) / 2;
-      f.x = (1 - u) * (1 - u) * this.p0[0] + 2 * (1 - u) * u * mx + u * u * hx;
-      f.y = (1 - u) * (1 - u) * this.p0[1] + 2 * (1 - u) * u * apex + u * u * hy;
-      this.ang += dt * 9;
-      if (rng.chance(dt * 30)) F.particles.droplets?.(f.x, f.y, 1, { dir: Math.PI / 2, spread: 1, speed: [10, 40], g: 260 });
-      F.focusCam(f.x, f.y, 1.7, 4);
-      void ry;
-      if (u >= 1) return 'caught';
-    }
-    return 'ok';
-  }
-
-  drawWorld(ctx) {
-    const F = this.F, f = this.f;
-    const [rx, ry] = F.rodTip();
-    if (this.stage === 'reel') F.drawRope(ctx, rx, ry, f.x, f.y - 7, this.tension, true);
-    const spr = boxSprite(this.kind, this.tier);
-    const T = TIER_COL[this.tier] || TIER_COL.crate;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.3 + 0.15 * Math.sin(this.t * 5);
-    ctx.drawImage(glowSprite(16, T.glow), Math.round(f.x - 16), Math.round(f.y - 16));
-    ctx.restore();
-    f.roll = this.ang * 57.3;
-    if (!f.selfDraw) return;
-    ctx.save();
-    ctx.translate(Math.round(f.x), Math.round(f.y));
-    ctx.rotate(this.ang);
-    ctx.drawImage(spr, -Math.floor(spr.width / 2), -Math.floor(spr.height / 2));
-    ctx.restore();
-    // underwater shimmer line
-    if (this.surface !== null && f.y > this.surface) {
-      ctx.fillStyle = rgba('#ffffff', 0.25);
-      ctx.fillRect(Math.round(f.x - spr.width / 2), Math.round(f.y - spr.height / 2) + 1, spr.width, 1);
-    }
-  }
-
-  drawHud(ctx) {
-    // a soft crank-loop hint at the cursor until the player starts circling
-    const F = this.F, t = F.t;
-    if (F.gear.p > 0.08) return;
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * TAU + t * 5;
-      ctx.fillStyle = rgba('#ffffff', 0.08 + (i / 12) * 0.6);
-      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * 14) - 1, Math.round(F.input.y + Math.sin(a) * 14) - 1, 2, 2);
-    }
-  }
-
-  drawBands(ctx) {
-    const k = clamp01(this.hudIn * 1.2);
-    this.F.gear.draw(ctx, this, 1 - Math.pow(1 - k, 3));
-  }
 }
 
 // ------------------------------------------------------------------ loot

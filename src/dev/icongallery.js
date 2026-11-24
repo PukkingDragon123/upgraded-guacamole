@@ -13,6 +13,7 @@ import { icon3d as fishIcon } from '../fishing/icons3d.js';
 import { ART_IDS, itemSprite } from '../build/itemart.js';
 import { RARITY } from '../core/color.js';
 import { RODS } from '../game/rods.js';
+import { PIX_NAMES, pixFrame, pixSprite } from '../gfx/pixicons.js';
 
 export async function run(params) {
   const cv = document.getElementById('screen');
@@ -41,7 +42,16 @@ export async function run(params) {
     g.fillStyle = gr; g.fillRect(0, 0, W, H);
     const put = (f, x, y) => { if (f) g.drawImage(f.canvas || f, Math.round(x - (f.ox ?? (f.width || f.canvas.width) / 2)), Math.round(y - (f.oy ?? (f.height || f.canvas.height) / 2))); };
     const label = (s, x, y) => drawText(g, String(s).slice(0, 10), x, y, { font: 'small', align: 'center', color: '#0c3a52' });
-    if (page === 0) {
+    if (page === 9) { // every authored sprite: 44 px frame, 22 px, 11 px and the native grid
+      const names = PIX_NAMES();
+      names.forEach((n, i) => {
+        const x = 40 + (i % 12) * 77, y = 36 + Math.floor(i / 12) * 104;
+        put(pixFrame(n, 44), x, y);
+        put(pixFrame(n, 22), x - 16, y + 46);
+        put(pixFrame(n, 11), x + 16, y + 46);
+        label(n, x, y + 62);
+      });
+    } else if (page === 0) {
       const ids = ['lab', 'quests', 'aquarium', 'fishmgr', 'journal', 'inventory', 'wardrobe', 'build', 'map', 'shop', 'bait', 'multiplayer', 'settings', 'coin', ...Object.keys(ICON_MODELS).filter((k) => !['lab', 'quests', 'aquarium', 'journal', 'inventory', 'wardrobe', 'map', 'shop', 'bait', 'multiplayer', 'settings', 'coin'].includes(k))].slice(0, 24);
       ids.forEach((id, i) => {
         const x = 34 + (i % 12) * 77, y = 40 + Math.floor(i / 12) * 150;
