@@ -616,7 +616,10 @@ export class Tutorial {
       return;
     }
     if (this.benchT == null) { this.benchT = this.t; this.seal.emote('cheer', 1.2); }
+    // built: leave build mode and sail back to the ocean (the rest of the first session happens there; the hint helper
+    // lives in the ocean view), where the new button pops into the hotbar
     if (editing && this.t - this.benchT > 0.9) { try { aq.build.exit(); } catch (e) { console.error(e); } }
+    if (!editing && g.state.view === 'aquarium' && this.t - this.benchT > 0.9) g.setView?.('ocean');
     if (!editing && this.guide.key !== 'labOpen' && this.guide.key !== 'lab') this.say('labOpen');
   }
 
