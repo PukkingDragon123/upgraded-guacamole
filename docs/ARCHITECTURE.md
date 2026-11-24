@@ -662,7 +662,13 @@ and the boss charge-dodge / minion clicks.
   (crits x1.6). Intro card, phase cards and the victory overlay are unchanged.
 - HUD (`hud.js` + `meter.js` + `gear.js`): name pill, the meter (voxel-block track coral | aqua | green zone | aqua |
   orange, the fish's own voxel icon as the marker, SPIN! / EASY! coaching words), the catch bar under it, the SHOCK
-  button left, the 3D gear right (just the gear + SPIN ME! hint in meter fights; box reels keep the old gauge).
+  button left, the gear right (just the gear + SPIN ME! hint in meter fights; box reels keep the old gauge round it).
+  [gear25] The gear is VOXEL ART (`gear.js` gearModel: 18 teeth, 6 spokes, enamel rim channel, brass rivets, hex-nut
+  hub, aqua gem) rendered by voxicon `renderLayers` (ink outline, ramps, AO, glints): it repeats every 60 degrees, so
+  24 frames (the model re-voxelised per angle) are cached at 1x and at the UI layer's 2x, warmed (throttled) while
+  waiting for a bite; missing frames are built at most every ~60 ms (the nearest stands in). In meter fights it sits in
+  a static voxel housing (backplate + blue ring) whose 12 voxel lamps are the speed feedback (lit clockwise with the
+  rpm, in the state colour), and a pixel plaque labels the controls (CIRCLE WHEEL W).
   `fishing.partRect('meter' | 'bar' | 'shock' | 'all' | 'gear')` for the lesson brackets. No rings, no light rays.
 - Lesson (`tutorial.js`): cast -> wait -> hook (click) -> spin (to 40 %, Bubbles coaches spin faster / slower) -> shock
   (a hit; misses / backfires are handed back, the third try gets a very wide notch) -> land -> card. Old saved steps

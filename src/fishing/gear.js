@@ -1,14 +1,15 @@
-// The 3D GEAR (phase 6): the heart of the fishing minigame. [simple24] In a meter fight (B.gearMode 'meter') it is
-// just the spin control: the gear, its glass plate and a spin hint (the meter, catch bar and SHOCK button live in
-// meter.js); circling the mouse, the mouse wheel and holding / tapping W / Up / R all spin it. Box reels keep the
-// full gauge HUD below. A big low-poly chrome Frutiger Aero gear (15 bevelled
-// teeth, five ridged spokes, a glossy bevelled rim with lime bolts, an aqua glow ring and a glowing gem hub behind
-// clear aqua glass) rendered with the shared low-poly renderer in the lower-right corner. The gear repeats every
-// 72 degrees, so its spin is a ring of cached renderMesh frames (warmed up while you wait for a bite); it is
-// rendered live in 3D only while it flips in and while a jolt tilts it.
+// The GEAR (phase 6): the heart of the fishing minigame. [simple24] In a meter fight (B.gearMode 'meter') it is
+// just the spin control: the gear in its housing, a spin hint and the controls plaque (the meter, catch bar and SHOCK
+// button live in meter.js); circling the mouse, the mouse wheel and holding / tapping W / Up / R all spin it. Box
+// reels keep the full gauge HUD below. [gear25] A big VOXEL ART steel gear (18 chunky teeth, 6 ridged spokes, a rim
+// with an aqua enamel channel and brass rivets, a bolted hub with a hex nut and an aqua gem) in a voxel housing (dark
+// backplate, a blue ring with 12 lamps that light up with the spin speed), rendered by the shared voxel pipeline
+// (voxicon renderLayers: ramps, glints, AO, edge highlights, ink outline) in the lower-right corner. The gear repeats
+// every 60 degrees, so its spin is a ring of 24 cached frames (the model re-voxelised at each angle), at 1x and at the
+// full-res UI layer's 2x, warmed up while you wait for a bite.
 // It spins with real momentum: circling the mouse (anywhere) grips and drives it, the fish's pull drags it back
-// (and spins it backwards, stripping line, when you let go), bearings let it coast. It tilts and wobbles in 3D,
-// smears with motion-blur ghosts, throws sparks and glints at speed and crackles with arcs while a shock charges.
+// (and spins it backwards, stripping line, when you let go), bearings let it coast. Jolts knock it about, it smears
+// with motion-blur ghosts, throws sparks and glints at speed and crackles with arcs while a shock charges.
 //
 // Around it, big and readable:
 //   RPM gauge      outer 240-degree arc: the moving green SWEET BAND (the hook-set band during a bite), the red
@@ -30,9 +31,11 @@
 import { TAU, clamp, clamp01, damp, lerp, ease } from '../core/math.js';
 import { rgba } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
-import { MeshBuilder, renderMesh, T4, lpAvailable, ellipsoid } from '../gfx/lowpoly.js';
+import { VoxelModel } from '../gfx/voxel.js';
+import { renderLayers } from '../gfx/voxicon.js';
+import { HI, HI_ON, isHi } from '../gfx/hires.js';
 import { glowSprite, drawBolt, boltPoints, pixelLine } from '../gfx/particles.js';
-import { drawText, measureText } from '../gfx/font.js';
+import { drawText, measureText, lineHeight } from '../gfx/font.js';
 import { glossText, word3D } from './cinematics.js';
 import { drawIcon3d } from './icons3d.js'; // [phase9:fishing] 3D icons + 3D voxel words on the gear HUD
 
@@ -42,107 +45,185 @@ const GRIP = 7; // how hard a circling hand drives the gear toward its own speed
 const INK = '#0c3a52';
 const G0 = Math.PI * (5 / 6), G1 = Math.PI * (13 / 6); // gauge arc: lower-left -> over the top -> lower-right
 
-// ------------------------------------------------------------------------------------------------ mesh
-// Quad / tri whose normal is forced to point away from `inside` (pieces are convex, so this fixes winding).
-function face(mb, pts, col, inside) {
-  const [a, b, c] = pts;
-  const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
-  const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-  let mx = 0, my = 0, mz = 0;
-  for (const p of pts) { mx += p[0]; my += p[1]; mz += p[2]; }
-  mx /= pts.length; my /= pts.length; mz /= pts.length;
-  const out = nx * (mx - inside[0]) + ny * (my - inside[1]) + nz * (mz - inside[2]) >= 0;
-  const q = out ? pts : pts.slice().reverse();
-  if (q.length === 3) mb.tri(q[0], q[1], q[2], col);
-  else mb.quad(q[0], q[1], q[2], q[3], col);
-}
+// ------------------------------------------------------------------------------------------------ voxel art
+// [gear25] The gear is a hand-built VoxelModel (src/gfx/voxel.js) rendered by voxicon renderLayers: 7-step ramps,
+// glossy normals + glints, AO, edge highlights, depth lines, the dark ink outline and a soft shadow. 18 chunky
+// teeth, a rim with an aqua enamel channel and 12 brass rivets, 6 ridged spokes, a hub with 6 bolts, a hex nut and an
+// aqua gem. The gear repeats every 60 degrees (6 spokes), so its spin is a ring of NF cached frames over one period,
+// each one the model re-voxelised at that angle (crisp voxels at every angle). A static voxel housing (a dark
+// backplate behind the gear, a chunky blue ring with 12 lamp sockets) sits around it; lit voxel lamps are overlaid.
+// Frames exist at 1x (logical) and HI x (the full-res UI layer), built lazily within a time budget.
+const N_TEETH = 18, N_SPOKES = 6, N_LAMPS = 12;
+const SYM = TAU / N_SPOKES, NF = 24; // 2.5 degrees per cached frame
+const VPX = 2; // logical px per voxel
+const VIEW = { yaw: -0.26, pitch: 0.42 }; // radians (voxicon convention): from above and a little to the right
+const ZC = 9; // model z index of the gear's mid-plane
 
-const shadeHex = (hex, k) => {
-  const n = parseInt(hex.slice(1), 16);
-  const f = (v) => Math.max(0, Math.min(255, Math.round(v * k)));
-  return '#' + [f((n >> 16) & 255), f((n >> 8) & 255), f(n & 255)].map((v) => v.toString(16).padStart(2, '0')).join('');
+const METAL = { spec: 1, specPow: 5, smooth: 0.55, jitter: 0, edge: 1 };
+const ENAMEL = { spec: 0.9, specPow: 9, smooth: 0.7, jitter: 0 };
+const GEMM = { spec: 1.3, specPow: 12, smooth: 0.85, jitter: 0, aoMul: 0.4 };
+const memoPal = (m) => {
+  const map = new Map();
+  return (hex, o) => { const k = hex + (o === ENAMEL ? 'e' : o === GEMM ? 'g' : 'm'); let c = map.get(k); if (c === undefined) { c = m.color(hex, o || METAL); map.set(k, c); } return c; };
 };
+const fract = (v) => v - Math.floor(v);
 
-// Surface of revolution of a closed (r, z) cross-section; colours per section edge; `seg` facets around.
-function lathe(mb, prof, cols, seg, closed = true, centre = null) {
-  const n = prof.length;
-  const cr = centre || [prof.reduce((s, p) => s + p[0], 0) / n, prof.reduce((s, p) => s + p[1], 0) / n];
-  for (let j = 0; j < seg; j++) {
-    const a0 = (j / seg) * TAU, a1 = ((j + 1) / seg) * TAU, am = (a0 + a1) / 2;
-    const P = (p, a) => [Math.cos(a) * p[0], Math.sin(a) * p[0], p[1]];
-    const inside = [Math.cos(am) * cr[0], Math.sin(am) * cr[0], cr[1]];
-    for (let i = 0; i < (closed ? n : n - 1); i++) {
-      const p = prof[i], q = prof[(i + 1) % n];
-      const col = shadeHex(cols[i % cols.length], j % 2 ? 0.95 : 1.02);
-      if (p[0] < 1e-6) face(mb, [P(p, a0), P(q, a0), P(q, a1)], col, inside);
-      else if (q[0] < 1e-6) face(mb, [P(p, a0), P(q, a0), P(p, a1)], col, inside);
-      else face(mb, [P(p, a0), P(q, a0), P(q, a1), P(p, a1)], col, inside);
+// The gear at spin angle th (model y up: + = counter-clockwise), RV voxels to the tooth tips.
+function gearModel(RV, th) {
+  const C = RV + 4, N = 2 * C, NZ = ZC * 2 + 1;
+  const m = new VoxelModel(N, N, NZ);
+  const P = memoPal(m);
+  const steel = P('#93adc2'), steelB = P('#a3bccf'), steelL = P('#d2e4f0'), steelD = P('#6a879f');
+  const enamel = P('#2fb4e4', ENAMEL), enamelL = P('#5fd8f6', ENAMEL);
+  const brass = P('#f2c24a'), brassL = P('#fff0a8');
+  const nut = P('#6d8499'), nutL = P('#9fb4c6'), gem = P('#7ff2ff', GEMM), gemL = P('#e8ffff', GEMM);
+  const R_ROOT = 0.85, R_RIM = 0.65, R_HUB = 0.25, R_BOSS = 0.165;
+  const tooth = TAU / N_TEETH, spokeA = TAU / N_SPOKES;
+  const put = (x, y, z0, z1, c) => { for (let z = z0; z <= z1; z++) m.set(x, y, ZC + z, c); };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const dx = x + 0.5 - C, dy = y + 0.5 - C, r = Math.hypot(dx, dy), rf = r / RV;
+    if (rf > 1.0) continue;
+    const a = Math.atan2(dy, dx) - th; // material angle
+    if (rf >= R_ROOT - 0.02) {
+      // teeth: trapezoids (wide root, narrow land), a chamfered land and front corners
+      const u = fract(a / tooth) - 0.5, hw = lerp(0.36, 0.24, clamp01((rf - R_ROOT) / (1 - R_ROOT)));
+      const tw = Math.abs(u) * r * tooth; // voxels from the tooth's centre line
+      const edge = (hw - Math.abs(u)) * r * tooth; // voxels in from the tooth's flank
+      if (rf >= R_ROOT && edge < 0) continue;
+      const land = rf > 1 - 1.3 / RV;
+      const z1 = land || edge < 1 ? 2 : 3;
+      put(x, y, -3, z1 - 1, steelD);
+      m.set(x, y, ZC + z1, land ? steelL : tw < 1.2 ? steelL : steel);
+      continue;
+    }
+    if (rf >= R_RIM) {
+      // rim: an outer and an inner bead (raised), an aqua enamel channel between them, 12 brass rivets in it
+      const bead = rf > 0.785 || rf < 0.705;
+      put(x, y, -3, 2, steelD);
+      if (bead) {
+        const ring = Math.floor(r) % 2 ? steelB : steel; // machined rings
+        m.set(x, y, ZC + 3, ring);
+        m.set(x, y, ZC + 4, rf > 0.815 || rf < 0.68 ? steelL : ring);
+      } else {
+        m.set(x, y, ZC + 3, enamel);
+        // rivets sit between the spokes
+        const ra = (Math.round(a / (TAU / 12) - 0.5) + 0.5) * (TAU / 12);
+        const rr = 0.745 * RV, d = Math.hypot(dx - Math.cos(ra + th) * rr, dy - Math.sin(ra + th) * rr);
+        if (d < 1.75) { m.set(x, y, ZC + 4, brass); if (d < 0.9) m.set(x, y, ZC + 5, brassL); }
+        else if (fract(rf * RV / 2) < 0.08) m.set(x, y, ZC + 3, enamelL);
+      }
+      continue;
+    }
+    if (rf >= R_HUB - 0.02) {
+      // spokes: chunky bars tapering toward the rim, a raised ridge, fillets where they meet the rim and the hub
+      const k = Math.round(a / spokeA), da = a - k * spokeA;
+      const perp = Math.abs(Math.sin(da)) * r, along = Math.cos(da) * r;
+      let half = lerp(3.1, 2.3, clamp01((rf - R_HUB) / (R_RIM - R_HUB)));
+      half += Math.max(0, rf - (R_RIM - 0.08)) * RV * 0.9 + Math.max(0, R_HUB + 0.06 - rf) * RV * 0.9;
+      if (along <= 0 || perp > half) {
+        if (rf < R_HUB) { put(x, y, -3, 3, steel); }
+        continue;
+      }
+      put(x, y, -2, 1, steelD);
+      m.set(x, y, ZC + 2, perp > half - 1 ? steel : steelB);
+      if (perp < 1.05) m.set(x, y, ZC + 3, steelL);
+      continue;
+    }
+    // hub: a drum with a chamfered edge, 6 brass bolts, a raised boss, a hex nut and the aqua gem
+    put(x, y, -3, 2, steelD);
+    if (rf > R_HUB - 1.2 / RV) { m.set(x, y, ZC + 3, steel); continue; }
+    const ba = (Math.round(a / spokeA - 0.5) + 0.5) * spokeA, br = 0.205 * RV;
+    const bd = Math.hypot(dx - Math.cos(ba + th) * br, dy - Math.sin(ba + th) * br);
+    if (rf > R_BOSS) {
+      m.set(x, y, ZC + 3, steelB); m.set(x, y, ZC + 4, Math.floor(r) % 2 ? steel : steelB);
+      if (bd < 1.45) { m.set(x, y, ZC + 4, brass); m.set(x, y, ZC + 5, bd < 0.8 ? brassL : brass); }
+      continue;
+    }
+    put(x, y, 3, 4, steelB);
+    m.set(x, y, ZC + 5, rf > R_BOSS - 1.1 / RV ? steelL : steel);
+    // hex nut (flat-to-flat 0.2 RV), turning with the gear
+    let hx = 0;
+    for (let i = 0; i < 3; i++) { const na = th + i * (TAU / 6); hx = Math.max(hx, Math.abs(dx * Math.cos(na) + dy * Math.sin(na))); }
+    if (hx < 0.105 * RV) {
+      m.set(x, y, ZC + 6, hx > 0.105 * RV - 1.1 ? nutL : nut);
+      if (r < 0.06 * RV) { m.set(x, y, ZC + 7, gem); if (r < 0.035 * RV) m.set(x, y, ZC + 8, gemL); }
     }
   }
+  return { m, c: [C, C, ZC + 0.5] };
 }
 
-const N_TEETH = 15, N_SPOKES = 5; // 72-degree symmetry: every lathe below uses a multiple of 5 segments
-const SYM = TAU / 5, NF = 18; // cached spin frames over one symmetry period (4 degrees apart)
-const PITCH = 0.42, YAW = -0.34; // the resting 3D view: from above and the right
-const R_IN = 0.64, R_ROOT = 0.84, R_TIP = 1.0;
-let MESH = null;
-function gearMeshes() {
-  if (MESH) return MESH;
-  // ---- body: rim + teeth + spokes + hub + bolts (chrome)
-  const mb = new MeshBuilder();
-  const rimProf = [[R_IN, 0.07], [R_IN + 0.05, 0.15], [R_ROOT - 0.05, 0.15], [R_ROOT, 0.1], [R_ROOT, -0.1], [R_ROOT - 0.05, -0.14], [R_IN + 0.05, -0.14], [R_IN, -0.07]];
-  lathe(mb, rimProf, ['#ffffff', '#d4e8f4', '#9fc6dc', '#a8cade', '#7ea4bc', '#6d93ad', '#5f87a2', '#86abc2'], 60);
-  // teeth: tapered prisms with a sloped (chamfered) front face and a flat land
-  const step = TAU / N_TEETH;
-  for (let i = 0; i < N_TEETH; i++) {
-    const a = i * step;
-    const ca = Math.cos(a), sa = Math.sin(a);
-    const L = (u, v, z) => [ca * u - sa * v, sa * u + ca * v, z];
-    const rb = R_ROOT - 0.03, wb = 0.115, wt = 0.062, zb = 0.1, zt = 0.065;
-    const B = [L(rb, -wb, zb), L(rb, wb, zb), L(rb, wb, -zb), L(rb, -wb, -zb)];
-    const T = [L(R_TIP, -wt, zt), L(R_TIP, wt, zt), L(R_TIP, wt, -zt), L(R_TIP, -wt, -zt)];
-    const inside = L((rb + R_TIP) / 2, 0, 0);
-    face(mb, [B[0], B[1], T[1], T[0]], '#eaf6fc', inside); // front (sloped)
-    face(mb, [T[0], T[1], T[2], T[3]], '#ffffff', inside); // land
-    face(mb, [B[1], B[2], T[2], T[1]], '#93b9d0', inside); // flank
-    face(mb, [B[0], T[0], T[3], B[3]], '#6a92ad', inside); // flank
-    face(mb, [B[3], T[3], T[2], B[2]], '#5f87a2', inside); // back
+// The static housing: a dark backplate behind the gear, a chunky blue voxel ring round it with 12 lamp sockets and
+// silver rivets between them. Lamp sockets sit at the lamp() positions.
+const lampR = (RV) => RV + 5.5;
+function housingModel(RV) {
+  const C = RV + 11, N = 2 * C, NZ = ZC * 2 + 1;
+  const m = new VoxelModel(N, N, NZ);
+  const P = memoPal(m);
+  const back = P('#174d72', ENAMEL), backL = P('#21638f', ENAMEL), backD = P('#134466', ENAMEL);
+  const ring = P('#2f6fa4', ENAMEL), ringB = P('#3a7db4', ENAMEL), ringL = P('#a8dcf8', ENAMEL), ringD = P('#1c4b78', ENAMEL);
+  const lens = P('#0f3550', GEMM), lensL = P('#3f7896', GEMM), riv = P('#dcebf5');
+  const r0 = RV + 2.6, r1 = RV + 8.6, lr = lampR(RV);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const dx = x + 0.5 - C, dy = y + 0.5 - C, r = Math.hypot(dx, dy);
+    if (r > r1) continue;
+    const a = Math.atan2(dy, dx);
+    if (r < r0) {
+      // the backplate: recessed, faint concentric rings and a block texture
+      const z = -6;
+      const ringy = Math.abs(fract(r / 7) - 0.5) < 0.08;
+      const chk = ((x >> 2) + (y >> 2)) % 2;
+      m.set(x, y, ZC + z - 1, backD);
+      m.set(x, y, ZC + z, ringy ? backL : chk ? back : backD);
+      continue;
+    }
+    // the ring: a raised inner bead, a flat face, a bevelled outer edge
+    const z1 = r < r0 + 1.1 ? 5 : r > r1 - 1.2 ? 3 : 4;
+    for (let z = -6; z < z1; z++) m.set(x, y, ZC + z, ringD);
+    let c = r < r0 + 1.1 ? ringL : r > r1 - 1.2 ? ring : Math.floor(r) % 2 ? ring : ringB;
+    m.set(x, y, ZC + z1, c);
+    // lamp sockets: dark glass lenses
+    const la = Math.round(a / (TAU / N_LAMPS)) * (TAU / N_LAMPS);
+    const ld = Math.hypot(dx - Math.cos(la) * lr, dy - Math.sin(la) * lr);
+    if (ld < 2.2) { m.set(x, y, ZC + 4, ld < 1.6 ? lens : ringD); if (ld < 0.9) m.set(x, y, ZC + 4, lensL); }
+    // silver rivets between the lamps
+    const ra = (Math.round(a / (TAU / N_LAMPS) - 0.5) + 0.5) * (TAU / N_LAMPS);
+    const rd = Math.hypot(dx - Math.cos(ra) * lr, dy - Math.sin(ra) * lr);
+    if (rd < 1.2) m.set(x, y, ZC + 5, riv);
   }
-  // spokes: ridged pentagon section, tapering toward the rim
-  for (let i = 0; i < N_SPOKES; i++) {
-    const a = (i / N_SPOKES) * TAU + step / 2;
-    const ca = Math.cos(a), sa = Math.sin(a);
-    const L = (u, v, z) => [ca * u - sa * v, sa * u + ca * v, z];
-    const sec = (u, w) => [L(u, -w, 0.03), L(u, 0, 0.09), L(u, w, 0.03), L(u, w, -0.06), L(u, -w, -0.06)];
-    const A = sec(0.22, 0.085), Bq = sec(R_IN + 0.02, 0.06);
-    const inside = L(0.45, 0, 0);
-    const cols = ['#f4fbff', '#c3dceb', '#8fb3cb', '#5e86a2', '#9fc2d8'];
-    for (let k = 0; k < 5; k++) face(mb, [A[k], A[(k + 1) % 5], Bq[(k + 1) % 5], Bq[k]], cols[k], inside);
+  return { m, c: [C, C, ZC + 0.5] };
+}
+
+// A lit lamp: a small glowing voxel dome in colour `hex`.
+function lampModel(hex) {
+  const m = new VoxelModel(5, 5, 3);
+  const c = m.color(hex, { spec: 1.2, specPow: 8, smooth: 0.8, jitter: 0, light: 1 }), w = m.color('#ffffff', { light: 1, jitter: 0 });
+  for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) {
+    const d = Math.hypot(x - 2, y - 2);
+    if (d > 2.3) continue;
+    m.set(x, y, 0, c); m.set(x, y, 1, c);
+    if (d < 1.5) m.set(x, y, 2, x === 1 && y === 3 ? w : c);
   }
-  // hub: chrome drum with a chamfer and a lime accent ring around the gem seat
-  lathe(mb, [[0.17, 0.2], [0.24, 0.19], [0.28, 0.13], [0.28, -0.14], [0.17, -0.14]], ['#ffffff', '#c7dfee', '#8fb3cb', '#5f87a2', '#7ea4bc'], 20, true, [0.22, 0.02]);
-  lathe(mb, [[0.155, 0.215], [0.175, 0.215], [0.175, 0.185], [0.155, 0.185]], ['#c8f56a', '#6cd03a', '#3fae2a', '#8be04a'], 20, true, [0.165, 0.2]);
-  // lime bolts on the rim between the spokes
-  for (let i = 0; i < N_SPOKES; i++) {
-    const a = (i / N_SPOKES) * TAU;
-    const r = (R_IN + R_ROOT) / 2;
-    ellipsoid(mb, [Math.cos(a) * r, Math.sin(a) * r, 0.155], [0.04, 0.04, 0.03], 6, 4, (nx, ny, nz) => (nz > 0.7 ? '#e2ffb0' : ny > 0 ? '#8be04a' : '#3fae2a'));
-  }
-  const body = mb.build();
-  // ---- the aqua glow ring (emissive) just inside the rim's lip
-  const gb = new MeshBuilder();
-  lathe(gb, [[R_IN - 0.045, 0.09], [R_IN + 0.004, 0.09], [R_IN + 0.004, 0.05], [R_IN - 0.045, 0.05]], ['#ffffff'], 40, true, [R_IN - 0.02, 0.07]);
-  const glow = gb.build();
-  // ---- the gem in the hub (faceted dome)
-  const mg = new MeshBuilder();
-  lathe(mg, [[0, 0.31], [0.08, 0.29], [0.14, 0.24], [0.16, 0.19], [0, 0.19]], ['#ffffff', '#e8fdff', '#c8f6ff', '#9ff0ff'], 10, true, [0.06, 0.22]);
-  const gem = mg.build();
-  // ---- clear aqua glass disc behind the spokes
-  const mgl = new MeshBuilder();
-  lathe(mgl, [[0.26, 0.012], [R_IN + 0.01, 0.012], [R_IN + 0.01, -0.012], [0.26, -0.012]], ['#bff4ff', '#bff4ff', '#bff4ff', '#bff4ff'], 40, true, [0.45, 0]);
-  const glass = mgl.build();
-  MESH = { body, glow, gem, glass };
-  return MESH;
+  return { m, c: [2.5, 2.5, 0] };
+}
+
+// Projected offset (px at s px per voxel) of a model-space point relative to the model centre, at VIEW.
+function projOff(px, py, pz, s) {
+  const Y = -VIEW.yaw, cy = Math.cos(Y), sy = Math.sin(Y), cp = Math.cos(VIEW.pitch), sp = Math.sin(VIEW.pitch);
+  return [(px * cy - pz * sy) * s, -(px * -sp * sy + py * cp + pz * -sp * cy) * s];
+}
+
+// renderLayers of one model into an S x S canvas (k = 1 logical, HI = the full-res twin)
+function renderVox(v, S, k, shadow = true) {
+  return renderLayers({ base: v.m, over: null, glass: null, c: v.c }, { S: S * k, s: VPX * k, yaw: VIEW.yaw, pitch: VIEW.pitch, T: k > 1 ? 2 : 1, shadow });
+}
+
+const LAMP_COL = { aqua: '#4fd8f0', green: '#7ff04a', orange: '#ff9d2e', red: '#ff4f5e', gold: '#ffd23a', white: '#f4ffff' };
+const LAMPS = new Map();
+function lampSprite(col, k) {
+  const key = col + k;
+  let c = LAMPS.get(key);
+  if (!c) { c = renderVox(lampModel(LAMP_COL[col]), 12, k, false); LAMPS.set(key, c); }
+  return c;
 }
 
 // ------------------------------------------------------------------------------------------------ 2D art
@@ -256,22 +337,6 @@ function tubeGlass(w, h, front) {
       return [190, 235, 255, 90];
     });
   });
-}
-
-// A crisp 1 px dark outline round a rendered sprite (pixel-art selective outline), in place.
-function outlined(c) {
-  if (!c) return c;
-  const g = c.getContext('2d'), w = c.width, h = c.height;
-  const img = g.getImageData(0, 0, w, h), d = img.data;
-  const solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 150;
-  const out = [];
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    if (d[(y * w + x) * 4 + 3] > 40) continue;
-    if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) out.push(x, y);
-  }
-  for (let i = 0; i < out.length; i += 2) { const j = (out[i + 1] * w + out[i]) * 4; d[j] = 12; d[j + 1] = 58; d[j + 2] = 82; d[j + 3] = 255; }
-  g.putImageData(img, 0, 0);
-  return c;
 }
 
 // Draws a ring sprite clipped to the clockwise arc a0 -> a1 (canvas angles: 0 = right, clockwise).
@@ -470,81 +535,90 @@ export class Gear {
     }
   }
 
-  // ---------------------------------------------------------------- 3D render
-  // Render options for one view of the gear (orthographic, R px per unit) at spin angle `spin` and tilt.
-  gearOpts(L, spin, pitch, yaw, scale = 1) {
-    const M = gearMeshes();
-    const chrome = { mesh: M.body, spec: 0.95, shine: 30, env: 0.85, rim: 0.6 };
-    return {
-      w: L.size, h: L.size, matrix: T4.trs([0, 0, 0], pitch, yaw, spin, scale), scale: L.R, center: [0, 0, 0], radius: 1.3,
-      light: [-0.55, 0.72, 0.75], ambient: 0.44, sky: '#f6feff', ground: '#0f4a78', rimColor: '#bff8ff',
-      parts: [
-        chrome,
-        { mesh: M.glow, emit: 1, tint: [0.37, 0.96, 1, 0.6], spec: 0.2, env: 0, rim: 0 },
-        { mesh: M.gem, emit: 0.5, spec: 1, shine: 60, env: 0.4, tint: [0.45, 0.95, 1, 0.3] },
-        { mesh: M.glass, alpha: 0.36, spec: 0.8, shine: 50, env: 0.6, depthWrite: false },
-      ],
-    };
+  // ---------------------------------------------------------------- voxel render [gear25]
+  // Voxels to the tooth tips for the current layout.
+  rv(L) { return Math.max(16, Math.round(L.R / VPX)); }
+
+  // The cached spin frames (NF over the 60-degree symmetry) at scale k (1 | HI) for the current size.
+  frames(L, k = 1) {
+    const key = L.size + '|' + k;
+    if (!this.cache || this.cache.key0 !== L.size) this.cache = { key0: L.size, sets: new Map(), housing: new Map() };
+    let c = this.cache.sets.get(key);
+    if (!c) { c = { list: new Array(NF).fill(null), n: 0 }; this.cache.sets.set(key, c); }
+    return c;
   }
 
-  // The cached ring of spin frames (NF frames over the 72-degree symmetry) for the current size.
-  frames(L) {
-    if (!this.cache || this.cache.size !== L.size) this.cache = { size: L.size, list: new Array(NF).fill(null), n: 0 };
-    return this.cache;
-  }
-
-  frame(L, i) {
-    const c = this.frames(L);
+  frame(L, i, k = 1) {
+    const c = this.frames(L, k);
     i = ((i % NF) + NF) % NF;
     if (!c.list[i]) {
-      c.list[i] = outlined(renderMesh(null, this.gearOpts(L, (i / NF) * SYM, PITCH, YAW)));
+      c.list[i] = renderVox(gearModel(this.rv(L), (i / NF) * SYM), L.size, k);
       c.n++;
     }
     return c.list[i];
   }
 
-  // Render a few missing frames (call while the player waits for a bite) so the first spin never hitches.
-  warm(n = 2) {
-    if (!lpAvailable()) return;
-    const F = this.F, L = this.layout(F.W, F.H), c = this.frames(L);
-    for (let i = 0; i < NF && n > 0; i++) if (!c.list[i]) { this.frame(L, i); n--; }
+  // The frame nearest to i that is already built (or i itself, built now, within a small per-frame budget).
+  frameNear(L, i, k) {
+    const c = this.frames(L, k);
+    i = ((i % NF) + NF) % NF;
+    if (c.list[i]) return c.list[i];
+    // a missing frame is built at most every few game frames (the nearest built one stands in meanwhile)
+    const now = performance.now();
+    if (!c.n || now - (this.buildT || 0) > 60) { const f = this.frame(L, i, k); this.buildT = performance.now(); return f; }
+    for (let d = 1; d <= NF / 2; d++) for (const j of [i - d, i + d]) { const f = c.list[((j % NF) + NF) % NF]; if (f) return f; }
+    return this.frame(L, i, k);
   }
 
-  // The gear's look this frame: a cached spin frame (+ motion-blur ghosts), or a live 3D render while it tilts.
-  render3D(L, B) {
-    if (!lpAvailable()) return null;
-    const S = L.size;
-    if (!this.img || this.img.width !== S) { this.img = makeCanvas(S, S); this.imgCtx = ctxOf(this.img); }
-    const g = this.imgCtx;
-    g.clearRect(0, 0, S, S);
-    const popK = ease.outBack(clamp01(this.pop));
-    const live = this.pop < 1 || Math.abs(this.tiltX) + Math.abs(this.tiltY) > 0.03;
-    if (live) {
-      const yaw = YAW + this.tiltY + (1 - popK) * 1.35;
-      const pitch = PITCH + this.tiltX + (1 - clamp01(this.pop * 1.4)) * 0.35;
-      renderMesh(null, { ...this.gearOpts(L, this.angle, pitch, yaw, lerp(0.55, 1, popK)), out: this.img, outX: 0, outY: 0 });
-    } else {
-      const fa = ((this.angle % SYM) + SYM) % SYM / SYM * NF;
-      const i0 = Math.round(fa);
-      // motion blur: the frames the gear just swept through, fainter and behind
-      const blur = clamp01((Math.abs(this.rpm) - 45) / 150);
-      if (blur > 0) {
-        const lag = clamp((this.spinV * 0.03) / (SYM / NF), -3, 3);
-        for (let k = 3; k >= 1; k--) {
-          g.globalAlpha = blur * (0.5 - k * 0.12);
-          g.drawImage(this.frame(L, Math.round(fa - lag * k * 0.6)), 0, 0);
-        }
-        g.globalAlpha = 1;
-      }
-      g.drawImage(this.frame(L, i0), 0, 0);
+  housing(L, k = 1) {
+    this.frames(L, k);
+    let h = this.cache.housing.get(k);
+    if (!h) { h = renderVox(housingModel(this.rv(L)), L.size + 28, k); this.cache.housing.set(k, h); }
+    return h;
+  }
+
+  // Render a few missing frames (call while the player waits for a bite) so the first spin never hitches.
+  warm(n = 1) {
+    // throttled: at most one voxel frame every few game frames, so the wait for a bite stays smooth
+    const now = performance.now();
+    if (now - (this.buildT || 0) < 45) return;
+    const F = this.F, L = this.layout(F.W, F.H);
+    const ks = HI_ON.on ? [1, HI] : [1];
+    for (const k of ks) {
+      if (n <= 0) break;
+      if (!this.cache?.housing?.get(k)) { this.housing(L, k); n--; continue; }
+      const c = this.frames(L, k);
+      for (let i = 0; i < NF && n > 0; i++) if (!c.list[i]) { this.frame(L, i, k); n--; }
     }
-    // state tint (charge, strain, stun, flashes) over the chrome
+    if (n <= 0) this.buildT = performance.now();
+  }
+
+  // The gear's look this frame at scale k: a cached spin frame (+ motion-blur ghosts) with a state tint.
+  renderGear(L, B, k) {
+    const S = L.size * k;
+    if (!this.comp || this.comp.width !== S) { this.comp = makeCanvas(S, S); this.compCtx = ctxOf(this.comp); }
+    const g = this.compCtx;
+    g.clearRect(0, 0, S, S);
+    const fa = ((this.angle % SYM) + SYM) % SYM / SYM * NF;
+    const i0 = Math.round(fa);
+    // motion blur: the frames the gear just swept through, fainter and behind
+    const blur = clamp01((Math.abs(this.rpm) - 45) / 150);
+    if (blur > 0) {
+      const lag = clamp((this.spinV * 0.03) / (SYM / NF), -3, 3);
+      for (let q = 3; q >= 1; q--) {
+        g.globalAlpha = blur * (0.5 - q * 0.12);
+        g.drawImage(this.frameNear(L, Math.round(fa - lag * q * 0.6), k), 0, 0);
+      }
+      g.globalAlpha = 1;
+    }
+    g.drawImage(this.frameNear(L, i0, k), 0, 0);
+    // state tint (charge, strain, stun, flashes) over the steel
     const ch = B?.charge?.k || 0;
     let tc = null, ta = 0;
     if (ch > 0) { tc = ch > (B.chargeWin?.hi ?? 1) ? '#ff7a5a' : '#fff07a'; ta = 0.12 + ch * 0.3 + (Math.random() < 0.2 ? 0.15 : 0); }
     else if (this.heat > 0.05) { tc = '#ff7a2a'; ta = this.heat * (0.15 + 0.08 * Math.sin(this.t * 30)); } // red-hot strain
     else if (B?.stunned) { tc = '#bff8ff'; ta = 0.1 + (Math.floor(this.t * 20) % 2) * 0.12; }
-    else if (this.state(B) === 'sweet') { tc = '#8be04a'; ta = 0.06 + 0.04 * Math.sin(this.t * 9); }
+    else if (this.state(B) === 'sweet') { tc = '#8be04a'; ta = 0.05 + 0.03 * Math.sin(this.t * 9); }
     if (this.flash > 0 && this.flash * 0.6 > ta) { tc = this.flashCol; ta = this.flash * 0.6; }
     if (tc && ta > 0.01) {
       g.globalCompositeOperation = 'source-atop';
@@ -552,31 +626,31 @@ export class Gear {
       g.fillRect(0, 0, S, S);
       g.globalCompositeOperation = 'source-over';
     }
-    return this.img;
+    return this.comp;
   }
 
-  // 2D stand-in when WebGL2 is not available.
-  drawGear2D(ctx, cx, cy, R) {
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(-this.angle);
-    ctx.beginPath();
-    const step = TAU / N_TEETH;
-    for (let i = 0; i < N_TEETH; i++) {
-      const a = i * step;
-      for (const [da, r] of [[-0.27, R_ROOT], [-0.17, R_TIP], [0.17, R_TIP], [0.27, R_ROOT], [0.5, R_ROOT]]) ctx.lineTo(Math.cos(a + da * step) * r * R, Math.sin(a + da * step) * r * R);
+  // The housing's 12 voxel lamps: a speed gauge (lit clockwise from the top as the gear speeds up) in the state's
+  // colour; a slow aqua chase while the gear rests; all flash with the gear.
+  drawLamps(ctx, cx, cy, L, B, st, k) {
+    const RV = this.rv(L), lr = lampR(RV), t = this.t;
+    const spd = clamp01(Math.abs(this.rpm) / 240);
+    let col = this.heat > 0.4 || st === 'rip' ? 'red' : B?.stunned ? (Math.floor(t * 10) % 2 ? 'white' : 'aqua') : B?.charge ? 'gold' : st === 'sweet' ? 'green' : st === 'over' ? 'orange' : 'aqua';
+    let lit = Math.round(spd * N_LAMPS);
+    let chase = -1;
+    if (B && Math.abs(this.rpm) < 8 && !B.stunned) { lit = 0; chase = Math.floor(t * 6) % N_LAMPS; }
+    if (this.flash > 0.25) { lit = N_LAMPS; col = 'white'; }
+    const blink = spd > 0.85 && Math.floor(t * 12) % 2;
+    for (let j = 0; j < N_LAMPS; j++) {
+      const on = j < lit || j === chase;
+      if (!on) continue;
+      // j = 0 at the top, going clockwise on screen
+      const phi = Math.PI / 2 - j * (TAU / N_LAMPS);
+      const [ox, oy] = projOff(Math.cos(phi) * lr, Math.sin(phi) * lr, 4.5, VPX);
+      const head = j === lit - 1 && spd < 0.98;
+      const spr = lampSprite(head || (blink && j % 2) ? 'white' : col, k);
+      const w = spr.width / k;
+      ctx.drawImage(spr, Math.round(cx + ox - w / 2), Math.round(cy + oy - w / 2), w, w);
     }
-    ctx.closePath();
-    const gr = ctx.createLinearGradient(-R, -R, R, R);
-    gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.5, '#a9cadf'); gr.addColorStop(1, '#5f87a2');
-    ctx.fillStyle = gr; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke();
-    ctx.beginPath(); ctx.arc(0, 0, R_IN * R, 0, TAU); ctx.fillStyle = 'rgba(150,230,255,0.75)'; ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#d4e8f4';
-    for (let i = 0; i < N_SPOKES; i++) { ctx.save(); ctx.rotate((i / N_SPOKES) * TAU); ctx.fillRect(0, -R * 0.06, R * R_IN, R * 0.12); ctx.restore(); }
-    ctx.beginPath(); ctx.arc(0, 0, R * 0.26, 0, TAU); ctx.fillStyle = '#e8f5fc'; ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.arc(0, 0, R * 0.14, 0, TAU); ctx.fillStyle = '#5ff4ff'; ctx.fill();
-    ctx.restore();
   }
 
   state(B) {
@@ -602,27 +676,25 @@ export class Gear {
     const T = B ? clamp(B.tension ?? 0, 0, 1.2) : 0;
     ctx.save();
     ctx.globalAlpha = clamp01(vis * 1.4);
-    // ---- glass backplate + state glow
-    const plate = plateSprite(B?.gearMode === 'meter' ? R + Math.round(12 * S) : L.rg + L.tg + Math.round(8 * S));
-    ctx.drawImage(plate, cx - (plate.width - 1) / 2, cy - (plate.height - 1) / 2);
-    const gcol = this.heat > 0.4 || st === 'rip' ? '#ff4f5e' : B?.stunned ? '#7ff4ff' : B?.charge ? '#fff07a' : st === 'sweet' ? '#8be04a' : st === 'over' ? '#ff9d2e' : '#59c3ff';
-    const gA = this.heat > 0.4 ? 0.45 + 0.3 * Math.sin(t * 22) : B?.charge ? 0.35 + B.charge.k * 0.5 : st === 'sweet' ? 0.4 + 0.12 * Math.sin(t * 9) : 0.22;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha *= gA;
-    const gr = Math.round(R * 1.45);
-    ctx.drawImage(glowSprite(gr, gcol), cx - gr, cy - gr);
-    ctx.restore();
-    // ---- rings (the meter fight has its own meter: just the gear and a spin hint)
     const meter = B?.gearMode === 'meter';
+    const kk = isHi(ctx) ? HI : 1;
+    // ---- box reels: the glass plate under the RPM gauge and the progress ring
     if (!meter) {
+      const plate = plateSprite(L.rg + L.tg + Math.round(8 * S));
+      ctx.drawImage(plate, cx - (plate.width - 1) / 2, cy - (plate.height - 1) / 2);
       this.drawGauge(ctx, cx, cy, L, B, st);
       this.drawProgress(ctx, cx, cy, L, B);
     }
-    // ---- the gear itself
-    const img = this.render3D(L, B);
-    if (img) ctx.drawImage(img, Math.round(cx - L.size / 2), Math.round(cy - L.size / 2));
-    else this.drawGear2D(ctx, cx, cy, R);
+    // ---- [gear25] the voxel housing (backplate + ring) and its lamps (box reels keep the gauge instead), then the
+    // voxel gear (a jolt knocks it about)
+    if (meter || !B) {
+      const hs = this.housing(L, kk), hw = hs.width / kk;
+      ctx.drawImage(hs, Math.round(cx - hw / 2), Math.round(cy - hw / 2), hw, hw);
+      this.drawLamps(ctx, cx, cy, L, B, st, kk);
+    }
+    const jx = Math.round(clamp(this.tiltY, -0.5, 0.5) * R * 0.1), jy = Math.round(clamp(-this.tiltX, -0.5, 0.5) * R * 0.1);
+    const img = this.renderGear(L, B, kk);
+    ctx.drawImage(img, Math.round(cx - L.size / 2) + jx, Math.round(cy - L.size / 2) + jy, L.size, L.size);
     // speed streaks: bright arcs racing round the teeth
     const sp = clamp01((Math.abs(this.rpm) - 70) / 170);
     if (sp > 0) {
@@ -794,9 +866,22 @@ export class Gear {
       const a = t * 6;
       const rr = R * 0.62;
       drawIcon3d(ctx, 'mouse', cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, Math.round(28 * S), Math.sin(t * 5) * 0.6);
-      word3D(ctx, 'SPIN ME!', cx, Math.round(cy - R - 18 * S), { t, scale: 0.7 * S, pal: 'aqua', wobble: 1.2, alpha: 0.75 + 0.25 * Math.sin(t * 6) });
+      word3D(ctx, 'SPIN ME!', cx, Math.round(cy - R - 27 * S), { t, scale: 0.7 * S, pal: 'aqua', wobble: 1.2, alpha: 0.75 + 0.25 * Math.sin(t * 6) });
     }
-    word3D(ctx, 'CIRCLE  WHEEL  W', cx, Math.round(cy + R + 12 * S), { t: 0, scale: 0.34 * S, pal: 'white', wobble: 0, alpha: 0.8 });
+    this.drawPlaque(ctx, cx, Math.round(cy + R + 21 * S), 'CIRCLE  WHEEL  W');
+  }
+
+  // [gear25] The controls label: crisp pixel text on a small navy voxel plaque bolted under the housing.
+  drawPlaque(ctx, cx, cy, text) {
+    const tw = Math.ceil(measureText(text, 'small')), th = Math.ceil(lineHeight('small'));
+    const w = tw + 16, h = th + 5, x = Math.round(cx - w / 2), y = Math.round(cy - h / 2);
+    ctx.fillStyle = '#081c2c'; // ink outline, stepped corners
+    ctx.fillRect(x + 1, y - 1, w - 2, h + 2); ctx.fillRect(x - 1, y + 1, w + 2, h - 2); ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#16486a'; ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+    ctx.fillStyle = '#2f78a8'; ctx.fillRect(x + 1, y + 1, w - 2, 1); ctx.fillRect(x + 1, y + 1, 1, h - 3); // lit top-left edge
+    ctx.fillStyle = '#0e3550'; ctx.fillRect(x + 2, y + h - 2, w - 3, 1); ctx.fillRect(x + w - 2, y + 2, 1, h - 4); // shaded edge
+    for (const bx of [x + 3, x + w - 5]) { ctx.fillStyle = '#dcebf5'; ctx.fillRect(bx, y + Math.floor(h / 2) - 1, 2, 2); ctx.fillStyle = '#6a879f'; ctx.fillRect(bx + 1, y + Math.floor(h / 2), 1, 1); }
+    drawText(ctx, text, cx, y + 3, { font: 'small', align: 'center', color: '#bff4ff', shadow: '#081c2c' });
   }
 
   // Big glossy RPM number on a glass pill in the gauge's gap, with a spin prompt while the gear is too slow.
@@ -920,5 +1005,3 @@ export class Gear {
   }
 }
 
-export function gearPreviewMeshes() { return gearMeshes(); }
-void measureText;
