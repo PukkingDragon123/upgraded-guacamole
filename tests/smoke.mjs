@@ -358,6 +358,8 @@ await wait(3000);
 check('full HUD after the tutorial', !!(await iconRect('lab')) && !!(await iconRect('journal')) && !!(await iconRect('map')));
 // the seal's "keep me around?" question auto-answers yes; then the hint helper gives a tip on click
 await until(() => !window.FISHTOP.tutorial.active, 20000);
+// the hand-over waits for the "keep me around?" answer (up to 30 s of GAME time), so under heavy load give it longer
+await until(() => (window.__ev.tutorialDone || 0) > 0, 45000);
 check("'tutorialDone' emitted (quests can start)", (await ev('tutorialDone')) === 1, String(await ev('tutorialDone')));
 // [questcine18] chapter 1 opens with a quest cutscene (letterbox, Bubbles + Fizz, title, cards), then "Fishing 101"
 // completes on screen; the hint helper ducks away while a cutscene holds the screen, so wait for them to finish
