@@ -13,7 +13,7 @@
 // rarer and show up deeper (lower in the water column and in the deeper oceans).
 // Look: glossy voxel crates (driftwood / chrome / gold), Aero capsules (glass half with goodies inside), message
 // bottles in sea glass and swirling glass orbs, all on the shared world camera, with sparkles and a soft halo.
-// [crate26] SURPRISE crates (kind 'crate' only, rolled at spawn: f.surprise = 'legs' | 'mimic' | null; ~15 % / ~8 % in the
+// [crate26] SURPRISE crates (kind 'crate' only, rolled at spawn: f.surprise = 'legs' | 'mimic' | null; 15 % / 8 % in the
 // (OS)cean, more in later oceans and the deep zones; rollSurprise()). Tells for observant players: a legs crate twitches
 // (a hop with leg tips poking out), a mimic lifts its lid a crack now and then and an eye peeks out. Fishing drives the
 // show through fields on the floater: f.legs (0..1 legs grown), f.walk (leg phase), f.mimic (lid open 0..1),
@@ -124,7 +124,7 @@ const MODELS = { crate: crateModel, capsule: capsuleModel, bottle: bottleModel }
 // ------------------------------------------------------------------ [crate26] surprise crates: legs and mimics
 // d: 0 ((OS)cean) .. 1 (the last ocean); deep: extra in the twilight / midnight / abyss zones.
 export function rollSurprise(r, d = 0, deep = 0) {
-  const legs = 0.13 + 0.07 * d + 0.03 * deep, mimic = 0.06 + 0.06 * d + 0.04 * deep;
+  const legs = 0.15 + 0.07 * d + 0.03 * deep, mimic = 0.08 + 0.06 * d + 0.04 * deep;
   const u = r.float(0, 1);
   return u < mimic ? 'mimic' : u < mimic + legs ? 'legs' : null;
 }

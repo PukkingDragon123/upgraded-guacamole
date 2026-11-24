@@ -32224,7 +32224,7 @@ void main() {
       }).get(id2) : null);
       setCoinRenderer((px3, turn) => iconFrame("coin", px3, turn));
       rodLooks = /* @__PURE__ */ new Set();
-      DECOR_PIX = { leaves: "leaves", leaves_l: "leaves_l", shell: "shell", starfish: "starfish", bubbles: "bubbles", pearl: "pearl", coral: "coral_decor" };
+      DECOR_PIX = { shell: "shell", starfish: "starfish", bubbles: "bubbles", pearl: "pearl", coral: "coral_decor" };
       setDecorRenderer(decorFrame);
     }
   });
@@ -128050,6 +128050,7 @@ ${hearts} ${status}
               console.error(e);
             }
           }
+          if (!editing && g.state.view === "aquarium" && this.t - this.benchT > 0.9) g.setView?.("ocean");
           if (!editing && this.guide.key !== "labOpen" && this.guide.key !== "lab") this.say("labOpen");
         }
         // The cheapest research that is available right now (Aero first), defaulting to the Lab's sharper hook.

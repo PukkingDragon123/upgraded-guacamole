@@ -81,9 +81,9 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
     shock can break. In phase 3 it enrages and critical hits do extra damage.
   - **Crates**: floating crates fight on the same meter. Hover the hook over one (corner brackets show) and click
     to snag it, then spin and shock as with a fish. Light wooden crates and bottles wobble, iron crates pull hard
-    but steadily, and orbs dart about. Some crates are surprises. About 1 in 7 **grows crab legs**: the meter goes
+    but steadily, and orbs dart about. Some crates are surprises. About 1 in 7 (15 %) **grows crab legs**: the meter goes
     jittery, sideways lunges come often and the bar drains twice as fast. If you lose one, it runs off across the
-    seabed. About 1 in 12 is a **MIMIC**: its lid flies open (teeth, tongue, eyes) and it fights like a mini-boss.
+    seabed. About 1 in 12 (8 %) is a **MIMIC**: its lid flies open (teeth, tongue, eyes) and it fights like a mini-boss.
     It snaps CHOMP! to knock your marker aside, and at half way it clamps shut behind a shield that only a GOOD or
     CRITICAL shock cracks. Beating a mimic upgrades its loot one tier. Surprises are more common in later oceans and
     deep water. Watchful anglers can spot them first: a twitching, hopping crate has legs, and an eye peeking out

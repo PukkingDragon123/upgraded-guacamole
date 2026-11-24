@@ -8,7 +8,7 @@
 //          3D voxel MIMIC! title. Then a mini-boss: a narrower zone, a harder pull, CHOMPS (the lid snaps, the marker is
 //          knocked toward the edge it leans to) and once, at half way, a SHIELD (the lid clamps shut and armours up: the
 //          zone locks and the bar does not fill until a GOOD / CRITICAL shock cracks it). Beating it upgrades the loot
-//          one tier (a wooden crate becomes an iron chest, ... orb stays orb with a bonus roll).
+//          one tier (a wooden crate becomes an iron chest, iron -> golden, golden -> orb; f.mimicLoot marks it).
 // Crate types tune the meter (PROFILE): light wooden crates / bottles wobble, iron crates drag hard but steady, golden
 // ones are heavy and sly, orbs float and dart.
 //

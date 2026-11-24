@@ -27039,7 +27039,7 @@ void main() {
       }).get(id) : null);
       setCoinRenderer((px2, turn) => iconFrame("coin", px2, turn));
       rodLooks = /* @__PURE__ */ new Set();
-      DECOR_PIX = { leaves: "leaves", leaves_l: "leaves_l", shell: "shell", starfish: "starfish", bubbles: "bubbles", pearl: "pearl", coral: "coral_decor" };
+      DECOR_PIX = { shell: "shell", starfish: "starfish", bubbles: "bubbles", pearl: "pearl", coral: "coral_decor" };
       setDecorRenderer(decorFrame);
     }
   });

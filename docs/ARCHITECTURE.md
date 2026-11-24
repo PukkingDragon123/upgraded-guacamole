@@ -489,7 +489,7 @@ User direction: "make icons actually 2D pixel art, lower resolution, hand-drawn 
   the art up one art pixel (wobble icons when |turn| > 0.35, 'full' icons on alternate quarter turns). No 3D spin.
 - Wiring (same APIs, call sites unchanged): bigicons `iconFrame` / `getBigIcon` (bottom anchor from the art, hover
   tint) / `iconSpinMode` / `modelFrame` / `modelSpin` / `voxelModelFrame` / `rodIcon` / `gemIcon` / `cutGemFrame` /
-  `decorFrame` (leaves, shell, starfish, bubbles, pearl, coral, orb:) and `setCoinRenderer` (drawAeroCoin), icons3d
+  `decorFrame` (shell, starfish, bubbles, pearl, coral, orb:; the rotated chrome leaves stay voxel) and `setCoinRenderer` (drawAeroCoin), icons3d
   `has3D` / `icon3d` / `icon3dFrame` / `drawIcon3D` (so `getUiIcon`, inline `{name}` text icons, toasts, buttons, the
   tank rail, the Satchel tabs, quest rows ...), fishing icons3d (via modelFrame `fish3d:`), labicons (`labPixName`:
   boats, tanks, biome globes, bait, materials, critters, glyphs; buildings and tank foods keep their own art), itemart
@@ -777,7 +777,8 @@ User direction: "make your tank start off empty" and "make you start with 3 butt
 - Tutorial (`tutorial.js`): SHOWN no longer reveals locked buttons (the lesson shows the Bait Shop). The 'lab' step, while
   The Lab is locked: "The Lab is locked! Click it, then build a Research Bench" (pointing at the padlocked slot; the bench
   price is topped up), "Click in your tank to build the bench!" in build mode (Bubbles rests at the edge), and once it
-  unlocks the build mode closes after ~0.9 s, the button pops in and Bubbles says "A new button! Now open The Lab!";
+  unlocks the build mode closes after ~0.9 s and the view returns to the ocean (the hint helper lives there), the button
+  pops in and Bubbles says "A new button! Now open The Lab!";
   opening it moves on to 'research' as before. The hint helper suggests the cheapest locked build every third tip and skips
   tips about locked buttons.
 - Quests: objective `{t: 'hotbar', id}` ("Build a Research Bench (unlocks The Lab)", icon 'decor', measured from
@@ -811,9 +812,9 @@ mimics" and "make your strings have max length too, need to upgrade".
   loot pop-up). Meter: `B.markerIcon(w, h)` (the crate rides the meter as its own voxel icon, `floaters.crateIcon`),
   `B.shielded` locks the zone like a boss shield, `B.zoomAdd` / `B.camOffY` steer the fight camera, `B.drawHud` /
   `B.drawWorld` add the crate's titles.
-- Surprises (`floaters.js`): `rollSurprise(rng, oceanK, deepExtra)` at spawn, kind `crate` only: legs `0.13 + 0.07 d +
-  0.03 deep`, mimic `0.06 + 0.06 d + 0.04 deep` (about 13 % / 6 % in the (OS)cean, about 20 % / 12 % in the last ocean, more
-  in the deep zones). Tells: a legs crate hops with leg tips poking out every 2.5-5.5 s, and a mimic lifts its lid a
+- Surprises (`floaters.js`): `rollSurprise(rng, oceanK, deepExtra)` at spawn, kind `crate` only: legs `0.15 + 0.07 d +
+  0.03 deep`, mimic `0.08 + 0.06 d + 0.04 deep` (15 % / 8 % in the (OS)cean, 22 % / 14 % in the last ocean, up to about
+  26 % / 19 % in the abyss zone). Tells: a legs crate hops with leg tips poking out every 2.5-5.5 s, and a mimic lifts its lid a
   crack with an eye glinting every 3.5-7 s. Art: `crateVariantModel` builds real voxel models: three crab legs a side
   (knee up, 4 walk frames, 3 grow steps), the lid hinged on the back edge and rotated open (12-90 degrees) with fangs, gums,
   big eyes under it, rim teeth, a mouth cavity and a tongue that lolls over the front, and a steel shield finish.

@@ -930,7 +930,8 @@ export function gemIcon(color, px = 16) {
 // voxel ornaments for the chrome (leaves, shell, starfish, bubbles, pearl, coral) and Lab cut gems
 //   decorFrame(name, px, turn) -> {canvas (`.hi`), ox, oy} | null
 //   cutGemFrame(color, cut, px, dim, turn) -> {canvas (`.hi`), ox, oy} | null
-const DECOR_PIX = { leaves: 'leaves', leaves_l: 'leaves_l', shell: 'shell', starfish: 'starfish', bubbles: 'bubbles', pearl: 'pearl', coral: 'coral_decor' };
+// (the chrome's leaves stay voxel: aero.js rotates / stretches them, which pixel art does not survive)
+const DECOR_PIX = { shell: 'shell', starfish: 'starfish', bubbles: 'bubbles', pearl: 'pearl', coral: 'coral_decor' };
 export function decorFrame(name, px, turn = 0) {
   { const pn = name.startsWith('orb:') ? name : DECOR_PIX[name]; if (pn && hasPix(pn)) return pixFrame(pn, px, turn, { shadow: false }); } // [pixicons26]
   if (name.startsWith('orb:')) return modelFrame('decor:' + name, () => ORB_MODEL(name.slice(4)), px, turn);
