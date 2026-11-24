@@ -45,6 +45,7 @@ export function run(params) {
   const g = cv.getContext('2d');
   if (P('soft', '0') === '1') lpDisableGL();
   window.__lp = lpAvailable();
+  window.__lpStats = lowpolyStats; // [deep26] build-cost checks
   const anim = P('anim', '0') === '1';
   if (!anim) setLowpolySync(true);
   const dark = P('bg', 'water') === 'dark';

@@ -103219,7 +103219,7 @@ void main() {
     return m;
   }
   function rollSurprise(r, d = 0, deep = 0) {
-    const legs = 0.13 + 0.07 * d + 0.03 * deep, mimic = 0.06 + 0.06 * d + 0.04 * deep;
+    const legs = 0.15 + 0.07 * d + 0.03 * deep, mimic = 0.08 + 0.06 * d + 0.04 * deep;
     const u = r.float(0, 1);
     return u < mimic ? "mimic" : u < mimic + legs ? "legs" : null;
   }
@@ -131248,6 +131248,7 @@ ${hearts} ${status}
     const g = cv.getContext("2d");
     if (P7("soft", "0") === "1") lpDisableGL();
     window.__lp = lpAvailable();
+    window.__lpStats = lowpolyStats;
     const anim = P7("anim", "0") === "1";
     if (!anim) setLowpolySync(true);
     const dark = P7("bg", "water") === "dark";
