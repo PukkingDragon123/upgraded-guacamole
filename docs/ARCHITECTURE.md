@@ -844,3 +844,18 @@ mimics" and "make your strings have max length too, need to upgrade".
   emitted. `tools/progcheck.mjs`: boss objectives need line_len1 + line_len2. Saves that had already left the (OS)cean get
   those two nodes for free (`state.lab.lineV`).
 
+
+## Wardrobe [wardrobe26]
+- Wardrobe = voxel boutique backdrop (`src/ui/wardroberoom.js`, `drawWardrobeRoom` / `warmWardrobeRoom`, built in time slices
+  per view size, placeholder until ready) + a compact right-hand column in `src/ui/wardrobe.js`. Premium cosmetics are
+  priced in Byte Gems via `GEM_PRICES` / `gemPriceOf()` and bought through `src/game/gems.js`; `state.wardrobeSeen` drives
+  NEW tags. Dev preview: `node tools/build.mjs --dev wardrobe`.
+
+## Deep-sea species [deep26]
+- `src/fish/species-deep.js` adds 17 deep-zone species (viperfish, loosejaw, seadevil, frilled/goblin/sixgill/lantern/
+  cookiecutter sharks, snailfish, bigfin and cock-eyed squid, telescope octopus, swallower, whipnose, tripodfish, yeti
+  crab, giant isopod). Depth-zone `valueMul` (twilight 1.15, midnight 1.3, abyss 1.5) stacks with the ocean multiplier in
+  `traits.valueMultiplier`. `lunge` behaviour = burst at the hook with jaw snaps; lures blink faster near the hook.
+  Deep ambience (`src/world/deepsea.js`, `depthzones.js`): darker zones, more watching eyes, passing silhouettes,
+  pitched-down sample rumbles, bioluminescent plankton wake behind the hook. Reaching deep zones needs line upgrades
+  ([crate26]).
