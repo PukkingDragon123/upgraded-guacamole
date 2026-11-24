@@ -5,7 +5,7 @@ import { rgba, mix, shade, RARITY } from '../core/color.js';
 import { drawText, measureText, wrapText, lineHeight } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroLabel, drawAeroBadge } from './aero.js';
-import { RODS, ROD_BY_ID, ROD_STAT_KEYS, ensureRods, equipRod } from '../game/rods.js';
+import { RODS, ROD_BY_ID, ROD_STAT_KEYS, ensureRods, equipRod, rodStatsOf } from '../game/rods.js';
 import { lineLabel } from '../fishing/line.js'; // [crate26] line length
 import { BOAT_ORDER, BOAT_NAMES, BRANCHES, EFFECT_INFO, fmtEffect, unlocked, nodeFor, labStatus } from '../game/lab.js';
 import { RECIPES, RECIPE_BY_ID, CRAFT_CATS, recipeUnlocked, recipeNode, craftCheck, craft } from '../build/crafting.js';
@@ -125,7 +125,7 @@ export function drawRodCard(ctx, ui, panel, r) {
   for (const l of wrapText(rod.desc, r.w - 20).slice(0, 2)) { drawText(ctx, l, cx, y, { align: 'center', color: INK_SOFT }); y += 11; }
   y += 8;
   for (const k of ROD_STAT_KEYS) {
-    const v = k.key === 'shock' ? rod.stats.shock.power : rod.stats[k.key];
+    const v = k.key === 'shock' ? rod.stats.shock.power : k.key === 'line' ? (rodStatsOf(st, rod.id, g.stats)?.line ?? rod.stats.line) : rod.stats[k.key]; // [crate26] line: with Lab + spools
     const kk = k.log ? Math.log(1 + v) / Math.log(1 + k.max) : v / k.max;
     const ai = anyIcon(k.icon, 10);
     if (ai) ctx.drawImage(ai, r.x + 10, y - 1);

@@ -1,5 +1,7 @@
-// [icons15] Dev preview: every detailed voxel UI icon on the full-res 2x layer (src/gfx/voxicon.js, bigicons.js).
-// node tools/build.mjs --dev icongallery -> dist/dev/icongallery.html?page=0|1|2|3&px=44&spin=1
+// [pixicons26] Dev preview: every hand-drawn 2D pixel-art UI icon on the full-res 2x layer (src/gfx/pixart.js sprites,
+// src/gfx/pixicons.js engine) through the public icon APIs.
+// node tools/build.mjs --dev icongallery -> dist/dev/icongallery.html?page=0|1|2|3|9&px=44&spin=1 (spin = hover hop frame)
+//   page 9: every authored sprite at 44 / 22 / 11 px (&off=N pages through them, 120 per page)
 //   page 0: menu / HUD icons (ICON_MODELS) at 44 / 32 / 22 px + rods + gems + coin
 //   page 1: icons3d (getUiIcon 3D glyphs) at px      page 2: items (itemSprite) + fishing icons + chests + decor
 //   page 3: Lab icons (labIcon) at px

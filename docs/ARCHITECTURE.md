@@ -413,6 +413,8 @@ that feels hand-made."
     (`faceOf`, `setTextBump` in font.js); measure with measureText / lineHeight rather than hard-coded 7 px rows.
 
 ## Phase 10 UI (detailed voxel icons + voxel chrome) [phase10:ui] [icons15]
+- [pixicons26] SUPERSEDED for icons: every icon below is now 2D pixel art (see "Hand-drawn 2D pixel-art icons"); the
+  voxel pipeline described here is only the fallback for keys without a sprite. The voxel chrome is unchanged.
 - Icons [icons15] (replaces the low-res toy-block icons): every model icon (bigicons.modelFrame / iconFrame / getBigIcon /
   rodIcon / gemIcon / decorFrame / cutGemFrame / voxelModelFrame, icons3d / getUiIcon, fishing icons3d, items via `itemSprite` /
   `itemIcon`, bait via `baitIcon`, Lab icons) is DETAILED VOXEL PIXEL ART in the bait-art style: `src/gfx/voxicon.js`
@@ -464,6 +466,44 @@ that feels hand-made."
   it, each on `drawBoatFloat` (a darker stepped pool under the hull, foam dashes lapping at its sides, a pixel
   highlight band: white = selected, gold = sailing, with two twinkling glints). The tree's fog of war (labtree.js)
   is a dark-sea tint. No light rays / spotlights / ring effects / text pop-ups in the Lab.
+
+## Hand-drawn 2D pixel-art icons [pixicons26] (replaces the [icons15] voxel icons below the chrome)
+User direction: "make icons actually 2D pixel art, lower resolution, hand-drawn and detailed; the fish icon is a grouper".
+- Sprites: `src/gfx/pixart.js` holds HAND-AUTHORED pixel maps (string rows over one shared palette `PAL`: 4-step
+  hue-shifted ramps per material, shadows drift purple / blue, highlights warm, a few hand-placed white glints, light
+  from the top-left, dithering only on the glass / scale details). Rows are drawn WITHOUT the outer outline: objects
+  18 x 18 (20 x 20 final), glyphs 10 x 10 (12 x 12 final); `<name>_s` = a small twin used when the big art would fall
+  below 2 device px per art pixel. `'_'` = empty and never outlined, `'k'` = an ink line inside the art, `~ ^ * +`
+  = translucent glass / glint / water. Derived sprites `{base, map, rot, flip}` (arrows, palette swaps), `ALIAS`
+  (old model ids / icons3d names -> sprites), `FAMILY` parametric sprites: `gem:<hex>[_s]`, `cut:<hex>|<cut>` (Lab cut
+  gems: round diamond square drop heart clover oval hex), `globe:<biome>`, `orb:<hex>`, `rod:<id>` (`rodDef(look)`:
+  grip, reel, 2 px blank with guides, line + bobber, kind tips wand / crystal / trident / coil / carbon), `item_<id>`
+  (the src/build/itempix.js 24 x 24 material art, trimmed), `baitpix:<shape>` / `baitSpriteName(shape)`.
+- Engine `src/gfx/pixicons.js`: compiles rows, adds the 1 px SELECTIVE COLOURED outline (the wrapped material pushed
+  toward ink `#170e22`, darkest under / right of the art), an optional 1-art-px soft drop shadow (only when shown at >= 3
+  device px per art pixel), scales with INTEGER nearest-neighbour only (`pickScale(native, devicePx)`), builds the
+  `.hi` twin for the 2x UI layer plus a crisp round(k / 2) logical twin, caches every scaled canvas.
+  `pixFrame(name, px, turn, {shadow, state})`, `pixStill(name, w, h, {shadow})` (never below 1 logical px per art px),
+  `pixKeyName(key)` (maps model keys `ui3d:` `fish3d:` `vm:` `lab:` `item:` `bait:` `decor:` `pkg_` to sprites),
+  `pixRegister`, `hasPix`, `pixSpin`, `pixName`, `PIX_NAMES`. Hover / spin = a 2-frame pixel animation: frame 1 hops
+  the art up one art pixel (wobble icons when |turn| > 0.35, 'full' icons on alternate quarter turns). No 3D spin.
+- Wiring (same APIs, call sites unchanged): bigicons `iconFrame` / `getBigIcon` (bottom anchor from the art, hover
+  tint) / `iconSpinMode` / `modelFrame` / `modelSpin` / `voxelModelFrame` / `rodIcon` / `gemIcon` / `cutGemFrame` /
+  `decorFrame` (leaves, shell, starfish, bubbles, pearl, coral, orb:) and `setCoinRenderer` (drawAeroCoin), icons3d
+  `has3D` / `icon3d` / `icon3dFrame` / `drawIcon3D` (so `getUiIcon`, inline `{name}` text icons, toasts, buttons, the
+  tank rail, the Satchel tabs, quest rows ...), fishing icons3d (via modelFrame `fish3d:`), labicons (`labPixName`:
+  boats, tanks, biome globes, bait, materials, critters, glyphs; buildings and tank foods keep their own art), itemart
+  `itemSprite` (every item with pixel art; packages -> pixel chests) and `packageParts(.., full = true)` (whole-package
+  previews; the chest minigame's body / lid split stays voxel), baitart's small voxel bait icon (via `vm:bait:`).
+  The voxel pipeline (voxicon / iconvox / iconmeshes) remains only as the fallback for keys without a sprite.
+- The generic FISH symbol is a GROUPER (`grouper` 20 x 12 + `grouper_s`; alias `fish`): chunky olive-gold body with dark
+  blotches, spiny dorsal, gold-rimmed fan tail, googly eye, big pink pouty lips (Bubbles' colours). The aquarium bowl,
+  My Fish cube tank, FishDex emblem, tank sprites and the multiplayer icon (two groupers kissing under a heart) use it.
+- Named currency icons for the currency UI: `getUiIcon('aerobuck')` (glossy water-droplet Aero Buck; aliases coin /
+  aero / coins / coin_big / aero_big) and `getUiIcon('gem')` (faceted digital cyan gem; `gem:<hex>` for any colour,
+  `gem_common` .. `gem_legendary` rarity gems).
+- Dev: `node tools/build.mjs --dev icongallery` (`?page=9&off=0|120` every sprite at 44 / 22 / 11 px; pages 0-3 the
+  menu icons + rods + gems + cut gems + ornaments, icons3d names, items + fishing icons, Lab icons via the real APIs).
 
 ## Phase 10 tank (2D side-scrolling voxel tank, build only in the tank) [phase10:tank]
 - `src/aquarium/scene2d.js` + `tankart.js` draw the tank as a side-on voxel scene (back / mid / front layers), the
