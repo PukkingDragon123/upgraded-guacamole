@@ -478,7 +478,7 @@ export class InventoryPanel {
     }
     if (e.kind === 'fish') {
       const rec = e.rec;
-      out.push({ label: rec.inTank ? 'In tank' : 'Release', icon: rec.inTank ? 'tank' : 'aero', disabled: rec.inTank, tip: 'Release it for Aero', run: () => {
+      out.push({ label: rec.inTank ? 'In tank' : 'Release', icon: rec.inTank ? 'tank' : 'aero', disabled: rec.inTank, tip: 'Release it for Aero Bucks', run: () => {
         const i = st.fish.indexOf(rec);
         if (i < 0) return;
         st.fish.splice(i, 1);

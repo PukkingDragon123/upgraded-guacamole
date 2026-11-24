@@ -351,7 +351,7 @@ export class RevealPanel {
     }
     if (!d.tutorial) {
       const relX = r.x + W - Math.round(46 * k);
-      if (this.orb(ctx, ui, relX, oy, '#8be04a', 'heart', `Release: +${relVal} Aero`, 'release')) {
+      if (this.orb(ctx, ui, relX, oy, '#8be04a', 'heart', `Release: +${relVal} Aero Bucks`, 'release')) {
         g.releaseFish(d.rec, relX, oy);
         this.done();
         return;

@@ -6,6 +6,7 @@ import { drawText, measureText, wrapText, lineHeight } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroLabel, drawAeroBadge } from './aero.js';
 import { RODS, ROD_BY_ID, ROD_STAT_KEYS, ensureRods, equipRod } from '../game/rods.js';
+import { lineLabel } from '../fishing/line.js'; // [crate26] line length
 import { BOAT_ORDER, BOAT_NAMES, BRANCHES, EFFECT_INFO, fmtEffect, unlocked, nodeFor, labStatus } from '../game/lab.js';
 import { RECIPES, RECIPE_BY_ID, CRAFT_CATS, recipeUnlocked, recipeNode, craftCheck, craft } from '../build/crafting.js';
 import { ITEMS, countItem } from '../build/items.js';
@@ -130,9 +131,9 @@ export function drawRodCard(ctx, ui, panel, r) {
     if (ai) ctx.drawImage(ai, r.x + 10, y - 1);
     drawText(ctx, k.label.toUpperCase(), r.x + 24, y + 1, { font: 'small', color: INK_SOFT });
     statBar(ctx, r.x + 80, y, r.w - 120, kk, k.key === 'shock' ? '#ffd23a' : k.key === 'luck' ? '#6fd23f' : '#35c8ff', 7);
-    const vt = k.key === 'strength' ? `${v}kg` : k.key === 'resilience' ? `${Math.round(v * 100)}%` : k.key === 'shock' ? `x${rod.stats.shock.charges}` : v.toFixed(2);
+    const vt = k.key === 'line' ? lineLabel(v).toUpperCase() : k.key === 'strength' ? `${v}kg` : k.key === 'resilience' ? `${Math.round(v * 100)}%` : k.key === 'shock' ? `x${rod.stats.shock.charges}` : v.toFixed(2);
     drawText(ctx, vt, r.x + r.w - 10, y + 1, { font: 'small', align: 'right', color: INK });
-    if (ui.hover({ x: r.x + 8, y: y - 2, w: r.w - 16, h: 11 })) ui.tip = k.key === 'shock' ? `Shock: ${rod.stats.shock.power}s stun, ${rod.stats.shock.charges} per fight, ${rod.stats.shock.cooldown}s recharge` : k.label;
+    if (ui.hover({ x: r.x + 8, y: y - 2, w: r.w - 16, h: 11 })) ui.tip = k.key === 'line' ? `Line: reaches the ${lineLabel(v)} zone (Lab: Longer Line, Workshop line spools)` : k.key === 'shock' ? `Shock: ${rod.stats.shock.power}s stun, ${rod.stats.shock.charges} per fight, ${rod.stats.shock.cooldown}s recharge` : k.label;
     y += 14;
   }
   const by = r.y + r.h - 32;

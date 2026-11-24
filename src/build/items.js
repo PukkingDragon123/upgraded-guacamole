@@ -131,7 +131,7 @@ export const TIERS = {
 };
 export const TIER_ORDER = ['crate', 'iron', 'golden', 'orb'];
 for (const t of TIER_ORDER) add('pkg_' + t, { name: TIERS[t].name, kind: 'package', rarity: TIERS[t].rarity, tier: t, art: 'pkg_' + t, desc: TIERS[t].desc, lore: 'Open it from your inventory.', value: 0 });
-add('coins', { name: 'Aero', kind: 'coins', rarity: 'common', art: 'coins', desc: 'Aero, the bubbly currency.', value: 1 });
+add('coins', { name: 'Aero Bucks', kind: 'coins', rarity: 'common', art: 'coins', desc: 'Aero Bucks: water-droplet money. Every fish is worth a few.', value: 1 });
 
 // ---------------------------------------------------------------- inventory ops
 

@@ -128,7 +128,7 @@ const SAY = {
     { text: 'So proud!', mood: 'love', reply: 'You should be!' },
     { text: 'Next one is bigger', mood: 'smug', reply: "That's the spirit!" },
   ] },
-  coin: { text: 'Fish make Aero! Grab the drop.', pose: 'point', mood: 'happy' },
+  coin: { text: 'Fish make Aero Bucks! Grab the drop.', pose: 'point', mood: 'happy' },
   lab: { text: 'Spend it in The Lab!', pose: 'point', mood: 'excited' },
   research: { text: 'Start your first research!', pose: 'point', mood: 'happy' },
   done: { text: "You're a natural, {name}! Keep me around for tips?", pose: 'cheer', mood: 'excited', choices: [
@@ -143,7 +143,7 @@ const EMOTE = { cheer: ['cheer', 1.2], wave: ['wave', 1.8], sad: ['sad', 1.4], b
 const TIPS = [
   { text: 'Rare fish love special bait.', at: 'bait' },
   { text: 'Floating boxes hide loot. Fish them up!' },
-  { text: 'Your tank fish make Aero while you play.', at: 'aquarium' },
+  { text: 'Your tank fish make Aero Bucks while you play.', at: 'aquarium' },
   { text: 'New oceans open up from the Map.', at: 'map' },
   { text: 'Different rods, different skills. Visit The Lab!', at: 'lab' },
   { text: 'Some fish only show up at night.' },

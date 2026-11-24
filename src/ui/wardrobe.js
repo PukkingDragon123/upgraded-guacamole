@@ -28,7 +28,7 @@ const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const SAY = {
   equip: ['Ooh!', 'Fresh!', 'So shiny!', 'Bubbly!', 'Love it!', 'Yes!'],
   buy: ['Mine!', 'Ka-ching!', 'Sparkly!'],
-  broke: ['Need more Aero...', 'Too pricey!'],
+  broke: ['Need more Aero Bucks...', 'Too pricey!'],
   poke: ['Hehe!', 'Boop!', 'Pop?', 'Hey!'],
   spin: ['Wheee!', 'Dizzy...'],
   random: ['Surprise!', 'Shuffle!'],

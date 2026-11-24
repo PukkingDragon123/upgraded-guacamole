@@ -33,6 +33,6 @@ export function claimResearch() { return null; }
 export function readyCount(state) { ensureLab(state); return 0; }
 
 export const PERK_NAMES = {
-  rarity: 'Rare fish odds', nightRarity: 'Night rarity', coinMul: 'Aero income', baitRadius: 'Bait pull radius', luck: 'Crate luck',
+  rarity: 'Rare fish odds', nightRarity: 'Night rarity', coinMul: 'Aero Bucks income', baitRadius: 'Bait pull radius', luck: 'Crate luck',
   shiny: 'Shiny odds', mutation: 'Mutation odds', sellMul: 'Sell prices', eggChance: 'Bonus egg chance', baitSave: 'Bait saving', researchSpeed: 'Research speed', light: 'Lighthouse beam',
 };

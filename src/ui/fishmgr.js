@@ -37,7 +37,7 @@ import { panelRect } from './ui.js';
 import { FOOD_DATA } from '../game/foods.js'; // [food24] the food Feed all uses
 
 const SORTS = [
-  ['rarity', 'Rarity'], ['aero', 'Aero/min'], ['size', 'Size'], ['happy', 'Happiness'], ['hunger', 'Hunger'], ['name', 'Name'], ['newest', 'Newest'], ['species', 'Species'],
+  ['rarity', 'Rarity'], ['aero', 'AB/min'], ['size', 'Size'], ['happy', 'Happiness'], ['hunger', 'Hunger'], ['name', 'Name'], ['newest', 'Newest'], ['species', 'Species'],
 ];
 const PLACES = [['all', 'All'], ['tank', 'Tank'], ['storage', 'Storage']];
 const INK = AERO.ink || '#0c3a52', SOFT = '#3c6f88';
@@ -282,7 +282,7 @@ export class FishManagerPanel {
     for (const r of recs) total += this.aq?.releaseFish?.(r) || 0;
     for (const r of recs) this.checked.delete(r);
     if (recs.includes(this.sel)) this.sel = null;
-    this.toast(`Released ${recs.length} fish  +${fmtAero(total)} Aero`, 'coin');
+    this.toast(`Released ${recs.length} fish  +${fmtAero(total)} Aero Bucks`, 'coin');
   }
   breed(a, b) {
     const r = this.aq?.breedPair?.(a, b);
@@ -362,7 +362,7 @@ export class FishManagerPanel {
       drawAeroBar(ctx, r.x + 58, r.y + 7, 52, 7, cap ? inTank / cap : 0, { color: inTank >= cap ? '#ff9a3a' : '#3ac4f8', segments: Math.min(12, cap) });
     }, 'Fish in the tank / room');
     chip(70, (r) => { const hi = getUiIcon('home'); if (hi) ctx.drawImage(hi, r.x + 7, r.y + 5); drawText(ctx, `${all.length - inTank}`, r.x + 22, r.y + 6, { color: INK }); drawText(ctx, 'kept', r.x + 22 + measureText(`${all.length - inTank}`) + 4, r.y + 7, { font: 'small', color: SOFT }); }, 'Fish in storage (the holding bucket)');
-    chip(Math.max(78, measureText(`${rate.toFixed(1)}/min`) + 30), (r) => { drawAeroCoin(ctx, r.x + 12, r.y + 10, 5, this.t); drawText(ctx, `${rate.toFixed(1)}/min`, r.x + 21, r.y + 6, { color: INK }); }, 'Aero your tank earns per minute');
+    chip(Math.max(78, measureText(`${rate.toFixed(1)}/min`) + 30), (r) => { drawAeroCoin(ctx, r.x + 12, r.y + 10, 5, this.t); drawText(ctx, `${rate.toFixed(1)}/min`, r.x + 21, r.y + 6, { color: INK }); }, 'Aero Bucks your tank earns per minute');
     if (this.btn(ui, ctx, { x: H.x + H.w - 30, y: H.y + 6, w: 24, h: 22 }, '', { icon: 'cross', tone: 'red', tip: 'Close (Esc)' })) { ui.close(this.id); return; }
     if (this.btn(ui, ctx, { x: H.x + H.w - 124, y: H.y + 6, w: 88, h: 22 }, 'Feed all', { icon: 'food', tone: 'green', tip: `Sprinkle ${FOOD_DATA[aq?.foodType]?.name || 'food'} for every fish in the tank`, dis: !inTank })) {
       aq?.feedAll?.(); this.toast('Dinner time!', 'food');
@@ -420,7 +420,7 @@ export class FishManagerPanel {
       b('To tank', 'tank', 'aqua', (bx, by) => { let n = 0; for (const r of sel) if (!r.inTank && this.move(r, true)) n++; if (n) { this.toast(`${n} fish moved into the tank.`, 'tank'); this.fx('splash', bx, by, 8); } }, 'Move into the tank (as many as fit)');
       b('To storage', 'home', 'aqua', (bx, by) => { for (const r of sel) this.move(r, false); this.fx('puff', bx, by, 6, { ramp: 'white' }); }, 'Move to storage');
       b('Favourite', 'star', 'orange', (bx, by) => { const on = !sel.every((r) => r.fav); for (const r of sel) r.fav = on || undefined; g.save?.(); if (on) this.fx('star', bx, by, 8, { ramp: 'gold' }); }, 'Star them all');
-      b('Release', 'coin', 'red', () => { const rel = sel.filter((r) => !r.fav); if (!rel.length) { this.toast('Favourites are never bulk-released.', 'star'); return; } this.confirm = { recs: rel, value: rel.reduce((a, r) => a + this.value(r), 0) }; }, 'Release for Aero (favourites are skipped)');
+      b('Release', 'coin', 'red', () => { const rel = sel.filter((r) => !r.fav); if (!rel.length) { this.toast('Favourites are never bulk-released.', 'star'); return; } this.confirm = { recs: rel, value: rel.reduce((a, r) => a + this.value(r), 0) }; }, 'Release for Aero Bucks (favourites are skipped)');
       b('Clear', 'cross', 'glass', () => this.checked.clear());
     } else {
       drawText(ctx, 'Tick cards for bulk actions   Double-click: see it swim   F: open / close', BK.x + 4, BK.y + 7, { font: 'small', color: SOFT });
@@ -645,7 +645,7 @@ export class FishManagerPanel {
       [rec.fav ? 'Unstar' : 'Favourite', rec.fav ? 'star' : 'star_empty', 'orange', (bx, by) => { rec.fav = rec.fav ? undefined : true; if (!rec.fav) delete rec.fav; else { this.fx('star', bx, by, 8, { ramp: 'gold' }); this.fx('heart', bx, by, 3); } g.save?.(); }, false],
       ['Rename', 'book', 'white', (bx, by) => { if (this.edit) this.edit.close(); this.edit = new TextEdit(rec.name || ''); this.edit.rec = rec; this.fx('sparkle', bx, by, 4); }, false],
       ['Breed...', 'heart', toneFrom('#ff74b4'), (bx, by) => { const why = this.aq?.canBreed?.(rec); if (why) { this.toast(why, 'heart'); g.audio.play('ui_error'); } else { this.breedFor = rec; this.fx('heart', bx, by, 6); } }, false, 'Pick a partner in the list'],
-      [`Release +${fmtAero(this.value(rec))}`, 'coin', 'red', () => { this.confirm = { recs: [rec], value: this.value(rec) }; }, false, 'Let it go for Aero'],
+      [`Release +${fmtAero(this.value(rec))}`, 'coin', 'red', () => { this.confirm = { recs: [rec], value: this.value(rec) }; }, false, 'Let it go for Aero Bucks'],
     ];
     A2.forEach(([label, icon, tone, f, dis, tip], i) => {
       const r = { x: D.x + 8 + (i % 2) * (cw + 6), y: y + Math.floor(i / 2) * (ch + 4), w: cw, h: ch };
@@ -680,7 +680,7 @@ export class FishManagerPanel {
     const tx = n === 1 ? x + 76 : x + 14;
     drawText(ctx, `Release ${nm}?`, tx, y + 14, { font: 'big', color: INK });
     drawText(ctx, 'They swim back to the ocean.', tx, y + 30, { font: 'small', color: SOFT });
-    drawAeroCoin(ctx, tx + 5, y + 44, 4.5, this.t); drawText(ctx, `+${fmtAero(c.value)} Aero`, tx + 13, y + 41, { color: INK });
+    drawAeroCoin(ctx, tx + 5, y + 44, 4.5, this.t); drawText(ctx, `+${fmtAero(c.value)} Aero Bucks`, tx + 13, y + 41, { color: INK });
     if (this.btn(ui, ctx, { x: x + 20, y: y + h - 32, w: 120, h: 24 }, 'Release', { icon: 'check', tone: 'red' })) {
       this.confirm = null; this.release(c.recs);
       this.fx('splash', x + 80, y + h - 20, 10); this.fx('coin', x + 80, y + h - 30, Math.min(12, 3 + n * 2));

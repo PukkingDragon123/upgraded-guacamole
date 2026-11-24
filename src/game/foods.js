@@ -26,9 +26,9 @@ export const FOOD_DATA = {
     meal: { min: 12, fill: 1.35, hunger: 0.65 } },
   worms: { name: 'Bloodworms', short: 'Worms', perk: 'Feast: much happier fish that grow up faster', how: { quest: 's2_worms' },
     meal: { min: 10, fill: 1.15, happy: 0.035, mood: 0.08, grow: 1.5 } },
-  shrimp: { name: 'Brine Shrimp', short: 'Shrimp', perk: 'Lively: +10% Aero/min and easier romance', how: { lab: 'food_shrimp' },
+  shrimp: { name: 'Brine Shrimp', short: 'Shrimp', perk: 'Lively: +10% AB/min and easier romance', how: { lab: 'food_shrimp' },
     meal: { min: 10, happy: 0.02, aero: 1.1, court: true } },
-  krill: { name: 'Golden Krill', short: 'Krill', perk: 'Golden: +15% Aero/min, eggs mutate 2x as often', how: { quest: 's5_krill' },
+  krill: { name: 'Golden Krill', short: 'Krill', perk: 'Golden: +15% AB/min, eggs mutate 2x as often', how: { quest: 's5_krill' },
     meal: { min: 12, fill: 1.2, happy: 0.03, aero: 1.15, mutate: 2, shiny: 1.5 } },
 };
 

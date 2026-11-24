@@ -43,6 +43,8 @@ import { consumeBait as consumeBait3, equipBait } from '../store/bait.js'; // [p
 import { installQuests } from '../ui/quests.js'; // [phase6:lab] quest lines + HUD tracker (game.quests)
 import { installProgression } from '../build/progression.js'; // [phase8:prog] Workshop, chests, destinations (game.prog, game.dest)
 import { perkStats } from './rods.js'; // [phase8:prog] rod perks + tackle
+import { bindGemsGame, ensureGems } from './gems.js'; // [cur26] Byte Gems
+import { hotbarLock } from './hotbar.js'; // [hot26] hotbar buttons unlocked by building
 
 export class Game {
   constructor(canvas, params) {
@@ -58,6 +60,7 @@ export class Game {
     this.camera = new Camera(this);
     this.clock = new Clock(this);
     this.events = {};
+    bindGemsGame(this); this.gemGift = ensureGems(this.state); // [cur26] Byte Gems balance + one-time welcome gift
     this.on('boatUpgraded', () => this.recomputeStats());
     this.time = 0;
     this.timeScale = 1; this.timeScaleTarget = 1;
@@ -215,7 +218,7 @@ export class Game {
     if (!sk) return false;
     const st = skillStatus(sk, this.state, this.speciesFound());
     if (st.status !== 'available') { audio.play('ui_error'); this.toast(st.reason || 'Locked', 'lock'); return false; }
-    if (!this.spendCoins(sk.cost)) { this.toast('Not enough Aero.', 'coin'); return false; }
+    if (!this.spendCoins(sk.cost)) { this.toast('Not enough Aero Bucks.', 'coin'); return false; }
     this.state.skills[id] = true;
     this.recomputeStats();
     audio.play('ui_unlock');
@@ -593,12 +596,23 @@ export class Game {
     }
   }
 
+  // [hot26] a hotbar button that is still locked (src/game/hotbar.js): its key only says what to build
+  hotkeyLocked(cmd) {
+    let lock = null;
+    try { lock = hotbarLock(this.state, cmd); } catch { lock = null; }
+    if (!lock) return false;
+    const now = this.time || 0;
+    if (!(this.lockTipT > now)) { this.lockTipT = now + 1.5; this.toast?.(lock.tip + '.', 'lock'); }
+    return true;
+  }
+
   handleKeys() {
     const inp = this.input;
     const map = { j: 'journal', l: 'lab', k: 'lab', t: 'map', b: 'bait', s: 'baitshop', w: 'wardrobe', o: 'multiplayer', p: 'pause', a: 'tank', q: 'quests', c: 'workshop' }; // [phase8:prog] c: Workshop // [phase6:lab] q: Quest Log
     for (const [k, cmd] of Object.entries(map)) {
       if (inp.keyPressed(k)) {
         if ((this.tutorial.active || this.ocean.travelState) && cmd !== 'pause') continue; // [travel17] no panels mid-voyage
+        if (this.hotkeyLocked(cmd)) continue; // [hot26] locked hotbar buttons have no shortcut until built
         this.command(cmd);
       }
     }
@@ -607,7 +621,7 @@ export class Game {
     if (inp.keyPressed('Escape') && !this.ui.active && !this.fishing.fighting && !this.tutorial.intro) { this.command('settings'); inp.keysPressed?.delete?.('Escape'); }
     if (!this.tutorial.active) {
       if (inp.keyPressed('u')) { try { this.build?.toggle?.(); } catch (e) { console.error(e); } }
-      if (inp.keyPressed('i') && this.ui.panels?.inventory) this.ui.toggle('inventory');
+      if (inp.keyPressed('i') && this.ui.panels?.inventory && !this.hotkeyLocked('inventory')) this.ui.toggle('inventory'); // [hot26]
     }
   }
 

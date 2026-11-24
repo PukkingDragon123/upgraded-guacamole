@@ -94,7 +94,7 @@ export function costTiles(ctx, ui, rows, x, y, w, o = {}) {
     ctx.strokeStyle = c.ok ? rgba('#5ac87a', 0.9) : rgba('#ff7a8a', 0.9); ctx.lineWidth = 1;
     roundRectPath(ctx, tx + 0.5, ty + 0.5, tw - 1, th - 1, 6); ctx.stroke();
     let tip = '';
-    if (c.kind === 'aero') { drawAeroCoin(ctx, tx + 9, ty + 10, 5, ui.time); tip = 'Aero'; }
+    if (c.kind === 'aero') { drawAeroCoin(ctx, tx + 9, ty + 10, 5, ui.time); tip = 'Aero Bucks'; }
     else if (c.kind === 'item') {
       const ic = icon('mat:' + c.id, 14);
       if (ic) ctx.drawImage(ic, Math.round(tx + 9 - ic.width / 2), Math.round(ty + 10 - ic.height / 2));

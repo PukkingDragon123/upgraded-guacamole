@@ -57,6 +57,7 @@ const objNeeds = (o) => {
     case 'visit': return o.biome && o.biome !== 'oscean' ? [nodeFor('biome', o.biome)?.id].filter(Boolean).map((id) => 'n:' + id) : [];
     case 'dest': return o.id === 'workshop' ? ['q:c2_workshop'] : [];
     case 'depth': return o.alt ? objNeeds(o.alt) : [];
+    case 'boss': return ['line_len1', 'line_len2'].filter((id) => LAB_BY_ID[id]).map((id) => 'n:' + id); // [crate26] the abyss needs a longer line
     default: return [];
   }
 };

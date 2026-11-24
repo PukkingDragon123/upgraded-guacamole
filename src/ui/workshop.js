@@ -19,6 +19,7 @@ import {
   WS_CATS, ensureWorkshop, workshopUnlocked, recipesFor, wsRecipe, wsUnlocked, wsCheck, wsCraft, wsSlots, wsRemaining, wsProgress, wsRushCost, wsRush, wsTick,
 } from '../build/workshop.js';
 import { ROD_BY_ID, ROD_STAT_KEYS, TACKLE_BY_ID, TACKLE_SLOTS, TACKLE_SLOT_NAMES, PERKS, ensureRods, equipRod, equipTackle, ownsRod, ownsTackle, rodStatsOf, rodLevel, MAX_ROD_LEVEL } from '../game/rods.js';
+import { lineLabel } from '../fishing/line.js'; // [crate26] line length
 import { aeroSurface, aeroCached, drawAeroFrame, drawAeroCard, drawAeroCoin, fmtAero, drawAeroGlow, drawAeroBadge } from './aero.js';
 import { panelRect } from './ui.js';
 
@@ -300,7 +301,7 @@ export class WorkshopPanel {
       ctx.fillStyle = '#ffe8b0'; ctx.fillRect(x + 45, y + 16, Math.round((sw - 102) * k), 1);
       drawText(ctx, fmtT(rem), x + 44, y + 25, { font: 'small', color: '#bfeaff' });
       const cost = wsRushCost(e);
-      if (ui.button(ctx, x + sw - 52, y + 4, 48, h - 8, `${cost}`, { style: 'orange', icon: 'clock', disabled: st.coins < cost, tip: `Rush it for ${cost} Aero` })) { if (wsRush(g, i)) this.celebrate(wsRecipe(st, e.rid)); }
+      if (ui.button(ctx, x + sw - 52, y + 4, 48, h - 8, `${cost}`, { style: 'orange', icon: 'clock', disabled: st.coins < cost, tip: `Rush it for ${cost} Aero Bucks` })) { if (wsRush(g, i)) this.celebrate(wsRecipe(st, e.rid)); }
     }
   }
 
@@ -344,7 +345,7 @@ export class WorkshopPanel {
       if (cy + rowH > btnY) return;
       if (m.aero) drawAeroCoin(ctx, cx + 6, cy + 6, 5, t);
       else { const ic = itemIcon(m.id, 13); if (ic) ctx.drawImage(ic, cx, cy); }
-      let nm = m.aero ? 'Aero' : ITEMS[m.id]?.name || m.id;
+      let nm = m.aero ? 'Aero Bucks' : ITEMS[m.id]?.name || m.id;
       const qty = `${m.aero ? fmtAero(m.have) : Math.min(m.have, 999)}/${m.aero ? fmtAero(m.need) : m.need}`;
       while (measureText(nm, 'normal') > cw - measureText(qty, 'normal') - 24 && nm.length > 3) nm = nm.slice(0, -1);
       drawText(ctx, nm, cx + 16, cy + 2, { color: INK });
@@ -394,7 +395,7 @@ export class WorkshopPanel {
         ctx.fillStyle = '#2fb8e8'; ctx.fillRect(bx, y + 1, Math.round(bw * kk(v)), 6);
         ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(bx, y + 1, Math.round(bw * kk(v)), 2);
         if (ve !== null) { ctx.fillStyle = '#ff5a3a'; ctx.fillRect(bx + Math.round(bw * kk(ve)) - 1, y - 1, 2, 10); }
-        const fmt = (q) => (k.key === 'strength' ? `${Math.round(q)}kg` : k.key === 'resilience' ? `${Math.round(q * 100)}%` : q.toFixed(2));
+        const fmt = (q) => (k.key === 'line' ? lineLabel(q) : k.key === 'strength' ? `${Math.round(q)}kg` : k.key === 'resilience' ? `${Math.round(q * 100)}%` : q.toFixed(2));
         drawText(ctx, v2 !== null ? fmt(v2) : fmt(v), x + w, y, { font: 'small', align: 'right', color: v2 !== null ? OK : INK });
         y += 10;
       }

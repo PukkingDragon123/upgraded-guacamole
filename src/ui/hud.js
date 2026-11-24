@@ -1,8 +1,8 @@
 // The game HUD (phase 4 Shell, phase 6 UI agent: much bigger and bolder). A glossy Aero hotbar at the bottom centre
 // (phase 8: chunky pixel-art tile buttons holding pixelised 3D icons that bob, wobble or spin and sparkle on hover; hover lift +
 // bold label + key hint, press squash, pop on click, badges, an "open" light), an equipped-gear pod at the bottom
-// left (3D rod + bait with its count), a location chip at the top left with the quest-tracker slot below it. The
-// Aero pill stays top right (ui.js). Every metric scales with the UI size setting (uiK(): Normal / Big / Huge).
+// left (3D rod + bait with its count). [cur26] Nothing at the top left any more: the quest-tracker slot is on the right
+// edge (the tracker slides in from there) and the pixel-art wallet plaque (Aero Bucks + Byte Gems) is top right (ui.js). Every metric scales with the UI size setting (uiK(): Normal / Big / Huge).
 // The hotbar slides away during fights, cinematics and travel; while a modal panel is open it is redrawn above the
 // dim as tabs.
 //
@@ -12,8 +12,8 @@
 //   hud.hit(x, y) -> 'hud' | null
 //   hud.iconRect(id) -> {x, y, w, h} | null   screen rect of a visible hotbar button (aliases: appsea/store/shop ->
 //                                 baitshop, skills -> lab, tank -> aquarium) or 'gear' / 'bait-slot' / 'rod-slot'
-//   hud.questSlot() -> {x, y, w, h, a} | null  [phase6] the area reserved for the quest tracker (top left, under the
-//                                 location chip); a = the HUD's current opacity (0..1, fade with it). null while the
+//   hud.questSlot() -> {x, y, w, h, a, side, edge} | null  [phase6] the area reserved for the quest tracker ([cur26] the
+//                                 right edge under the wallet; side 'right' = slide in from edge x); a = the HUD's current opacity (0..1, fade with it). null while the
 //                                 HUD is hidden (intro, fights, cinematics, travel). Draw inside it; it scales with
 //                                 the UI size. Also exposed as game.hud.questSlot.
 //   hud.topY() -> y                the hotbar's top edge (panels centre above it: ui.js panelRect)
@@ -25,6 +25,11 @@
 //                                 pseudo-window), closeWindow, hit, tooltip; icons/iconRects/windowRects are empty.
 // Visibility is gated by game.tutorial.dockVisible(id) (alias ids are asked too). A button only shows when its panel
 // is registered (e.g. 'quests' appears once the Quests panel exists).
+// [hot26] Locked slots (src/game/hotbar.js): a new game has only Bait Shop, Quests, Aquarium (+ Settings) unlocked. A
+//   locked slot is a dim slate tile with a greyed icon and the gold Lab padlock; hovering names what to build ("Build a
+//   Research Bench to unlock The Lab"), clicking opens the tank's build mode with that prop picked. When the prop is
+//   placed (event 'hotbarUnlocked') the button pops into the bar the next time the bar is showing, with 3D voxel words
+//   "NEW BUTTON: THE LAB!" and bouncing pixel chevrons over it (hud.locked(id), hud.celebrating).
 
 import { clamp, damp, dist, ease, rectContains } from '../core/math.js';
 import { rgba, mix, shade } from '../core/color.js';
@@ -42,6 +47,9 @@ import { drawBaitGloss } from '../fishing/baitart.js';
 import { equippedRod } from '../game/rods.js';
 import { labIcon } from './labicons.js';
 import { openStore } from '../store/index.js';
+import { ensureHotbar, hotbarLock, HOTBAR_UNLOCKS } from '../game/hotbar.js'; // [hot26] locked hotbar slots, unlocked by building
+import { padlockTex } from './labtree.js'; // [hot26] the Lab's gold padlock on locked slots
+import { drawPop3D } from './pop3d.js'; // [hot26] the 3D "NEW BUTTON" words
 
 export const HUD_ITEMS = [
   { id: 'lab', label: 'The Lab', key: 'L', tint: '#6ee04a', icon: 'lab', alias: 'skills', group: 0 },
@@ -124,7 +132,13 @@ export class Hud {
       if (id === 'inventory') this.seenItems = this.itemCount();
     });
     this.questSlot = this.questSlot.bind(this);
+    try { ensureHotbar(game.state); } catch (e) { console.error(e); } // [hot26] old saves are migrated on first sight
+    this.cele = null; // [hot26] the current "NEW BUTTON" moment {id, label, t}
   }
+
+  // [hot26] null when the button is usable, else {build, label, prop, tip, ...}
+  locked(it) { try { return hotbarLock(this.game.state, it.id); } catch { return null; } }
+  get celebrating() { return this.cele; }
 
   get W() { return this.game.screen.W; }
   get H() { return this.game.screen.H; }
@@ -240,15 +254,22 @@ export class Hud {
   }
 
   // [phase6] the quest tracker's reserved area (see header)
+  // [cur26] no more top-left UI: the slot sits on the RIGHT edge, under the wallet plaque and its toasts, and
+  // `side: 'right'` tells the tracker to slide in from there (it is hidden until quest progress / a pin / a card).
+  // In the tank the slot stops left of the tank's tool rail.
   questSlot() {
     const g = this.game;
     if (g.tutorial?.intro || this.show < 0.05 || !this.wantShow()) return null;
     const m = this.m || this.metrics();
-    const chipH = R(20 * m.k);
-    const y = (this.chip.h ? this.chip.y + this.chip.h : m.margin + chipH) + R(6 * m.k);
     const w = Math.min(R(168 * m.k), R(this.W * 0.34));
-    const h = Math.min(R(104 * m.k), Math.max(40, (this.gear.y || this.H) - y - R(70 * m.k)));
-    return { x: m.margin, y, w, h, a: clamp(this.show * 1.4, 0, 1) };
+    const cr = g.ui?.coinRect;
+    const y = Math.max(R(this.H * 0.3), (cr ? cr.y + cr.h : m.margin + R(22 * m.k)) + R(46 * m.k));
+    let right = this.W - m.margin;
+    if (g.state.view === 'aquarium') { try { const d = g.aquarium?.fullLayout?.()?.dock; if (d && d.x > this.W * 0.5) right = Math.min(right, d.x - R(6 * m.k)); } catch { /* optional */ } }
+    let bot = this.H;
+    try { bot = Math.min(this.H, this.topY()); } catch { /* before the first layout */ }
+    const h = Math.min(R(104 * m.k), Math.max(40, bot - y - R(10 * m.k)));
+    return { x: right - w, y, w, h, a: clamp(this.show * 1.4, 0, 1), side: 'right', edge: this.W };
   }
 
   // top edge of the hotbar (incl. its raised bubbles), for panels that want to stay clear of it
@@ -299,6 +320,7 @@ export class Hud {
 
   badgeOf(it) {
     const g = this.game;
+    if (this.locked(it)) return null; // [hot26]
     if (it.id === 'lab') return this.badges.lab || null;
     if (it.id === 'baitshop') return this.badges.baitshop || null;
     if (it.id === 'quests') {
@@ -332,6 +354,13 @@ export class Hud {
     g.emit?.('iconOpen', it || { id });
     g.emit?.('hudOpen', id);
     const closeModals = () => { if (ui?.blocking) for (const p of ui.stack.slice()) ui.close(p.id); };
+    const lock = it ? this.locked(it) : null; // [hot26] a locked slot opens the tank's build mode on its prop
+    if (lock) {
+      closeModals();
+      g.audio?.play?.('ui_error', { vol: 0.35, pitch: 1.2 });
+      if (g.aquarium?.openBuild?.({ place: lock.prop, unlock: lock.id })) g.toast?.(lock.tip + '!', 'lock');
+      return;
+    }
     switch (ALIAS[id] || id) {
       case 'aquarium': closeModals(); g.command('tank'); break;
       case 'workshop': if (ui?.isOpen?.('workshop')) ui.close('workshop'); else g.command('workshop'); break; // [phase8] sail there instantly
@@ -357,8 +386,10 @@ export class Hud {
     this.layout();
     for (const it of this.items) {
       it.pop = Math.max(0, it.pop - dt * 2.4);
-      it.appear = Math.min(1, it.appear + dt * 2.4);
+      it.appear = Math.min(1, it.appear + dt * (it.slowAppear ? 1.3 : 2.4));
+      if (it.appear >= 1) it.slowAppear = false;
     }
+    this.celebrateStep(dt); // [hot26]
     // bait slot bounce when the equipped bait changes
     let cur = null;
     try { cur = currentBait(g.state); } catch { cur = null; }
@@ -418,6 +449,58 @@ export class Hud {
     }
   }
 
+  // [hot26] a button unlocked by building pops into the bar (once the bar is showing again) with 3D voxel words
+  celebrateStep(dt) {
+    const g = this.game;
+    if (this.cele) { this.cele.t += dt; if (this.cele.t > 3.6) this.cele = null; return; }
+    let H = null;
+    try { H = ensureHotbar(g.state); } catch { return; }
+    const ids = Object.keys(H.fresh || {});
+    if (!ids.length || this.show < 0.95 || !this.wantShow() || g.ui?.blocking) return;
+    const it = this.items.find((q) => ids.includes(q.id) && q.shown && !this.locked(q));
+    if (!it) { for (const id of ids) if (!HOTBAR_UNLOCKS[id]) delete H.fresh[id]; return; }
+    delete H.fresh[it.id];
+    this.cele = { id: it.id, label: HOTBAR_UNLOCKS[it.id]?.label || it.label, t: 0, it };
+    it.appear = 0; it.slowAppear = true; it.pop = 1;
+    this.layout();
+    const B = this.m?.B || 34, cx = it.x + B / 2, cy = it.y + B / 2;
+    g.audio?.play?.('ui_unlock', { vol: 0.7 });
+    g.audio?.play?.('bubble', { pitch: 0.8 });
+    g.particles?.aeroConfetti?.(cx, cy - B, 26, { layer: 'ui' });
+    g.particles?.uiClick?.(cx, cy, { ramp: it.tint, n: 9 });
+    if (!g.state.settings?.reducedMotion) g.particles?.pixelBurst?.('star', cx, cy - B * 0.3, 8, { layer: 'ui', ramp: it.tint, size: 1, dir: -Math.PI / 2, spread: 1.4, speed: [80, 170] });
+    g.particles?.bubbles?.(cx, cy, 12, { layer: 'ui', life: 1.4 });
+    g.save?.();
+  }
+
+  drawCelebration(ctx) {
+    const c = this.cele;
+    if (!c || this.show < 0.3) return;
+    const it = c.it, m = this.m, B = m.B, k = m.k, t = c.t;
+    const fade = t < 3 ? 1 : Math.max(0, 1 - (t - 3) / 0.6);
+    const a0 = ctx.globalAlpha;
+    ctx.globalAlpha = a0 * fade;
+    const cx = R(this.W / 2), cy = R(Math.min(this.H * 0.36, this.topY() - 70 * k));
+    const pop1 = clamp(t / 0.35, 0, 1), pop2 = clamp((t - 0.25) / 0.4, 0, 1);
+    if (pop1 > 0) drawPop3D(ctx, 'NEW BUTTON:', cx, cy - R(16 * k), { t, pop: pop1, palette: 'aqua', size: 14, depth: 3, glowA: 0.3 });
+    if (pop2 > 0) drawPop3D(ctx, c.label.toUpperCase() + '!', cx, cy + R(14 * k), { t: t + 0.4, pop: pop2, palette: 'gold', size: 22, depth: 4, phase: 1.3, glowA: 0.35 });
+    // bouncing pixel chevrons over the new button (no rings, no rays)
+    if (it?.shown) {
+      const bx = R(it.x + B / 2), by = R(it.y - 6 * k - Math.abs(Math.sin(t * 6)) * 6 * k);
+      const s = Math.max(1, R(k * 1.4));
+      for (let j = 0; j < 2; j++) {
+        const y0 = by - j * 6 * s;
+        ctx.globalAlpha = a0 * fade * (j ? 0.6 : 1);
+        for (let i = 0; i < 4; i++) {
+          ctx.fillStyle = '#0b3a6a'; ctx.fillRect(bx - (4 - i) * s - s, y0 + i * s - s, (4 - i) * 2 * s + 2 * s, s * 2);
+        }
+        for (let i = 0; i < 4; i++) { ctx.fillStyle = i < 2 ? '#fff6b0' : '#ffd23a'; ctx.fillRect(bx - (4 - i) * s, y0 + i * s, (4 - i) * 2 * s, s); }
+      }
+      if ((t * 3) % 1 < 0.5) drawSparkle(ctx, bx + B * 0.42, R(it.y + B * 0.1), k >= 1.5 ? 3 : 2, fade);
+    }
+    ctx.globalAlpha = a0;
+  }
+
   // hovered icons spin (globe, gear) or wobble (everything else); they ease back to their pose afterwards
   spinStep(it, dt, hot) {
     if (this.game.state.settings?.reducedMotion) { it.turn = 0; return; }
@@ -437,10 +520,7 @@ export class Hud {
     const g = this.game;
     if (g.tutorial?.intro) return;
     if (this.show < 0.02) { this.chip = { x: 0, y: 0, w: 0, h: 0 }; return; }
-    const a0 = ctx.globalAlpha;
-    ctx.globalAlpha = a0 * clamp(this.show * 1.4, 0, 1);
-    this.drawChip(ctx);
-    ctx.globalAlpha = a0;
+    this.chip = { x: 0, y: 0, w: 0, h: 0 }; // [cur26] the top-left location / clock chip is gone (drawChip kept, unused)
     if (this.gearVisible()) this.drawGear(ctx);
     this.drawBar(ctx, false);
   }
@@ -520,7 +600,10 @@ export class Hud {
     ctx.fillStyle = rgba('#03264a', 0.16 + hov * 0.06);
     const sw = R(B * (0.62 - hov * 0.1));
     ctx.fillRect(R(it.x + B / 2 - sw / 2), R(it.y + B + 1), sw, R(2 * k));
-    draw(tile(B, it.tint, hov > 0.5 || active)); // [phase8:ui] pixel tile instead of a glass bubble
+    const lock = this.locked(it); // [hot26] a dim slate tile, greyed icon, gold padlock
+    draw(tile(B, lock ? '#7d8eae' : it.tint, !lock && (hov > 0.5 || active))); // [phase8:ui] pixel tile instead of a glass bubble
+    const fPrev = ctx.filter, aPrev = ctx.globalAlpha;
+    if (lock) { ctx.filter = 'grayscale(1) brightness(0.92) contrast(0.8)'; ctx.globalAlpha = aPrev * 0.55; }
     // the 3D icon: wobbles / spins while hovered, hops on pop
     const hop = it.pop > 0 ? -R(Math.sin(it.pop * Math.PI) * 4 * k) : 0;
     const iconHop = hop - R(hov * 2 * k);
@@ -531,6 +614,12 @@ export class Hud {
       let spr = null;
       try { spr = getBigIcon(it.icon, { size: m.icon }); } catch { spr = null; }
       if (spr) draw(spr.canvas, iconHop);
+    }
+    if (lock) {
+      ctx.filter = fPrev || 'none'; ctx.globalAlpha = aPrev;
+      const lk = padlockTex(R(B * 0.62));
+      const wig = hov > 0.3 && !calm ? Math.sin(t * 14) * 1.2 * hov : 0;
+      ctx.drawImage(lk, R(cx + B * 0.2 - lk.width / 2 + wig), R(cy + B * 0.16 - (lk.cy ?? lk.height / 2)));
     }
     if (active) { // [phase8:ui] bouncing pixel corner brackets + a twinkle (no ring)
       drawPixelBrackets(ctx, R(cx - B / 2), R(cy - B / 2), B, B, t, { k: Math.max(1, R(k * 0.7)) });
@@ -565,16 +654,18 @@ export class Hud {
     const lift = R(it.hover * 6 * k);
     const cx = R(it.x + B / 2), y = R(it.y - lh - R(6 * k) - lift + (1 - it.hover) * 6);
     ctx.globalAlpha = Math.min(1, (it.hover - 0.3) * 3);
-    const tw = measureText(it.label, font);
-    const kh = capH(kf) + 6, kw = Math.max(kh, measureText(it.key, kf) + 7);
+    const lock = this.locked(it); // [hot26] "Build a Research Bench to unlock The Lab" (no key while locked)
+    const text = lock ? lock.tip : it.label;
+    const tw = measureText(text, font);
+    const kh = capH(kf) + 6, kw = lock ? 0 : Math.max(kh, measureText(it.key, kf) + 7);
     const padX = R(7 * k);
-    const lw = padX + tw + R(5 * k) + kw + R(4 * k);
+    const lw = padX + tw + (lock ? R(3 * k) : R(5 * k) + kw + R(4 * k));
     const x0 = clamp(cx - R(lw / 2), 4, this.W - lw - 4);
     ctx.fillStyle = rgba('#03264a', 0.18);
     ctx.fillRect(x0 + 6, y + lh, lw - 12, 2);
     ctx.drawImage(aeroCached(`hudlbl|${lw}|${lh}`, () => aeroSurface(lw, lh, { tone: 'white', r: 'pill', gloss: 0.7, glossH: R(lh * 0.45), curve: 1, rim: 0.85, glow: 0.5, sparkle: 1 })), x0, y);
-    drawText(ctx, it.label, x0 + padX, y + R((lh - capH(font)) / 2), { font, color: AERO.ink, shadow: '#ffffff' });
-    keycap(ctx, x0 + padX + tw + R(5 * k), y + R((lh - kh) / 2), it.key, kf);
+    drawText(ctx, text, x0 + padX, y + R((lh - capH(font)) / 2), { font, color: lock ? '#5a4a8a' : AERO.ink, shadow: '#ffffff' });
+    if (!lock) keycap(ctx, x0 + padX + tw + R(5 * k), y + R((lh - kh) / 2), it.key, kf);
     // a pointer nub under the label
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(cx - 3, y + lh, 7, 1); ctx.fillRect(cx - 2, y + lh + 1, 5, 1); ctx.fillRect(cx - 1, y + lh + 2, 3, 1);
@@ -680,6 +771,7 @@ export class Hud {
   }
 
   drawTooltip(ctx, inp) {
+    this.drawCelebration(ctx); // [hot26] above panels and toasts
     // the hovered tab's label sits above any open panel (the game draws this after the panels)
     const oh = this.game.ui?.blocking ? this.overlayHot : null;
     if (oh && oh.shown && oh.hover > 0.3 && this.show > 0.6) {

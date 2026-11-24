@@ -3,7 +3,8 @@
 //   installQuests(game) -> game.quests = {book, update(dt, inp|null), hit(x, y), drawHud(ctx, dt), open(tab?), readyCount(), rect}
 //     [quests16] readyCount() also counts side stories / orders / milestones waiting for a claim; open(tab) opens the
 //     Quest Log on 'story' | 'orders' | 'miles' (panel data {tab, chapter}).
-//     The tracker draws in game.hud.questSlot() (top left; falls back to under the location chip) once the
+//     The tracker draws in game.hud.questSlot() ([cur26] right edge; it slides in from there on quest progress, a pin,
+//     a card flying in, a claim or a waiting chapter, then slides back out) once the
 //     tutorial is done. Clicking it opens the Quest Log (or a pending chapter intro).
 //   registerQuestPanels(ui)  registers 'quests' and 'chapter'
 //   drawPortrait(ctx, npcId, cx, cy, r, t, {mood, talk})  an NPC head in a glossy glass bubble
@@ -16,6 +17,7 @@ import * as NPC from '../gfx/npcs.js';
 import * as CHAR from '../gfx/character.js';
 import { aeroSurface, aeroCached, drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroCoin, drawAeroBar, drawLeafSprig, drawAeroBadge, drawAeroButton, drawPixelBrackets, toneOf, AERO } from './aero.js';
 import { icon, pill, iconBudget, INK, INK_SOFT, OK } from './labkit.js';
+import { drawGem } from './gemui.js'; // [cur26] Byte Gems
 import { drawAnimIcon, drawPadlock } from './labrows.js';
 import { roundRectPath } from './labart.js';
 import { CHAPTERS, CHAPTER_BY_ID, QUEST_BY_ID, NPC_NAMES, QuestBook, ensureQuests, rewardList, STORY_QUESTS, MILESTONES, MILESTONE_LINES, MILESTONE_BY_LINE, ORDERS_PER_DAY } from '../game/quests.js';
@@ -123,6 +125,7 @@ function miniBar(ctx, x, y, w, h, k) {
 const lookRef = { look: null }; // the player's look (cosmetic reward thumbnails are worn by the player)
 function rewardIcon(ctx, rw, cx, cy, px, t, ph = 0) {
   if (rw.key === 'aero') { drawAeroCoin(ctx, cx, cy, px * 0.36, t); return; }
+  if (rw.key === 'gem') { drawGem(ctx, cx, cy + Math.sin(t * 2 + ph) * 0.5, Math.max(1, Math.round((px / 13) * 2) / 2), { glint: (t * 0.45 + ph * 0.3) % 1.5 }); return; } // [cur26] Byte Gems
   if (rw.key.startsWith('cosmetic:')) {
     let drawn = false;
     try {
@@ -144,7 +147,7 @@ function rewardChips(ctx, ui, list, x, y, maxW, t) {
   let cx = x;
   for (let i = 0; i < list.length; i++) {
     const rw = list[i];
-    const txt = rw.key === 'aero' ? String(rw.n) : rw.n ? 'x' + rw.n : '';
+    const txt = (rw.key === 'aero' || rw.key === 'gem') ? String(rw.n) : rw.n ? 'x' + rw.n : '';
     const w = 18 + (txt ? measureText(txt, 'small') + 3 : 0);
     if (cx + w > x + maxW) break;
     ctx.drawImage(aeroSurface(w, 16, { tone: rw.big ? 'green' : 'white', r: 'pill', gloss: 0.6, glossH: 6, curve: 1, rim: 0.8, glow: 0.4 }), cx, y);
@@ -160,7 +163,7 @@ function rewardChips(ctx, ui, list, x, y, maxW, t) {
 function rewardTiles(ctx, ui, list, x, y, size, maxW, t) {
   let cx = x;
   list.forEach((rw, i) => {
-    const txt = rw.key === 'aero' ? String(rw.n) : rw.n ? 'x' + rw.n : '';
+    const txt = (rw.key === 'aero' || rw.key === 'gem') ? String(rw.n) : rw.n ? 'x' + rw.n : '';
     const w = size + (txt ? measureText(txt, 'small') + 6 : 0);
     if (cx + w > x + maxW) return;
     ctx.drawImage(aeroSurface(w, size, { tone: rw.big ? 'green' : 'white', r: 7, gloss: 0.6, glossH: Math.round(size * 0.4), curve: 1, rim: 0.8, glow: 0.4 }), cx, y);
@@ -189,12 +192,15 @@ class QuestHud {
     this.pills = [];
     // [questcine18] cinematic director + tracker hand-off (cards fly into rows: incoming -> landed)
     this.incoming = {}; this.landT = {}; this.rowRects = {};
+    // [cur26] the tracker hides off the right edge; it slides in on quest progress, a pin, a flying card, a claim
+    this.peek = 0; this.peekHold = 0; this.peekSig = null; this.sigT = 0; this.lastPin = undefined; this.lastSlot = null;
     this.cine = new QuestCine(game, this, { drawPortrait, rewardIcon, npcName, NPC_COL, CHEERS });
     try { loadAlagard(); } catch { /* fallback font */ }
     game.on?.('questDone', (d) => {
       const q = QUEST_BY_ID[d.id];
       if (!q) return;
       if (q.kind === 'main') this.flash[q.id] = 0;
+      this.poke(4); // [cur26]
       // [questcine18] claims (Quest Log): rewards fly out of the button; main quests get a cinematic beat
       if (d.claimed) { this.cine.noteClaim(q, d.bonus); return; }
       if (this.cine.mode() !== 'off') {
@@ -219,6 +225,7 @@ class QuestHud {
       if (!ids.length) return;
       const wait = this.banners.find((b) => b.kind === 'ready' && b.t === 0);
       if (wait) { wait.n += ids.length; return; }
+      this.poke(4.5); // [cur26]
       this.banners.push({ kind: 'ready', q: QUEST_BY_ID[ids[0]], n: ids.length, t: 0, rw: [] });
       game.audio?.play?.('sparkle', { vol: 0.6 });
     });
@@ -242,9 +249,41 @@ class QuestHud {
   }
 
   // [questcine18] tracker hand-off: a card is on its way to this quest's row / it just landed there
-  expectCard(id) { this.incoming[id] = this.t; delete this.landT[id]; }
-  landCard(id) { if (this.incoming[id] !== undefined) { delete this.incoming[id]; this.landT[id] = this.t; } }
-  trackerRowRect(id) { return this.rowRects[id] || (this.rect ? { x: this.rect.x, y: this.rect.y + 14, w: this.rect.w, h: 26 } : null); }
+  expectCard(id) { this.incoming[id] = this.t; delete this.landT[id]; this.poke(3); }
+  landCard(id) { if (this.incoming[id] !== undefined) { delete this.incoming[id]; this.landT[id] = this.t; } this.poke(3); }
+  // [cur26] the tracker lives off the right edge: a card flies to where its row WILL be (it slides in meanwhile)
+  trackerRowRect(id) {
+    if (this.rowRects[id] && this.rect) return this.rowRects[id];
+    const s = this.lastSlot || this.slot();
+    if (s) return { x: s.x + 5, y: s.y + 14, w: s.w - 10, h: 26 };
+    const W = this.game.screen?.W || 960, H = this.game.screen?.H || 540;
+    return { x: W - 180, y: Math.round(H * 0.3) + 14, w: 160, h: 26 };
+  }
+  poke(sec = 4.5) { this.peekHold = Math.max(this.peekHold, sec); }
+  // a cheap fingerprint of what the tracker shows (objective counts, ready claims): a change slides it in
+  progressSig() {
+    const book = this.book, pin = book.pinned();
+    const qs = [...(pin ? [pin] : []), ...book.active().slice(0, 3)];
+    return qs.map((q) => q.id + ':' + book.objectives(q).map((o) => o.have).join(',')).join('|') + '#' + book.readyCount();
+  }
+  peekUpdate(dt) {
+    const g = this.game, S = ensureQuests(g.state);
+    this.sigT -= dt;
+    if (this.sigT <= 0 && g.state.tutorialDone) {
+      this.sigT = 0.3;
+      let sig = null;
+      try { sig = this.progressSig(); } catch { sig = this.peekSig; }
+      if (this.peekSig !== null && sig !== this.peekSig) this.poke(4.5);
+      this.peekSig = sig;
+    }
+    if (S.pin !== this.lastPin) { if (this.lastPin !== undefined && S.pin) this.poke(5); this.lastPin = S.pin; }
+    const busy = Object.keys(this.incoming).length > 0 || Object.keys(this.landT).length > 0 || Object.keys(this.flash).length > 0;
+    const pending = !!(S.outro || S.intro) && !(this.cine.busy() && this.cine.cur?.heavy); // a chapter story waits behind its pill
+    const hovering = this.hov > 0.3 && this.peek > 0.5;
+    if (!hovering) this.peekHold = Math.max(0, this.peekHold - dt);
+    const want = this.peekHold > 0 || busy || pending || hovering;
+    this.peek = clamp01(this.peek + (want ? dt * 4 : -dt * 2.6));
+  }
 
   slot() {
     const g = this.game;
@@ -277,6 +316,7 @@ class QuestHud {
     this.book.update(dt);
     try { this.cine.update(dt, inp); } catch (e) { if (!this.cineErr) { this.cineErr = true; console.error(e); } } // [questcine18]
     for (const id in this.flash) { this.flash[id] += dt; if (this.flash[id] > 2.4) delete this.flash[id]; }
+    this.peekUpdate(dt); // [cur26]
     const head = this.banners[0];
     // [polish17] banners wait while a modal panel is open (they are hidden then, never drawn over a window)
     const held = !!g.ui?.blocking || this.cine.busy(); // [questcine18] and while a quest cinematic plays
@@ -308,9 +348,16 @@ class QuestHud {
     const g = this.game;
     this.rect = null;
     if (!g.ui?.isOpen?.('lab')) iconBudget(2);
-    const s = this.slot();
+    let s = this.slot();
     const S = ensureQuests(g.state);
     const cineUp = !!g.ui?.active?.cinematic; // [questcine18] the tracker stays visible under a quest cinematic (cards fly into it)
+    // [cur26] slide in from the right edge (hidden while peek is 0)
+    if (s) this.lastSlot = s;
+    if (s && s.side === 'right') {
+      const e = ease.outBack ? ease.outBack(this.peek) : ease.outCubic(this.peek);
+      s = this.peek < 0.01 ? null : { ...s, x: Math.round(s.x + (1 - Math.min(1.08, e)) * ((s.edge ?? s.x + s.w) - s.x + 6)) };
+      if (!s) this.rowRects = {};
+    }
     if (s && (!g.ui?.blocking || cineUp)) this.drawTracker(ctx, s, S);
     if (!g.ui?.blocking && !this.cine.busy()) this.drawBanners(ctx);
     try { this.cine.drawLight(ctx); } catch (e) { if (!this.cineDrawErr) { this.cineDrawErr = true; console.error(e); } }
@@ -476,7 +523,7 @@ class QuestHud {
       const rx = x0 + i * step, ry = cy + 62;
       const name = rw.key === 'aero' ? 'coin' : getUiIcon(rw.key)?.__icon3d ? rw.key : null;
       if (!(name && drawIcon3D(ctx, name, rx - 12, ry, Math.round(22 * (0.6 + 0.4 * ease.outBack(k))), { t, hover: k < 1 ? 1 : 0, phase: i }))) rewardIcon(ctx, rw, rx - 12, ry, 24, t, i); // [polish17] bigger fallback icons
-      const txt = rw.key === 'aero' ? '+' + rw.n : rw.n ? 'x' + rw.n : '';
+      const txt = (rw.key === 'aero' || rw.key === 'gem') ? '+' + rw.n : rw.n ? 'x' + rw.n : '';
       if (txt) drawPop3D(ctx, txt, rx + 16, ry, { t: t + i, pop: k, palette: 'white', size: 16, depth: 2, wobble: 0.3, glowA: 0.3, sparkle: false });
       if (k < 0.2 && !rw.fx) { rw.fx = true; try { g.particles?.pixelBurst?.('star', rx - 12, ry, 5, { layer: 'ui', ramp: 'gold' }); } catch { /* optional */ } }
     });
@@ -698,7 +745,7 @@ export class QuestPanel {
 
   cardLayoutRaw(q, w) {
     const rl = rewardList(q.reward);
-    const rwW = Math.min(150, rl.reduce((a, rw) => a + 21 + (rw.key === 'aero' ? measureText(String(rw.n), 'small') + 3 : rw.n ? measureText('x' + rw.n, 'small') + 3 : 0), 0));
+    const rwW = Math.min(150, rl.reduce((a, rw) => a + 21 + ((rw.key === 'aero' || rw.key === 'gem') ? measureText(String(rw.n), 'small') + 3 : rw.n ? measureText('x' + rw.n, 'small') + 3 : 0), 0));
     const textW = Math.max(80, w - 44 - rwW - 14);
     const lines = wrapText(`"${q.text}"`, textW, 'small').slice(0, 3);
     const LH = lineHeight('small') + 3;
@@ -1215,7 +1262,7 @@ export class ChapterPanel {
         if (s < 6) return;
         ctx.drawImage(aeroSurface(s, s, { tone: rw.big ? 'green' : 'white', r: 9, gloss: 0.7, glossH: Math.round(s * 0.4), curve: 2, rim: 0.9, glow: 0.6 }), Math.round(x + (tw - s) / 2), Math.round(y + (tw - s) / 2));
         rewardIcon(ctx, rw, x + tw / 2, y + tw / 2, 30 * k, t, i);
-        const lab = rw.key === 'aero' ? String(rw.n) : rw.n ? 'x' + rw.n : '';
+        const lab = (rw.key === 'aero' || rw.key === 'gem') ? String(rw.n) : rw.n ? 'x' + rw.n : '';
         if (lab) drawText(ctx, lab, Math.round(x + tw / 2 - measureText(lab, 'small') / 2), y + tw + 3, { font: 'small', color: INK });
         if (ui.hover({ x, y, w: tw, h: tw })) ui.tip = rw.label;
       });

@@ -1146,6 +1146,233 @@ A.stingray = {
   flap: 0.14, flapK: 3,
 };
 
+
+// ---------------------------------------------------------------- [deep26] deep-sea archetypes (scary but cute)
+
+// Sloane's viperfish (Chauliodus): slender, iridescent dark body, a mouth that reaches past the eye with needle fangs
+// that do not fit inside it, the first dorsal ray a long lure with a glowing tip, photophore rows along the belly.
+A.viperfish = {
+  plan: 'fish',
+  body: { top: [[0, 0.03], [0.05, 0.068], [0.14, 0.085], [0.3, 0.078], [0.6, 0.058], [0.85, 0.036], [1, 0.022]], bot: [[0, 0.004], [0.04, -0.04], [0.14, -0.072], [0.3, -0.07], [0.6, -0.052], [0.85, -0.032], [1, -0.02]], wid: [[0, 0.02], [0.1, 0.042], [0.3, 0.046], [0.7, 0.03], [1, 0.012]], nose: 0.02, xs: 2, wy: 0.45 },
+  eye: { u: 0.072, v: 0.72, r: 0.027, iris: '#6a9ad8', pupil: 0.72, glow: true, glowCol: '#8ad8ff' },
+  mouth: { u: 0.16, v: 0.58, drop: -0.024, curve: 0.004, dark: 0.8, gapeK: 0.95, rest: 0.2, teeth: { n: 8, len: 0.016, col: '#eaf6ff' } },
+  fangs: [{ u: 0.014, len: 0.115, up: 1, lean: 0.2 }, { u: 0.032, len: 0.08, up: -1, lean: 0.1 }, { u: 0.058, len: 0.06, up: 1, lean: 0.15 }, { u: 0.09, len: 0.04, up: -1 }],
+  op: { u: 0.17, top: 0.84, bot: 0.16, bulge: 0.012, dark: 0.18 },
+  fins: [fin('top', 0.17, 0.22, 0.05, 'tri', 0.3, 6), fin('top', 0.9, 0.93, 0.02, 'round', 0.3, 1, { adipose: true }), fin('bot', 0.8, 0.9, 0.05, 'tri', 0.4, 9)],
+  pec: { u: 0.18, v: 0.3, len: 0.07, w: 0.015, ang: -15, rays: 8 },
+  pel: { u: 0.46, len: 0.06, w: 0.015, ang: -50 },
+  tail: { type: 'fork', len: 0.13, spread: 0.08, fork: 0.45, rays: 14 },
+  lure: { u: 0.175, len: 0.34, ang: 84, curve: 2.6, bulb: 0.013, col: '#9affff', rod: '#1a2440' },
+  col: { back: '#141c3a', flank: '#2a3a66', belly: '#3a4a7a', fin: '#1a2448', vb: 0.6, vbel: 0.3 },
+  pat: [{ type: 'photophores', color: '#6ac8ff', glow: true, size: 0.007, rows: [{ u0: 0.12, u1: 0.95, n: 30, v: 0.1 }, { u0: 0.16, u1: 0.84, n: 22, v: 0.3 }] }],
+  mat: { iri: 0.6, gloss: 0.92 },
+  wave: 0.65, glow: true,
+};
+
+// Stoplight loosejaw (Malacosteus): a jaw longer than the head with no floor, hanging open; a big red light under
+// the eye (it sees in red, its prey cannot) and a small blue one behind it; dorsal and anal fins far back.
+A.loosejaw = {
+  plan: 'fish',
+  body: { top: [[0, 0.04], [0.06, 0.085], [0.18, 0.105], [0.4, 0.1], [0.7, 0.075], [0.88, 0.045], [1, 0.03]], bot: [[0, 0.012], [0.06, -0.055], [0.2, -0.09], [0.4, -0.085], [0.7, -0.065], [0.88, -0.04], [1, -0.03]], wid: [[0, 0.02], [0.12, 0.05], [0.35, 0.05], [0.8, 0.03], [1, 0.014]], nose: 0.02, xs: 2, wy: 0.45 },
+  eye: { u: 0.07, v: 0.74, r: 0.024, iris: '#4a5a7a', pupil: 0.7, glow: true, glowCol: '#ff8a7a' },
+  mouth: { u: 0.25, v: 0.6, drop: -0.045, curve: 0, dark: 0.85, gapeK: 1.05, rest: 0.34, teeth: { n: 11, len: 0.03, col: '#f4f0ff' } },
+  fangs: [{ u: 0.02, len: 0.06, up: 1, lean: 0.25 }, { u: 0.05, len: 0.05, up: -1 }, { u: 0.11, len: 0.045, up: 1 }],
+  op: { u: 0.27, top: 0.82, bot: 0.2, bulge: 0.015, dark: 0.2 },
+  fins: [fin('top', 0.78, 0.9, 0.1, 'round', 0.45, 14), fin('bot', 0.74, 0.9, 0.09, 'round', 0.45, 14)],
+  pec: { u: 0.28, v: 0.3, len: 0.06, w: 0.012, ang: -15, rays: 6 },
+  pel: { u: 0.55, len: 0.07, w: 0.015, ang: -50 },
+  tail: { type: 'fork', len: 0.11, spread: 0.08, fork: 0.35, rays: 12 },
+  col: { back: '#120c1a', flank: '#1e1628', belly: '#2a1e34', fin: '#1a1224', vb: 0.6, vbel: 0.3 },
+  pat: [
+    { type: 'blotch', u: 0.115, v: 0.6, rx: 0.028, ry: 0.11, color: '#ff2a1a', glow: true },
+    { type: 'blotch', u: 0.135, v: 0.8, rx: 0.012, ry: 0.06, color: '#6ad8ff', glow: true },
+    { type: 'photophores', color: '#8a7aff', glow: true, size: 0.006, rows: [{ u0: 0.3, u1: 0.9, n: 18, v: 0.12 }] },
+  ],
+  mat: { iri: 0.35, gloss: 0.88 },
+  wave: 0.6, glow: true,
+};
+
+// Frilled shark (Chlamydoselachus): an eel-like living fossil, a lizard head with a terminal mouth of trident teeth,
+// six frilly gill slits (the first meets under the throat), the fins crowded at the back of the long body.
+A.frilled = {
+  ...A.shark,
+  body: { D: 0.1, up: 0.52, at: 0.22, ped: 0.48, tip: 0.002, fore: 1.25, chin: 1.25, back: 0.55, W: 0.052, pw: 0.024, nose: 0.03, xs: 2, wy: 0.46 },
+  eye: { u: 0.045, v: 0.68, r: 0.015, iris: '#6ad89a', pupil: 0.6, glow: true, glowCol: '#7affb0' },
+  mouth: { type: 'terminal', u: 0.075, v: 0.44, drop: -0.006, curve: 0.004, dark: 0.85, gapeK: 0.8, rest: 0.14, teeth: { n: 11, len: 0.016, col: '#f6f2e8', out: 1 } },
+  slits: { n: 6, u0: 0.1, u1: 0.17, v0: 0.1, v1: 0.88, frill: '#e08a90', frillW: 2.2 },
+  fins: [fin('top', 0.7, 0.78, 0.045, 'round', 0.55, 1, { thick: 0.006 }), fin('bot', 0.56, 0.64, 0.04, 'round', 0.55, 1, { thick: 0.006 }), fin('bot', 0.72, 0.82, 0.045, 'round', 0.55, 1, { thick: 0.006 })],
+  pec: { u: 0.19, v: 0.22, len: 0.07, w: 0.035, ang: -30, spread: 30, shape: 'wing', rays: 1, opaque: true, flap: 0.4 },
+  pel: null,
+  tail: { type: 'hetero', len: 0.2, spread: 0.07, lobe: -0.35, y: 0, thick: 0.006, rays: 1 },
+  col: { back: '#3c2c2a', flank: '#544038', belly: '#72584a', fin: '#3c2c2a', vb: 0.55, vbel: 0.38, soft: 0.08 },
+  pat: [{ type: 'mottle', color: '#2a1e1c', scale: 11, thresh: 0.56, amt: 0.5 }],
+  mat: { iri: 0.12, gloss: 0.75, sheen: 0.6 },
+  wave: 0.85,
+};
+
+// Goblin shark (Mitsukurina): flabby pink skin (blood shows through), a long flat blade of a snout, tiny eyes, and
+// jaws full of nail-like teeth that SLING forward when it bites; a long low tail.
+A.goblin = {
+  ...A.shark,
+  body: { D: 0.165, up: 0.52, at: 0.36, ped: 0.24, tip: -0.012, fore: 1.6, chin: 1.25, back: 0.95, W: 0.075, pw: 0.03, nose: 0.04, xs: 2, wy: 0.45 },
+  bill: { len: 0.19, h: 0.016, w: 0.034, y: 0.018 },
+  eye: { u: 0.075, v: 0.66, r: 0.011, iris: '#c8d0e0', pupil: 0.6, glow: true, glowCol: '#c8e8ff' },
+  mouth: { type: 'terminal', u: 0.15, v: 0.22, drop: -0.012, curve: 0.012, dark: 0.8, gapeK: 0.85, rest: 0.22, thrust: 0.05, lips: '#e88a98', teeth: { n: 12, len: 0.03, col: '#f4f0e8', out: 1.05 } },
+  slits: { n: 5, u0: 0.21, u1: 0.28, v0: 0.25, v1: 0.72 },
+  fins: [fin('top', 0.42, 0.52, 0.07, 'round', 0.5, 1, { thick: 0.01 }), fin('top', 0.62, 0.69, 0.06, 'round', 0.5, 1, { thick: 0.008 }), fin('bot', 0.56, 0.62, 0.045, 'round', 0.6, 1, { thick: 0.008 }), fin('bot', 0.66, 0.74, 0.06, 'round', 0.5, 1, { thick: 0.008 })],
+  pec: { u: 0.3, v: 0.25, len: 0.11, w: 0.05, ang: -32, spread: 34, shape: 'wing', rays: 1, opaque: true, flap: 0.4 },
+  tail: { type: 'hetero', len: 0.34, spread: 0.12, lobe: 0.9, y: 0.01, thick: 0.008, rays: 1 },
+  col: { back: '#c8848e', flank: '#e8a6ae', belly: '#f6cfd0', fin: '#b87482', vb: 0.55, vbel: 0.42, soft: 0.1 },
+  pat: [{ type: 'mottle', color: '#d07080', scale: 9, thresh: 0.6, amt: 0.35 }],
+  mat: { iri: 0.08, gloss: 0.88, sheen: 0.9 },
+  wave: 0.5,
+};
+
+// Bluntnose sixgill shark (Hexanchus): a huge, heavy, dusky shark with SIX gill slits (most sharks have five), one
+// dorsal fin far back, a long upper tail lobe and fluorescent green eyes that catch any light.
+A.sixgill = {
+  ...A.shark,
+  body: { D: 0.19, up: 0.52, at: 0.32, ped: 0.24, tip: -0.004, fore: 2.0, chin: 1.4, back: 0.85, W: 0.1, pw: 0.03, nose: 0.07, xs: 2, wy: 0.45 },
+  eye: { u: 0.085, v: 0.62, r: 0.02, iris: '#3aff8a', pupil: 0.5, glow: true, glowCol: '#5affa0' },
+  mouth: { type: 'terminal', u: 0.19, v: 0.12, drop: -0.004, curve: 0.012, dark: 0.8, gapeK: 0.6, rest: 0.08, teeth: { n: 10, len: 0.02, col: '#eae6da', out: 1 } },
+  slits: { n: 6, u0: 0.15, u1: 0.24, v0: 0.2, v1: 0.75 },
+  fins: [fin('top', 0.62, 0.7, 0.06, 'round', 0.5, 1, { thick: 0.01 }), fin('bot', 0.6, 0.66, 0.04, 'round', 0.6, 1, { thick: 0.008 }), fin('bot', 0.72, 0.78, 0.04, 'round', 0.6, 1, { thick: 0.008 })],
+  pec: { u: 0.3, v: 0.25, len: 0.15, w: 0.055, ang: -32, spread: 34, shape: 'wing', rays: 1, opaque: true, flap: 0.4 },
+  tail: { type: 'hetero', len: 0.3, spread: 0.12, lobe: 0.8, y: 0.01, thick: 0.01, rays: 1 },
+  col: { back: '#3e3a34', flank: '#5c564c', belly: '#8e877a', fin: '#3a3630', vb: 0.5, vbel: 0.4, soft: 0.12 },
+  pat: [{ type: 'mottle', color: '#2c2824', scale: 8, thresh: 0.55, amt: 0.6 }, { type: 'speckle', tone: 0.12, density: 0.05 }],
+  mat: { iri: 0.04, gloss: 0.65, sheen: 0.5 },
+  wave: 0.45,
+};
+
+// Velvet belly lanternshark (Etmopterus): a small dark shark whose black belly glows blue (counter-illumination),
+// big green eyes, a spine in front of each dorsal fin.
+A.lanternshark = {
+  ...A.shark,
+  body: { D: 0.16, up: 0.52, at: 0.33, ped: 0.24, tip: 0.0, fore: 1.8, chin: 1.4, back: 0.9, W: 0.075, pw: 0.028, nose: 0.05, xs: 2, wy: 0.45 },
+  eye: { u: 0.09, v: 0.64, r: 0.03, iris: '#3affa0', pupil: 0.55, glow: true, glowCol: '#5affc0' },
+  mouth: { type: 'inferior', u: 0.17, u0: 0.06, v: 0.2, lift: 0.006, dark: 0.45 },
+  slits: { n: 5, u0: 0.2, u1: 0.25, v0: 0.3, v1: 0.66 },
+  fins: [fin('top', 0.38, 0.46, 0.06, 'tri', 0.5, 1, { thick: 0.008 }), fin('top', 0.62, 0.72, 0.085, 'tri', 0.55, 1, { thick: 0.008 }), fin('bot', 0.56, 0.62, 0.04, 'tri', 0.6, 1, { thick: 0.006 })],
+  barbels: [{ u: 0.38, top: true, mid: true, len: 0.05, ang: -60, curl: 0.3, fwd: false, col: '#d8d0c8', w: 1 }, { u: 0.62, top: true, mid: true, len: 0.06, ang: -60, curl: 0.3, fwd: false, col: '#d8d0c8', w: 1 }],
+  tail: { type: 'hetero', len: 0.26, spread: 0.13, lobe: 0.5, y: 0.01, thick: 0.007, rays: 1 },
+  col: { back: '#4c3a32', flank: '#3a2c2c', belly: '#121220', fin: '#3e3030', vb: 0.52, vbel: 0.46, soft: 0.04 },
+  pat: [{ type: 'speckle', color: '#5ab8ff', glow: true, density: 0.3, vmax: 0.4, umin: 0.1 }, { type: 'blotch', u: 0.78, v: 0.42, rx: 0.08, ry: 0.12, color: '#2a3a6a' }, { type: 'speckle', color: '#5ab8ff', glow: true, density: 0.35, umin: 0.7, umax: 0.86, vmin: 0.3, vmax: 0.55, seed: 4 }],
+  mat: { iri: 0.1, gloss: 0.8, sheen: 0.7 },
+  wave: 0.55,
+};
+
+// Cookiecutter shark (Isistius): a cigar of a shark with a glowing belly, a dark collar it uses as a lure, big
+// suction lips and a saw of triangular lower teeth that scoop round plugs out of much bigger animals.
+A.cookiecutter = {
+  ...A.shark,
+  body: { D: 0.15, up: 0.5, at: 0.36, ped: 0.32, tip: -0.006, fore: 2.3, chin: 2.0, back: 0.75, W: 0.075, pw: 0.03, nose: 0.07, xs: 2, wy: 0.45 },
+  eye: { u: 0.1, v: 0.64, r: 0.034, iris: '#4affa0', pupil: 0.55, glow: true, glowCol: '#6affc0' },
+  mouth: { type: 'terminal', u: 0.085, v: 0.26, drop: 0, curve: 0.014, dark: 0.75, gapeK: 0.75, rest: 0.14, lips: '#c89a8a', lip: 2, teeth: { n: 7, len: 0.026, col: '#f4f0e8', out: 1.04 } },
+  slits: { n: 5, u0: 0.19, u1: 0.24, v0: 0.3, v1: 0.66 },
+  fins: [fin('top', 0.62, 0.68, 0.04, 'round', 0.5, 1, { thick: 0.006 }), fin('top', 0.72, 0.78, 0.045, 'round', 0.5, 1, { thick: 0.006 }), fin('bot', 0.64, 0.7, 0.03, 'round', 0.6, 1, { thick: 0.006 })],
+  pec: { u: 0.26, v: 0.3, len: 0.08, w: 0.04, ang: -30, spread: 30, shape: 'wing', rays: 1, opaque: true, flap: 0.4 },
+  tail: { type: 'hetero', len: 0.18, spread: 0.1, lobe: 0.1, y: 0, thick: 0.006, rays: 1 },
+  col: { back: '#6a4a38', flank: '#7a5640', belly: '#2a2e3a', fin: '#5a4030', vb: 0.55, vbel: 0.4, soft: 0.05 },
+  pat: [{ type: 'speckle', color: '#7affd0', glow: true, density: 0.4, vmax: 0.42, umin: 0.26 }, { type: 'bars', at: [0.2], width: 0.05, color: '#1a1210', slant: 0.02 }],
+  mat: { iri: 0.08, gloss: 0.85, sheen: 0.7 },
+  wave: 0.5,
+};
+
+// Black seadevil (Melanocetus): a velvet-black ball that is mostly mouth, the jaw slanting up, long glassy needle
+// teeth on show, a short rod with a glowing bulb.
+A.seadevil = {
+  ...A.angler,
+  body: { top: [[0, 0.2], [0.05, 0.31], [0.18, 0.38], [0.4, 0.37], [0.62, 0.27], [0.84, 0.11], [1, 0.045]], bot: [[0, 0.02], [0.03, -0.16], [0.16, -0.31], [0.4, -0.34], [0.64, -0.24], [0.86, -0.1], [1, -0.045]], W: 0.27, pw: 0.04, nose: 0.06, xs: 2.2, wy: 0.45 },
+  eye: { u: 0.2, v: 0.84, r: 0.024, iris: '#5a6a8a', pupil: 0.6, glow: true, glowCol: '#9ad8ff' },
+  mouth: { u: 0.34, v: 0.78, drop: -0.22, curve: -0.03, dark: 0.85, gapeK: 0.55, rest: 0.4, teeth: { n: 16, len: 0.07, col: '#e8f4ff', out: 1.02 } },
+  fangs: [{ u: 0.03, len: 0.13, up: 1, lean: 0.25 }, { u: 0.07, len: 0.11, up: -1, lean: 0.2 }, { u: 0.12, len: 0.1, up: 1, lean: 0.1 }, { u: 0.17, len: 0.08, up: -1 }],
+  lure: { u: 0.1, len: 0.26, ang: 100, curve: 1.7, bulb: 0.034, col: '#b8f8ff', rod: '#1a1420', filaments: 3 },
+  col: { back: '#0e0c14', flank: '#18141e', belly: '#221c28', fin: '#16121c', vb: 0.6, vbel: 0.3 },
+  pat: [{ type: 'speckle', tone: 0.12, density: 0.06 }],
+  mat: { iri: 0.1, gloss: 0.6, sheen: 0.4 },
+};
+
+// Whipnose angler (Gigantactis): a sleek black spindle with a lure rod LONGER than its whole body, trailing ahead,
+// a frilly glowing tip, and a small mouth lined with hooked teeth.
+A.whipnose = {
+  ...A.angler,
+  body: { top: [[0, 0.05], [0.05, 0.1], [0.2, 0.14], [0.45, 0.13], [0.7, 0.085], [0.9, 0.045], [1, 0.03]], bot: [[0, 0.0], [0.04, -0.06], [0.2, -0.11], [0.45, -0.11], [0.7, -0.07], [0.9, -0.04], [1, -0.03]], W: 0.1, pw: 0.03, nose: 0.04, xs: 2.2, wy: 0.45 },
+  eye: { u: 0.08, v: 0.72, r: 0.014, iris: '#4a5a6a', pupil: 0.6 },
+  mouth: { u: 0.1, v: 0.5, drop: -0.03, curve: -0.006, dark: 0.8, gapeK: 0.6, rest: 0.18, teeth: { n: 9, len: 0.03, col: '#e8f4ff', out: 1.02 } },
+  fins: [fin('top', 0.74, 0.88, 0.11, 'long', 0.4, 12), fin('bot', 0.74, 0.88, 0.1, 'long', 0.4, 10)],
+  pec: { u: 0.3, v: 0.4, len: 0.08, w: 0.035, ang: 0, spread: 30, shape: 'fan', rays: 10 },
+  tail: { type: 'round', len: 0.22, spread: 0.1, rays: 10 },
+  lure: { u: 0.0, len: 1.05, ang: 28, curve: 0.9, bulb: 0.022, col: '#c8f8ff', rod: '#1e1a26', filaments: 6 },
+  col: { back: '#14101c', flank: '#1c1626', belly: '#262030', fin: '#1a1424', vb: 0.6, vbel: 0.3 },
+  mat: { iri: 0.15, gloss: 0.7 },
+};
+
+// Black swallower (Chiasmodon): a slim dark fish that swallows prey twice its size; its stretched, see-through belly
+// balloons under it with the shadow of its last meal inside.
+A.swallower = {
+  plan: 'fish',
+  body: { top: [[0, 0.04], [0.06, 0.07], [0.2, 0.085], [0.45, 0.075], [0.7, 0.05], [0.88, 0.03], [1, 0.02]], bot: [[0, 0.0], [0.06, -0.05], [0.16, -0.12], [0.3, -0.27], [0.45, -0.3], [0.58, -0.22], [0.68, -0.07], [0.85, -0.03], [1, -0.02]], wid: [[0, 0.02], [0.12, 0.05], [0.3, 0.13], [0.45, 0.15], [0.6, 0.1], [0.72, 0.035], [1, 0.012]], nose: 0.02, xs: 2, wy: 0.75 },
+  eye: { u: 0.065, v: 0.84, r: 0.016, iris: '#6a7a9a', pupil: 0.65 },
+  mouth: { u: 0.13, v: 0.66, drop: -0.03, curve: 0.004, dark: 0.85, gapeK: 0.9, rest: 0.2, teeth: { n: 8, len: 0.025, col: '#eef4ff' } },
+  fangs: [{ u: 0.02, len: 0.045, up: 1 }, { u: 0.04, len: 0.04, up: -1 }],
+  op: { u: 0.15, top: 0.95, bot: 0.55, bulge: 0.01, dark: 0.18 },
+  fins: [fin('top', 0.32, 0.4, 0.05, 'tri', 0.4, 7), fin('top', 0.48, 0.74, 0.04, 'low', 0.4, 20), fin('bot', 0.66, 0.84, 0.04, 'low', 0.4, 16)],
+  pec: { u: 0.17, v: 0.85, len: 0.07, w: 0.02, ang: -10, rays: 8 },
+  pel: null,
+  tail: { type: 'fork', len: 0.12, spread: 0.07, fork: 0.35, rays: 12 },
+  col: { back: '#1e1a24', flank: '#2c2632', belly: '#d8c8d8', fin: '#26202c', vb: 0.88, vbel: 0.6, soft: 0.05 },
+  pat: [
+    { type: 'blotch', u: 0.44, v: 0.22, rx: 0.14, ry: 0.13, color: '#6a5a78' },
+    { type: 'blotch', u: 0.27, v: 0.24, rx: 0.05, ry: 0.11, color: '#6a5a78' },
+    { type: 'blotch', u: 0.5, v: 0.24, rx: 0.012, ry: 0.06, color: '#ffe8a0', glow: true },
+    { type: 'photophores', color: '#c8a8ff', glow: true, size: 0.006, rows: [{ u0: 0.25, u1: 0.62, n: 14, v: 0.04 }] },
+  ],
+  mat: { iri: 0.2, gloss: 0.95, sheen: 1 },
+  wave: 0.35,
+};
+
+// Mariana snailfish (Pseudoliparis): the deepest fish ever filmed; a pink, see-through tadpole with a big soft head,
+// tiny eyes, a long tapering body edged by one continuous fin, its skeleton and organs showing through.
+A.snailfish = {
+  plan: 'fish',
+  body: { top: [[0, 0.06], [0.05, 0.14], [0.16, 0.18], [0.3, 0.16], [0.55, 0.09], [0.8, 0.045], [1, 0.015]], bot: [[0, -0.02], [0.05, -0.1], [0.16, -0.15], [0.32, -0.13], [0.55, -0.07], [0.8, -0.035], [1, -0.012]], wid: [[0, 0.06], [0.12, 0.12], [0.3, 0.1], [0.6, 0.05], [1, 0.01]], nose: 0.1, xs: 2, wy: 0.45 },
+  eye: { u: 0.09, v: 0.72, r: 0.018, iris: '#2a2030', pupil: 0.8 },
+  mouth: { u: 0.08, v: 0.42, drop: -0.012, curve: 0.012, dark: 0.35, lips: '#f0b8c0' },
+  op: { u: 0.2, top: 0.7, bot: 0.3, bulge: 0.02, dark: 0.1 },
+  glassCore: { u0: 0.15, u1: 0.98, spineV: 0.5, bone: '#fff0f4' },
+  fins: [fin('top', 0.28, 1, 0.07, 'low', 0.25, 34), fin('bot', 0.36, 1, 0.06, 'low', 0.25, 30)],
+  pec: { u: 0.2, v: 0.3, len: 0.13, w: 0.07, ang: -25, spread: 40, shape: 'fan', rays: 14 },
+  pel: null,
+  tail: { type: 'pointed', len: 0.06, spread: 0.04, rays: 8 },
+  col: { back: '#f4b8c8', flank: '#f8ccd8', belly: '#fde4ea', fin: '#f6d0dc', vb: 0.6, vbel: 0.3, soft: 0.2 },
+  pat: [{ type: 'blotch', u: 0.26, v: 0.35, rx: 0.07, ry: 0.2, color: '#e87a8a' }, { type: 'mottle', tone: 0.06, scale: 10, thresh: 0.5, amt: 1 }],
+  mat: { iri: 0.3, gloss: 0.98, glass: 0.6, finGlass: 0.9, sheen: 1 },
+  wave: 0.7,
+};
+
+// Tripod fish (Bathypterois): stands on the abyssal plain on three stilts (two pelvic rays and the lower tail ray),
+// facing the current with its long pectoral rays raised like antennae to feel for drifting food.
+A.tripod = {
+  plan: 'fish',
+  body: { D: 0.11, up: 0.52, at: 0.25, ped: 0.4, tip: 0.0, fore: 1.6, chin: 1.4, back: 0.8, W: 0.05, pw: 0.02, nose: 0.03, xs: 2, wy: 0.45 },
+  eye: { u: 0.06, v: 0.68, r: 0.01, iris: '#3a3a40', pupil: 0.8 },
+  mouth: { u: 0.08, v: 0.52, drop: -0.01, dark: 0.5 },
+  op: { u: 0.16, top: 0.85, bot: 0.15, bulge: 0.01, dark: 0.2 },
+  scales: { size: 0.02, k: 0.06 },
+  fins: [fin('top', 0.38, 0.48, 0.07, 'tri', 0.4, 10), fin('top', 0.82, 0.85, 0.02, 'round', 0.3, 1, { adipose: true }), fin('bot', 0.64, 0.8, 0.05, 'low', 0.4, 10)],
+  pec: null, pel: null,
+  tail: { type: 'fork', len: 0.12, spread: 0.07, fork: 0.3, rays: 12 },
+  barbels: [
+    { u: 0.4, v: 0.02, len: 0.55, ang: 84, curl: 0.05, fwd: true, out: 0.12, col: '#c8c0b0', tip: '#f0e8d8', w: 1 },
+    { u: 0.99, v: 0.2, len: 0.5, ang: 66, curl: -0.12, fwd: false, mid: true, col: '#c8c0b0', tip: '#f0e8d8', w: 1 },
+    { u: 0.18, v: 0.55, len: 0.42, ang: -38, curl: 0.5, fwd: true, out: 0.3, col: '#a8a098', tip: '#e8e0d8' },
+  ],
+  col: { back: '#4a4a52', flank: '#7a7a84', belly: '#b0b0b8', fin: '#5a5a64', vb: 0.6, vbel: 0.32 },
+  mat: { iri: 0.35, gloss: 0.85, silver: 0.3 },
+  wave: 0.15, stiff: true,
+};
+
 export const ARCH = A;
 
 // ---------------------------------------------------------------- per-species anatomy
@@ -1276,6 +1503,25 @@ SPEC_IN.starfish = solid('star', { back: '#d81e30', flank: '#ea3a4a', belly: '#f
 SPEC_IN.isopod = solid('isopod', { back: '#c4b8c6', flank: '#a89cae', belly: '#e8e0e8', eye: '#2a2a24' });
 SPEC_IN.seahorse = solid('seahorse', { back: '#c45a0c', flank: '#f08a1c', belly: '#ffc85a', fin: '#ffe6b8', eye: '#c88a20' }, { voxK: 2 });
 SPEC_IN.guppy = solid('chomper', { back: '#1478d0', flank: '#38b8ff', belly: '#d8f6ff', fin: '#ff4ab0', dorsal: '#ffd23a', eye: '#e8a838' }, { chunk: 1.3 });
+
+// [deep26] deep-sea arrivals (src/fish/species-deep.js)
+S('viperfish', 'viperfish');
+S('loosejaw', 'loosejaw');
+S('frilledshark', 'frilled');
+S('goblinshark', 'goblin');
+S('sixgill', 'sixgill');
+S('lanternshark', 'lanternshark');
+S('cookiecutter', 'cookiecutter');
+S('seadevil', 'seadevil');
+S('whipnose', 'whipnose');
+S('swallower', 'swallower');
+S('snailfish', 'snailfish');
+S('tripodfish', 'tripod');
+SPEC_IN.bigfin = solid('bigfin', { back: '#e8a48e', flank: '#f2bca8', belly: '#f8dcd0', fin: '#f0b8a8', eye: '#1a1020' }, { glow: true, photo: '#ffd8c8' });
+SPEC_IN.telescope = solid('telescope', { back: '#bfeaf4', flank: '#d8f6fb', belly: '#eefcff', gland: '#ff9a3a', eye: '#141a24' }, { chunk: 1.2 });
+SPEC_IN.cockeye = solid('cockeye', { back: '#c8203a', flank: '#de3a50', belly: '#f07888', fin: '#b81830', eye: '#ffd86a', eye2: '#5aa8ff' }, { photo: '#9affff', glow: true });
+SPEC_IN.yeticrab = solid('crab', { back: '#f2ead8', flank: '#f6f0e2', belly: '#fbf8ee', leg: '#f0e6d2', claw: '#f4ecdc', tip: '#d8c8a8', eye: '#c8b8a0' }, { setae: '#fff6dc', claw: 1.45, legLen: 0.5, wide: 0.4, depth: 0.42, stalk: 0.5, eyeR: 0.02, teeth: 2 });
+SPEC_IN.giantisopod = solid('isopod', { back: '#d8ccc0', flank: '#bcaea6', belly: '#efe6de', eye: '#1a1418' }, { eyeR: 1.6, eyeshine: '#ffd86a', voxK: 1.3 });
 
 // eels (chain creatures): a realistic head model; the body segments follow the game's path
 const eelHead = (o) => ({

@@ -22,6 +22,7 @@
 //   ownsRod(state, id), giveRod(state, id), equipRod(state, id) -> bool
 //   ROD_STAT_KEYS: display order + max values for stat bars.
 import { registerRods } from '../build/pixart.js';
+import { rodBaseLine, lineReachOf } from '../fishing/line.js'; // [crate26] line length
 
 const R = (id, tier, rarity, name, desc, stats, look, extra = {}) => ({ id, tier, rarity, name, desc, stats, look, src: 'lab', ...extra });
 const S = (lureSpeed, luck, control, resilience, strength, power, charges, cooldown) => ({ lureSpeed, luck, control, resilience, strength, shock: { power, charges, cooldown } });
@@ -78,6 +79,8 @@ export const RODS = [
     S(1.9, 2.4, 1.8, 0.75, 400, 2.6, 5, 2.5), { kind: 'crystal', shaft: '#bff6ff', grip: '#1e8fe0', reel: '#ffffff', tip: '#fff6a0', glow: '#ffffff' }),
 ];
 export const ROD_BY_ID = Object.fromEntries(RODS.map((r) => [r.id, r]));
+// [crate26] every rod spools a base line length (zones of reach, src/fishing/line.js): stats.line
+for (const r of RODS) r.stats.line = rodBaseLine(r);
 registerRods(RODS);
 
 export const PERKS = {
@@ -100,9 +103,9 @@ export const TACKLE = [
   T('reel_spin', 'reel', 'Spin Reel', 'common', 'Smooth and steady.', { control: 1.06, lure: 1.04 }),
   T('reel_turbo', 'reel', 'Turbo Reel', 'rare', 'Brrrrr! Much faster reeling.', { lure: 1.12 }, { reelSpeed: 8 }),
   T('reel_gold', 'reel', 'Golden Reel', 'epic', 'Silky, shiny and a little lucky.', { control: 1.12, lure: 1.1, luck: 1.05 }, { reelSpeed: 6 }),
-  T('line_braid', 'line', 'Braided Line', 'common', 'Holds heavier fish.', { strength: 1.2 }),
-  T('line_glow', 'line', 'Glow Line', 'rare', 'Strong, and it glows in the dark.', { strength: 1.3, luck: 1.05 }, { lantern: 1 }),
-  T('line_titan', 'line', 'Titan Line', 'epic', 'Rated for whales. And whale-sized memes.', { strength: 1.6, resil: 0.06 }),
+  T('line_braid', 'line', 'Braided Line', 'common', 'Holds heavier fish. A longer spool, too.', { strength: 1.2 }),
+  T('line_glow', 'line', 'Glow Line', 'rare', 'Strong, long, and it glows in the dark.', { strength: 1.3, luck: 1.05 }, { lantern: 1 }),
+  T('line_titan', 'line', 'Titan Line', 'epic', 'Rated for whales. Spools deep into the dark.', { strength: 1.6, resil: 0.06 }),
   T('lure_spoon', 'lure', 'Shiny Spoon', 'common', 'Flash! Fish notice it sooner.', { lure: 1.08 }),
   T('lure_frog', 'lure', 'Froggy Popper', 'uncommon', 'Ribbit. Irresistible.', { lure: 1.12, luck: 1.04 }),
   T('lure_squid', 'lure', 'Glow Squid', 'rare', 'Rare fish love a glowing snack.', { luck: 1.12, lure: 1.06 }),
@@ -124,6 +127,7 @@ export const ROD_STAT_KEYS = [
   { key: 'resilience', label: 'Resilience', icon: 'heart', max: 0.8 },
   { key: 'strength', label: 'Strength', icon: 'trophy', max: 400, log: true },
   { key: 'shock', label: 'Shock', icon: 'storm', max: 2.6 },
+  { key: 'line', label: 'Line', icon: 'line', max: 4 }, // [crate26] line length (zones of reach; lineLabel() names it)
 ];
 
 export function ensureRods(state) {
@@ -202,6 +206,7 @@ export function rodStatsOf(state, id, stats = null, opts = {}) {
     resilience: Math.min(0.9, r.resilience + lv * 0.015 + m.resil + (s.rodResilience || 0)), strength: r.strength * (1 + 0.1 * lv) * m.strength * (s.rodStrength || 1),
     shock: { ...r.shock, power: r.shock.power * (1 + 0.04 * lv) * (s.shockPower || 1), charges: r.shock.charges + m.charges + (s.shockCharges || 0), cooldown: r.shock.cooldown * (s.shockCooldown || 1) },
     perk: rod.perk || null, level: lv,
+    line: lineReachOf(rod, s, opts.tackle !== false && state ? equippedTackle(state) : []), // [crate26] + Lab lineReach + line spools
   };
 }
 export function rodStats(state, stats = null) { return rodStatsOf(state, equippedRod(state).id, stats); }

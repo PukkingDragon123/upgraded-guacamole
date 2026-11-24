@@ -65,7 +65,7 @@ export const SCRIPTS = {
       { enter: 'fizz', how: 'bubble' },
       { prop: 'bench' },
       { n: 'fizz', s: 'Bless you! Professor Fizz, at your service. My portable lab goes *everywhere*.', to: 'seal', act: 'wave', key: 'cheer', emote: 'sparkle', re: { seal: 'clap' } },
-      { n: 'fizz', s: 'Bring me Aero and I will brew rods, tanks and gadgets. Mostly *non*-explosive!', shot: 'prop', act: 'point', fx: 'flask', emote: 'exclaim', re: { seal: 'worried' }, pl: 'jump' },
+      { n: 'fizz', s: 'Bring me Aero Bucks and I will brew rods, tanks and gadgets. Mostly *non*-explosive!', shot: 'prop', act: 'point', fx: 'flask', emote: 'exclaim', re: { seal: 'worried' }, pl: 'jump' },
       { n: 'seal', s: 'And down at the very bottom... something HUGE keeps *spinning*.', shot: 'two', to: 'fizz', act: 'point', key: 'point', emote: 'question', pl: 'think' },
       { boss: true },
       { n: 'seal', s: 'But first things first: let\'s fill that goldfish jar. *Splash down*!', shot: 'group', act: 'clap', key: 'cheer', re: { fizz: 'cheer' }, pl: 'cheer' },

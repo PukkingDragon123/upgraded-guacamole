@@ -52,6 +52,7 @@ import { drawIcon3D, has3D } from '../gfx/icons3d.js';
 import { iconFrame } from '../gfx/bigicons.js';
 import { drawPop3D, text3dCanvas } from '../ui/pop3d.js';
 import { mix, shade, rgba } from '../core/color.js';
+import { unlockByProp } from '../game/hotbar.js'; // [hot26]
 
 const HUNGER_RATE = 1 / 2000; // 0 -> 0.6 ("hungry") in 20 minutes
 const FEED_COUNT_GAP = 20; // [food24] seconds between manual feedings that count for 'feed' quests
@@ -178,6 +179,7 @@ export class Aquarium {
 
   insertDecorRec(rec, o = {}) {
     this.st.tank.decor.push(rec);
+    try { unlockByProp(this.game, rec.id); } catch (e) { console.error(e); } // [hot26] building an unlock prop unlocks its hotbar button
     this.syncPieces();
     const p = this.pieceOf(rec);
     if (p && o.drop) { p.lift = this.shape.H * 0.55; p.vy = 0; }
@@ -693,7 +695,7 @@ export class Aquarium {
     const lv = gearLevel(this.st, id);
     if (lv >= g.levels.length - 1) return false;
     const cost = gearCost(id, lv + 1);
-    if (!this.game.spendCoins?.(cost)) { this.game.toast?.('Not enough Aero.', 'coin'); return false; }
+    if (!this.game.spendCoins?.(cost)) { this.game.toast?.('Not enough Aero Bucks.', 'coin'); return false; }
     this.st.tank.gear[id] = lv + 1;
     this.scene.invalidate();
     this.sfx('ui_unlock', { vol: 0.7 });
@@ -731,7 +733,8 @@ export class Aquarium {
     }
     // F: the fish manager (anywhere in the game)
     const I = g.input;
-    if (I?.keyPressed('f') && !g.ui?.active && !g.tutorial?.active && !this.build.on && g.ui?.panels?.fishmgr) { g.ui.open('fishmgr'); I.keysPressed?.delete?.('f'); }
+    if (I?.keyPressed('f') && !g.ui?.active && !g.tutorial?.active && !this.build.on && g.ui?.panels?.fishmgr && !g.hotkeyLocked?.('fishmgr')) { // [hot26] locked until the Net Rack is built
+      g.ui.open('fishmgr'); I.keysPressed?.delete?.('f'); }
     const clock = g.clock;
     this.nightK = clock ? clamp01(1 - clock.daylight()) : 0;
     this.comboT = Math.max(0, this.comboT - dt);
@@ -1121,7 +1124,7 @@ export class Aquarium {
     const g = this.game;
     const L = this.fullLayout();
     const out = [{ id: 'back', ...L.btn, run: () => g.setView?.('ocean'), tip: 'Back to the ocean' }];
-    out.push({ id: 'pill', ...L.plate, run: () => {}, tip: `${this.tierInfo().name}\n{fish} ${this.fish.length}/${this.capacity()}  {coin} ${this.ratePerMin().toFixed(1)} Aero/min` });
+    out.push({ id: 'pill', ...L.plate, run: () => {}, tip: `${this.tierInfo().name}\n{fish} ${this.fish.length}/${this.capacity()}  {coin} ${this.ratePerMin().toFixed(1)} AB/min` });
     const D = L.dock;
     const lampOff = this.st.tank.lampOff;
     const dock = [
@@ -1488,7 +1491,7 @@ export class Aquarium {
     let status = '';
     if (f.state === 'sleep') status = '{zzz}';
     else if ((rec.hunger ?? 0) > 0.62) status = '{food}!';
-    return `${rec.name || sp.name}${rec.bred ? ' {sparkle}' : ''}\n${sp.name}\n${hearts} ${status}\n{coin}${this.fishRate(f).toFixed(1)} Aero/min`;
+    return `${rec.name || sp.name}${rec.bred ? ' {sparkle}' : ''}\n${sp.name}\n${hearts} ${status}\n{coin}${this.fishRate(f).toFixed(1)} AB/min`;
   }
 
   // ------------------------------------------------------------------ drawing
@@ -1839,7 +1842,7 @@ export class Aquarium {
         const ti = this.tierInfo();
         icon('tank', row.x + L(6), row.y + L(6));
         drawText(ctx, `${ti.name}  (size ${this.tier + 1}/${TANK_TIERS.length})`, row.x + L(24), row.y + L(6), { color: ink, font: f1 });
-        drawText(ctx, `{fish} ${this.capacity()} fish  x${ti.rate.toFixed(2)} Aero`, row.x + L(8), row.y + L(22), { font: f2, color: ink });
+        drawText(ctx, `{fish} ${this.capacity()} fish  x${ti.rate.toFixed(2)} Aero Bucks`, row.x + L(8), row.y + L(22), { font: f2, color: ink });
         const next = TANK_TIERS[this.tier + 1];
         if (next) {
           const unlocked = tankTier(this.st) > this.tier;

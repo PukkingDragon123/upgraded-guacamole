@@ -363,7 +363,7 @@ export class Build {
     if (levelOf(b) >= MAX_LEVEL) return false;
     if (levelOf(b) >= maxLevelFor(st)) { g.audio?.play('ui_error'); g.toast?.('Research better engineering in the Lab to upgrade further.', 'lock'); return false; }
     const cost = upgradeCost(b);
-    if (!cost || !this.canPay(cost)) { g.audio?.play('ui_error'); g.toast?.('Not enough Aero or materials.', 'coin'); return false; }
+    if (!cost || !this.canPay(cost)) { g.audio?.play('ui_error'); g.toast?.('Not enough Aero Bucks or materials.', 'coin'); return false; }
     if (cost.coins && !g.spendCoins(cost.coins)) return false;
     takeItems(st, cost.items);
     b.lvl = levelOf(b) + 1;

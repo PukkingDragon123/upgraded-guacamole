@@ -375,13 +375,13 @@ export class QuestCine {
       this.prep.push(prepWord('NEXT OCEAN', T.small));
       const nx = CHAPTERS[ch.n];
       if (nx) this.prep.push(prepWord(OCEAN_NAMES[nx.ocean] || nx.ocean, T.ocean));
-      for (const r of rewardList(ch.reward)) if (r.n) this.prep.push(prepWord((r.key === 'aero' ? '+' : 'x') + r.n, T.num));
+      for (const r of rewardList(ch.reward)) if (r.n) this.prep.push(prepWord(((r.key === 'aero' || r.key === 'gem') ? '+' : 'x') + r.n, T.num));
       if (this.mode() === 'full' || b.replay) { if (SCRIPTS[ch.id]) this.warmSet(ch.id, true); if (ch.outro) this.warmNpc(ch.outro.npc); }
       if (nx && this.mode() === 'full' && !b.replay) this.warmSet(nx.id); // the next opening follows right away
     } else if (b.kind === 'done' && b.q) {
       this.prep.push(prepRow('QUEST COMPLETE!', T.head));
       this.prep.push(prepWord(b.q.title.toUpperCase(), T.sub));
-      for (const r of rewardList(b.q.reward)) if (r.n) this.prep.push(prepWord((r.key === 'aero' ? '+' : 'x') + r.n, T.num));
+      for (const r of rewardList(b.q.reward)) if (r.n) this.prep.push(prepWord(((r.key === 'aero' || r.key === 'gem') ? '+' : 'x') + r.n, T.num));
       if (b.heavy) this.warmNpc(b.q.giver);
     } else if (b.kind === 'lab') {
       this.prep.push(prepWord('NEW RESEARCH!', { palette: 'leaf', size: 16, depth: 3, scale: 2 }));
@@ -1106,7 +1106,7 @@ export class QuestCine {
       ctx.drawImage(aeroSurface(s, s, { tone: r.big ? 'green' : 'white', r: 8, gloss: 0.7, glossH: Math.round(s * 0.4), curve: 2, rim: 0.9, glow: 0.6 }), Math.round(px - s / 2), Math.round(py - s / 2));
       try { this.art.rewardIcon(ctx, r, px, py, Math.round(s * 0.74), t, i); } catch { /* optional */ }
       if (r.n && k > 0.5) {
-        const txt = (r.key === 'aero' ? '+' : 'x') + r.n;
+        const txt = ((r.key === 'aero' || r.key === 'gem') ? '+' : 'x') + r.n;
         wordNow(txt, T.num);
         if (!drawWord(ctx, txt, T.num, px + s / 2 + S * 0.42, py + 1, backOut((k - 0.5) * 2))) drawText(ctx, txt, Math.round(px + s / 2 + 4), Math.round(py - 3), { color: '#ffffff', shadow: '#04264e' });
       }
@@ -1139,6 +1139,7 @@ export class QuestCine {
   targetOf(r) {
     const k = r.key || '';
     if (k === 'aero') return 'aero';
+    if (k === 'gem') return 'gem'; // [cur26] Byte Gems fly to the wallet's gem counter
     if (k.startsWith('bait:')) return 'bait';
     if (k.startsWith('cosmetic:')) return 'wardrobe';
     if (k.startsWith('food:')) return 'aquarium'; // [food24] a new tank food flies to the Aquarium button
@@ -1150,6 +1151,7 @@ export class QuestCine {
   targetPos(tgt) {
     const g = this.game, W = this.W, H = this.H;
     if (tgt === 'aero') { const c = g.ui?.coinTarget?.(); if (c) return [c.x, c.y]; return [W - 60, 16]; }
+    if (tgt === 'gem') { const c = g.ui?.gemTarget?.(); if (c) return [c.x, c.y]; return [W - 30, 16]; } // [cur26]
     for (const id of [tgt, 'inventory']) {
       let r = null;
       try { r = g.hud?.iconRect?.(id); } catch { r = null; }
@@ -1173,6 +1175,7 @@ export class QuestCine {
       if (k >= 1 && !f.done) {
         f.done = true;
         if (f.aero) { this.held = Math.max(0, this.held - f.aero); if (g.ui) g.ui.coinBump = 1; g.audio?.play?.('coin_collect', { vol: 0.45, pitch: 1 + f.i * 0.06 }); }
+        else if (f.tgt === 'gem') { if (g.ui) g.ui.gemBump = 1; g.audio?.play?.('sparkle', { vol: 0.5, pitch: 1.3 }); } // [cur26]
         else { g.audio?.play?.('icon_drop', { vol: 0.5 }); g.audio?.play?.('sparkle', { vol: 0.35 }); }
         try { g.particles?.pixelBurst?.('sparkle', tx, ty, 4, { layer: 'ui', ramp: f.aero ? 'aqua' : 'gold', size: 0 }); } catch { /* optional */ }
         if (!f.aero) try { g.particles?.pixelBurst?.('star', tx, ty, 3, { layer: 'ui', ramp: 'gold', size: 0, speed: [40, 90] }); } catch { /* optional */ }
@@ -1310,7 +1313,7 @@ export class QuestCine {
       if (fly >= 0) {
         const fk = clamp01((fly - (c.fly ? 0.1 + i * 0.12 : 0)) / (c.fly ? 0.7 : 0.4));
         if (c.fly) {
-          const tr = this.hud.trackerRowRect?.(c.q.id) || { x: 14, y: 60, w: 160, h: 26 };
+          const tr = this.hud.trackerRowRect?.(c.q.id) || { x: this.W - 180, y: Math.round(this.H * 0.3) + 14, w: 160, h: 26 };
           const ex = ease.inOutCubic(fk);
           x = lerp(rx, tr.x + 20, ex); yy = lerp(ry, tr.y + tr.h / 2, ex) - Math.sin(fk * Math.PI) * 40;
           sc = lerp(1, 0.32, ex); a = lerp(ang, -0.3, ex);
@@ -1596,7 +1599,7 @@ export class QuestCine {
       let x = rx, y = ry, s = sc * backOut(k), a = (i - (n - 1) / 2) * 0.06;
       const fk = clamp01((b.t - b.flyAt - i * 0.14) / 0.65);
       if (fk > 0) {
-        const tr = this.hud.trackerRowRect?.(c.q.id) || { x: 14, y: 60, w: 160, h: 26 };
+        const tr = this.hud.trackerRowRect?.(c.q.id) || { x: this.W - 180, y: Math.round(this.H * 0.3) + 14, w: 160, h: 26 };
         const e = ease.inOutCubic(fk);
         x = lerp(rx, tr.x + 20, e); y = lerp(ry, tr.y + tr.h / 2, e) - Math.sin(fk * Math.PI) * 50;
         s = lerp(sc, 0.26, e); a = lerp(a, -0.35, e);

@@ -43,7 +43,7 @@ import { pixelBubble, pixelCloud } from '../gfx/pxsprites.js';
 import { alagardReady, alagardBitmap, loadAlagard } from '../gfx/alagard.js';
 import { HI, withHi, hiArt, autoHi, fitHi, dualArt } from '../gfx/hires.js'; // [phase9:ui]
 
-export const CURRENCY = 'Aero';
+export const CURRENCY = 'Aero Bucks';
 export const AERO = {
   sky0: '#1e8fe0', sky1: '#59c3ff', sky2: '#bfeaff', aqua: '#2fd3e8', aquaDeep: '#0d8fb5', teal: '#1fb3a6',
   grass0: '#3fae2a', grass1: '#8be04a', lime: '#c8f56a', glass: 'rgba(235,250,255,0.55)', glassEdge: 'rgba(255,255,255,0.85)',

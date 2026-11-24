@@ -759,7 +759,7 @@ export class ChestPanel {
     for (let i = 0; i < ri; i++) ctx.drawImage(partSprite('star', i < ri ? mix(col, '#ffffff', 0.3) : '#8090a0', 1), Math.round(x + w / 2 - ri * 4 + i * 8 - 2), y + 5);
     const bob = Math.round(Math.sin(this.t * 3 + c.x) * 1.5);
     this.drawLootIcon(ctx, c, x + w / 2, y + h - Math.round(28 * k) + bob, 1);
-    const name = c.id === 'coins' ? `${fmtAero(c.qty)} Aero` : `${c.qty > 1 ? c.qty + 'x ' : ''}${ITEMS[c.id]?.name || c.id}`;
+    const name = c.id === 'coins' ? `${fmtAero(c.qty)} Aero Bucks` : `${c.qty > 1 ? c.qty + 'x ' : ''}${ITEMS[c.id]?.name || c.id}`;
     let label = name;
     while (measureText(label, 'small') > w - 8 && label.length > 4) label = label.slice(0, -2);
     if (label !== name) label += '.';

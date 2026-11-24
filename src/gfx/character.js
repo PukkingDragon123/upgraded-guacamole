@@ -1,5 +1,5 @@
 // The player: a cute, goofy BUBBLE PERSON (phase 3, Frutiger Aero). A little voxel body (top, bottom, gloves,
-// shoes, backpack) with a big translucent, glossy, iridescent soap-bubble head and big glossy CARTOON eyes.
+// shoes, backpack) with a big translucent, glossy, iridescent soap-bubble head and small hand-drawn pixel eyes.
 // Each animation frame poses the parts (FK angles + 2-bone IK for hands), stamps them into one voxel model and
 // renders it with voxel.js. The bubble pixels are then re-shaded in screen space (tint, rainbow thin-film rim,
 // fresnel transparency, window highlight + bounce light, a coloured rim instead of a dark outline). Frames are
@@ -14,7 +14,8 @@
 //   pose: idle | cast | reel | pull | yank | hold | cheer | sad | sit | wave | dance | flex | laugh | chat | think
 //         | stand | show | emote (= the look's equipped emote). One-shots ('cast', 'yank') take the time since the
 //   pose started and hold their last frame. facing 1 = right, -1 = left (3/4 views); yaw (deg) overrides facing.
-//   talk 0..1 opens the mouth (NPC chatter), mood 'happy'|'sad'|'surprised'|'angry'|'love'|'excited' tweaks the face.
+//   talk 0..1 opens the mouth (NPC chatter), mood 'happy'|'sad'|'surprised'|'angry'|'love'|'excited' tweaks the face,
+//   blink: true holds the eyes shut (one hand-drawn line).
 //   rod: false hides the rod; rodLook {kind, shaft, grip, reel, tip, glow} or a Lab rod id overrides the 'auto' rod skin.
 //   trail: false suppresses the trail effect (thumbnails).
 // Look (state.character): {tint, eyes, mouth, hat, hair, top, bottom, gloves, shoes, back, face, trail, emote, rod,
@@ -24,7 +25,7 @@
 //   WARDROBE_SLOTS, WARDROBE_BY_ID, ownsCosmetic(state, item|id), grantCosmetic(state, id), packageCosmetics(rarity),
 //   equipItem(look, item), isEquipped(look, item), boatPaint(look), itemPreview / drawItemPreview (thumbnails),
 //   EMOTES, warmCharacter, characterStats, setCharacterBudget.
-// Face helpers shared with npcs.js: faceFeatures(...), drawFaceLayer(...), drawCartoonEye(...), drawCartoonMouth(...).
+// Face helpers shared with npcs.js: faceFeatures(...), drawFaceLayer(...), drawEye(...) (hand-drawn pixel eyes), mouthPixel(...).
 
 import { VoxelModel, renderVoxels } from './voxel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
@@ -54,7 +55,7 @@ export const TINTS = {
 };
 const skinOfTint = (T) => (T.special === 'globe' ? '#c8f5a8' : T.special === 'gold' ? '#ffd84a' : T.special === 'chrome' ? '#cfd8e4' : T.special === 'stars' ? '#7a68d8' : mix(T.tint, '#ffffff', 0.18));
 
-// Eye styles (cartoon): drawn live on the bubble. See eyePixel().
+// Eye styles: hand-drawn pixel eyes drawn live on the bubble. See drawEye() / EYE_ART.
 export const EYE_STYLES = ['bean', 'sparkle', 'anime', 'happy', 'sleepy', 'star', 'heart', 'swirl', 'led', 'wink', 'dot', 'teary', 'derp'];
 export const MOUTH_STYLES = ['smile', 'grin', 'cat', 'o', 'tongue', 'fang', 'smirk', 'toothy', 'kiss', 'wobbly', 'beam'];
 
@@ -1632,78 +1633,131 @@ const inE = (u, v, rx, ry) => (u / rx) ** 2 + (v / ry) ** 2 <= 1;
 function starR(u, v) { const a = Math.atan2(v, u) + Math.PI / 2; const k = (Math.cos(a * 5) + 1) / 2; return 0.3 + 0.44 * k * k; }
 function heartIn(u, v, s = 1) { const x = (u / s) * 1.12, y = (-v / s) * 1.12 + 0.2; const a = x * x + y * y - 1; return a * a * a - x * x * y * y * y <= 0; }
 
-// One cartoon eye. E: {style, gu, gv (gaze, local), su, sv (light dir, local), lid 0..1, t, side (+1 left eye / -1 right), px (pixels per unit)}
-export function eyePixel(E, u, v) {
-  const { style, gu, gv, su, sv, lid, px } = E;
-  const th = Math.max(0.17, 1.15 / px); // line thickness in units, never thinner than ~1 px
-  let st = style;
+// Hand-drawn pixel eyes [eyes26]. Every expression is a tiny hand-authored bitmap drawn axis-aligned in screen
+// pixels at the eye's projected centre (no gradients, no glossy irises). Bitmaps are keyed by eye height in px;
+// bigger eyes reuse a drawing scaled up by a whole number so the pixels stay chunky and crisp. 'sad' is drawn
+// with the inner corner on the right (mirrored for the other eye; angry = sad mirrored, no glint).
+//   '#' ink   'o' white glint   '+' style colour   '.' empty
+const EYE_ART = {
+  open: {
+    2: ['#', '#'],
+    3: ['##', '##', '##'],
+    4: ['.#.', '#o#', '###', '.#.'],
+    5: ['.#.', '#o#', '###', '###', '.#.'],
+    6: ['.##.', '#o##', '####', '####', '####', '.##.'],
+    7: ['.##.', '#o##', '####', '####', '####', '####', '.##.'],
+    8: ['.###.', '#oo##', '#o###', '#####', '#####', '#####', '#####', '.###.'],
+    9: ['.###.', '#oo##', '#o###', '#####', '#####', '#####', '#####', '#####', '.###.'],
+    10: ['..##..', '.####.', '#oo###', '#oo###', '######', '######', '######', '######', '.####.', '..##..'],
+    12: ['..###..', '.#####.', '#oo####', '#oo####', '#######', '#######', '#######', '#######', '#######', '#######', '.#####.', '..###..'],
+  },
+  happy: { // ^ ^
+    3: ['.#.', '#.#'],
+    5: ['.#.', '#.#', '#.#'],
+    6: ['.##.', '#..#', '#..#'],
+    8: ['.###.', '##.##', '#...#', '#...#'],
+    10: ['..##..', '.####.', '##..##', '#....#', '#....#'],
+    12: ['..###..', '.#####.', '##...##', '#.....#', '#.....#'],
+  },
+  sad: { // droopy: the lid slopes down toward the outer corner
+    3: ['.#', '##', '##'],
+    5: ['..#', '.##', '#o#', '.#.'],
+    6: ['...#', '.###', '#o##', '####', '.##.'],
+    8: ['...##', '.####', '#o###', '#####', '#####', '.###.'],
+    10: ['....##', '..####', '.#o###', '#oo###', '######', '######', '.####.', '..##..'],
+    12: ['.....##', '...####', '.######', '#oo####', '#oo####', '#######', '#######', '.#####.', '..###..'],
+  },
+  wide: { // a little ring with a pin-prick pupil
+    3: ['.#.', '#o#', '.#.'],
+    5: ['.##.', '#oo#', '#o##', '.##.'],
+    6: ['.###.', '#ooo#', '#o#o#', '#ooo#', '.###.'],
+    8: ['..###..', '.#ooo#.', '#ooooo#', '#oo#oo#', '#ooooo#', '.#ooo#.', '..###..'],
+    10: ['..####..', '.#oooo#.', '#oooooo#', '#oo##oo#', '#oo##oo#', '#oooooo#', '.#oooo#.', '..####..'],
+  },
+  dot: { 2: ['#'], 5: ['##', '##'], 8: ['.##.', '####', '####', '.##.'] },
+  heart: {
+    3: ['+.+', '+++', '.+.'],
+    5: ['++.++', '+o+++', '+++++', '.+++.', '..+..'],
+    8: ['.++.++.', '+o+++++', '+++++++', '+++++++', '.+++++.', '..+++..', '...+...'],
+  },
+  star: {
+    3: ['.+.', '+++', '.+.'],
+    5: ['..+..', '.+o+.', '+++++', '.+++.', '.+.+.'],
+    8: ['...+...', '..+o+..', '+++++++', '.+++++.', '..+++..', '.++.++.', '.+...+.'],
+  },
+  swirl: { 5: ['#####', '#....', '#.###', '#...#', '#####'] },
+  led: { 3: ['++'], 5: ['+++', '+++'], 8: ['.++++.', '++++++', '++++++', '.++++.'] },
+};
+const EYE_COL = { '#': INK, o: '#ffffff', '-': '#7fd8ff' };
+const STYLE_COL = { heart: '#ff3a7a', star: '#ffcc2a', anime: '#2bb878', led: '#3fe0ff' };
+const OUTLINED = new Set(['heart', 'star']);
+const artKey = (set, h) => { let best = null; for (const k in set) if (+k <= h || best === null) best = +k; return best; };
+function eyeArt(set, h) {
+  const k = h > 12 ? Math.ceil(h / 12) : 1; // whole-number upscale keeps big eyes chunky
+  return { rows: EYE_ART[set][artKey(EYE_ART[set], Math.max(2, Math.round(h / k)))].map((r) => r.split('')), k };
+}
+
+// Draw one eye. f = feature frame (see faceFeatures), E = {style, gu, gv, lid, blink, wide, mode, mood, side,
+// inner (+1 = the nose is to the right on screen), px (pixels per feature unit), t}.
+export function drawEye(ctx, X, Y, f, E, mask) {
+  const h = clamp(Math.round(E.px * 1.35), 2, 48);
+  let st = E.style;
   if (st === 'wink') st = E.side < 0 ? 'happy' : 'bean';
   if (E.mode === 'happy' && st !== 'led' && st !== 'heart' && st !== 'star') st = 'happy';
-  if (st === 'happy') { const c = -0.42 + 0.78 * u * u; return Math.abs(u) < 0.86 && Math.abs(v - c) < th * 1.05 ? INK : null; }
-  if (lid >= 0.82 && st !== 'led') { const c = 0.18 - 0.4 * u * u; return Math.abs(u) < 0.82 && Math.abs(v - c) < th ? INK : null; }
-  const lidY = -1.05 + 2.1 * lid;
-  if (st === 'led') {
-    const ry = 0.48 * (1 - lid * 0.9) + 0.04;
-    if (Math.abs(u) > 0.82 || Math.abs(v) > ry) return null;
-    if ((Math.abs(u) > 0.62 && Math.abs(v) > ry - 0.2) && (Math.abs(u) - 0.62) ** 2 + (Math.abs(v) - (ry - 0.2)) ** 2 > 0.04) return null;
-    return Math.floor((v + 2) * px * 0.5) % 2 ? '#3fe0ff' : '#b8fbff';
+  let set = { happy: 'happy', heart: 'heart', star: 'star', swirl: h > 3 ? 'swirl' : 'open', dot: 'dot', led: 'led' }[st] || 'open';
+  if (set === 'open' && E.wide) set = 'wide';
+  if (set === 'open' && (E.mood === 'sad' || E.mood === 'angry')) set = 'sad';
+  const closed = E.blink || (E.lid >= 0.82 && st !== 'led');
+  // derp: one big goggly eye, one tiny dot; anime: a touch bigger with a green lower iris
+  const eh = st === 'derp' ? (E.side > 0 ? h + 2 : h) : st === 'anime' ? h + 1 : h;
+  let { rows, k } = eyeArt(st === 'derp' && E.side < 0 && set === 'open' ? 'dot' : set, eh);
+  let H = rows.length, W = rows[0].length;
+  if (set === 'sad') {
+    if (E.mood === 'angry') rows = rows.map((r) => r.map((c) => (c === 'o' ? '#' : c)));
+    if ((E.mood === 'angry') === (E.inner > 0)) rows = rows.map((r) => r.reverse());
   }
-  if (st === 'dot') {
-    const uu = u - gu * 0.4, vv = v - gv * 0.4;
-    if (!inE(uu, vv, 0.42, 0.48) || v < lidY) return null;
-    return (uu + 0.16) ** 2 + (vv + 0.18) ** 2 < Math.max(0.02, (0.55 / px) ** 2) ? '#ffffff' : INK;
+  if (set === 'open' && st === 'sparkle' && W >= 3 && H >= 4) rows[H - 2][W - 2] = 'o';
+  if (set === 'open' && st === 'anime' && H >= 5) for (let y = Math.ceil(H * 0.6); y < H - 1; y++) for (let x = 1; x < W - 1; x++) if (rows[y][x] === '#') rows[y][x] = '+';
+  if (set === 'swirl') for (let i = Math.floor((E.t || 0) * 6) % 4; i > 0; i--) rows = rows[0].map((_, x) => rows.map((row) => row[x]).reverse());
+  if (closed && !OUTLINED.has(set)) {
+    rows = [[...Array(W + 1)].map(() => '#')]; // blink: one flat line
+  } else if (set === 'open' || set === 'wide' || set === 'led') {
+    // flat lid (sleepy / squint / pose lids): shave rows off the top, the new top edge stays ink
+    const lid = Math.max(E.lid, st === 'sleepy' ? 0.48 : 0);
+    const cut = Math.min(H - 1, Math.round(lid * H * 0.9));
+    if (cut > 0) { rows = rows.slice(cut); rows[0] = rows[0].map((c) => (c === 'o' ? '#' : c)); }
   }
-  const scale = st === 'derp' ? (E.side > 0 ? 1.08 : 0.82) : 1;
-  u /= scale; v /= scale;
-  const tall = st === 'anime' ? 0.82 : st === 'bean' || st === 'sleepy' || st === 'teary' ? 0.86 : 1;
-  if (st === 'teary' && inE(u - 0.5, v - 1.12, 0.2, 0.28) && v > 0.95) return '#7fd8ff';
-  if (!inE(u, v, tall, 1)) return null;
-  if (v < lidY) return null;
-  if (lid > 0.02 && v < lidY + th) return INK;
-  const shine = (cx, cy, r) => (u - cx) ** 2 + (v - cy) ** 2 < Math.max(r * r, (0.7 / px) ** 2);
-  if (st === 'bean' || st === 'sleepy' || st === 'teary') {
-    const ou = gu * 0.18, ov = gv * 0.18;
-    if (shine(su * 0.36 + ou, sv * 0.4 + ov, st === 'teary' ? 0.34 : 0.3)) return '#ffffff';
-    if (shine(-su * 0.34 + ou, -sv * 0.4 + ov, 0.13)) return '#cfeaff';
-    if (st === 'teary' && shine(su * 0.05 + ou, 0.52, 0.12)) return '#ffffff';
-    const rr = (u / tall) ** 2 + v * v;
-    if (rr > (1 - th * 1.1) ** 2) return INK;
-    return v < -0.15 ? '#16245a' : v < 0.4 ? '#1f3f88' : '#3f86e8';
+  if ((st === 'teary' || E.mood === 'sad') && !closed && (set === 'open' || set === 'sad') && H >= 4) {
+    const tx = E.inner > 0 ? 0 : rows[0].length - 1;
+    rows.push(rows[0].map((_, x) => (x === tx ? '-' : '.')), rows[0].map((_, x) => (x === tx && H >= 8 ? '-' : '.')));
   }
-  // sclera styles
-  const rr = (u / tall) ** 2 + v * v;
-  if (rr > (1 - th) ** 2) return INK;
-  if (st === 'swirl') {
-    const r = Math.sqrt(rr), a = Math.atan2(v, u);
-    return r < 0.86 && fract(a / TAU + r * 2.1 - E.t * 1.4) < 0.36 ? INK : '#ffffff';
-  }
-  const gx = gu * 0.3, gy = gv * 0.3 + (st === 'derp' ? 0 : 0);
-  const dgx = st === 'derp' ? (E.side > 0 ? -0.32 : 0.34) + gu * 0.1 : gx, dgy = st === 'derp' ? (E.side > 0 ? -0.3 : 0.32) : gy;
-  const iu = u - dgx, iv = v - dgy;
-  if (st === 'heart') {
-    if (heartIn(iu, iv + 0.05, 0.78)) {
-      if (shine(su * 0.3 + dgx, sv * 0.32 + dgy, 0.16)) return '#ffffff';
-      return iv < -0.1 ? '#ff7ab0' : '#ff3a7a';
+  H = rows.length; W = rows[0].length;
+  // foreshortening: as the eye turns away, drop its middle columns (keeps the hand-drawn outline intact)
+  const la = Math.hypot(f.ax, f.ay), lb = Math.hypot(f.bx, f.by) || 1;
+  const cols = Math.max(Math.min(W, 2), Math.min(W, Math.round(W * Math.min(1, (la / lb) * 1.15))));
+  if (cols < W && OUTLINED.has(set)) ({ rows, k } = eyeArt(set, Math.max(2, Math.round(eh * 0.6))));
+  else if (cols < W) rows = rows.map((r) => { r = r.slice(); while (r.length > cols) r.splice(r.length >> 1, 1); return r; });
+  H = rows.length; W = rows[0].length;
+  const col = STYLE_COL[st] || STYLE_COL[set];
+  const gm = Math.max(1, Math.round(h * 0.16));
+  const x0 = Math.round(f.x - (W * k) / 2 + E.gu * gm), y0 = Math.round(f.y - (H * k) / 2 + (closed ? h * 0.15 : 0) + E.gv * gm * 0.8);
+  const put = (px, py, c) => {
+    ctx.fillStyle = c;
+    for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) {
+      const x = px + i, y = py + j;
+      if (!mask || (x >= 0 && y >= 0 && x < mask.w && y < mask.h && mask.d[y * mask.w + x])) ctx.fillRect(X + x, Y + y, 1, 1);
     }
-    return '#ffffff';
+  };
+  const cell = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? '.' : rows[y][x]);
+  if (OUTLINED.has(set)) {
+    for (let y = -1; y <= H; y++) for (let x = -1; x <= W; x++) {
+      if (cell(x, y) === '.' && (cell(x - 1, y) !== '.' || cell(x + 1, y) !== '.' || cell(x, y - 1) !== '.' || cell(x, y + 1) !== '.')) put(x0 + x * k, y0 + y * k, INK);
+    }
   }
-  if (st === 'star') {
-    const r = Math.hypot(iu, iv);
-    if (r < starR(iu, iv) * 1.05) return r < 0.18 ? '#fff6c0' : iv < 0 ? '#ffe04a' : '#ffb81a';
-    return '#ffffff';
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const ch = rows[y][x];
+    if (ch !== '.') put(x0 + x * k, y0 + y * k, ch === '+' ? (set === 'led' && y % 2 ? '#b8fbff' : col) : EYE_COL[ch]);
   }
-  const irisR = st === 'anime' ? 0.74 : st === 'derp' ? 0.4 : 0.66;
-  const ir = (iu / (st === 'anime' ? 0.82 : 1)) ** 2 + iv * iv;
-  if (shine(su * 0.38 + dgx, sv * 0.4 + dgy, st === 'anime' ? 0.24 : 0.21)) return '#ffffff';
-  if (shine(-su * 0.3 + dgx, -sv * 0.34 + dgy, 0.1)) return '#ffffff';
-  if (st === 'anime' && shine(su * 0.05 + dgx, sv * 0.5 + dgy, 0.08)) return '#ffffff';
-  if (ir < irisR * irisR) {
-    if (st === 'derp' || ir < (irisR * 0.5) ** 2) return INK;
-    if (st === 'anime') return iv < -0.2 ? '#127a58' : iv < 0.25 ? '#2bb878' : '#9cf0b8';
-    return iv < -0.2 ? '#0f78c8' : iv < 0.25 ? '#22b8e8' : '#8ff2ff';
-  }
-  if (st === 'anime' && v < -0.72) return INK;
-  return '#ffffff';
 }
 
 // Mouth. Mo: {style, state ('rest'|'open'|'grit'|'frown'|'grin'|'o'|'smirk'), open 0..1, px}
@@ -1874,7 +1928,7 @@ export function drawFaceLayer(ctx, face, X, Y, o) {
   st.vx += ((tx - st.gx) * 120 - st.vx * 12) * dt; st.vy += ((ty - st.gy) * 120 - st.vy * 12) * dt;
   if (p.wobble) { st.vx += (Math.random() - 0.5) * 40 * dt; st.vy += (Math.random() - 0.5) * 40 * dt; }
   st.gx = clamp(st.gx + st.vx * dt, -1, 1); st.gy = clamp(st.gy + st.vy * dt, -1, 1);
-  const blink = st.blinkT > 0 ? 1 : 0;
+  const blink = o.blink || st.blinkT > 0 ? 1 : 0;
   const lidBase = Math.max(p.lid || 0, (p.squint || 0) * 0.55, md.lid || 0, eyes === 'sleepy' ? 0.48 : 0);
   const lid = blink ? 1 : md.wide ? 0 : lidBase;
   const mstate = o.talk > 0.05 ? 'rest' : md.mouth && (p.mouth === 'rest') ? md.mouth : p.mouth;
@@ -1887,13 +1941,11 @@ export function drawFaceLayer(ctx, face, X, Y, o) {
     const vis = o.opaque ? (f.z < 0.02 ? 0 : f.z < 0.15 ? f.z / 0.15 : 1) : f.z < 0 ? 0.28 : f.z < 0.12 ? lerp(0.28, 1, f.z / 0.12) : 1;
     if (vis <= 0) continue;
     ctx.globalAlpha = a0 * vis;
-    const [su, sv] = localDir(f, -0.7, -0.7);
     if (k === 'eyeL' || k === 'eyeR') {
       const [gu, gv] = localDir(f, st.gx, st.gy);
       const gl = Math.min(1, Math.hypot(st.gx, st.gy));
-      const E = { style: eyes, gu: gu * gl, gv: gv * gl, su, sv, lid, t: o.t || 0, side: k === 'eyeL' ? 1 : -1, px: px, mode: blink ? null : p.eyeMode };
-      if (md.wide) E.lid = blink ? 1 : 0;
-      rasterFeature(ctx, X, Y, f, 1, 1.5, face.mask, (u, v) => eyePixel(E, u, v));
+      const E = { style: eyes, gu: gu * gl, gv: gv * gl, lid, blink, wide: md.wide && !blink, mood: o.mood, t: o.t || 0, side: k === 'eyeL' ? 1 : -1, inner: Math.sign(F.mid.x - f.x) || 1, px, mode: blink ? null : p.eyeMode };
+      drawEye(ctx, X, Y, f, E, face.mask);
     } else if (k === 'mouth') {
       const mpx = Math.hypot(f.ax, f.ay);
       const Mo = { style: o.mouth || 'smile', state: mstate, open: clamp01(o.talk || 0), px: mpx };
@@ -2030,7 +2082,7 @@ export function drawCharacter(ctx, x, y, o = {}) {
     ctx.drawImage(fr.glow, X, Y);
     ctx.globalCompositeOperation = prev; ctx.globalAlpha = pa;
   }
-  drawFaceLayer(ctx, fr.face, X, Y, { id: o.id ?? 'main', eyes: look.eyes, mouth: look.mouth, faceAcc: look.face, p: fr.p, lookAt: o.lookAt, talk: o.talk, mood: o.mood, t, sx });
+  drawFaceLayer(ctx, fr.face, X, Y, { id: o.id ?? 'main', eyes: look.eyes, mouth: look.mouth, faceAcc: look.face, p: fr.p, lookAt: o.lookAt, talk: o.talk, mood: o.mood, blink: o.blink, t, sx });
   const A = fr.anchors;
   const ax = (a) => [Math.round(x + a[0]), Math.round(y + a[1])];
   if (pose === 'hold' && o.fish?.compiled) {

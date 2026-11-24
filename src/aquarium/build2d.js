@@ -125,7 +125,7 @@ export class Build2D {
     if ((countItem(this.st, id) || 0) > 0 && removeItem(this.st, id, 1)) return { kind: 'satchel' };
     const o = this.offer(id);
     if (o.kind !== 'buy') { this.game.toast?.(o.why || 'Locked.', 'lock'); return null; }
-    if (!this.game.spendCoins?.(o.price)) { this.game.toast?.('Not enough Aero.', 'coin'); this.aq.sfx('ui_error'); return null; }
+    if (!this.game.spendCoins?.(o.price)) { this.game.toast?.('Not enough Aero Bucks.', 'coin'); this.aq.sfx('ui_error'); return null; }
     return { kind: 'aero', value: o.price };
   }
   refund(id, paid) {

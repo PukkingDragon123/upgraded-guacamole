@@ -74,7 +74,7 @@ export function craft(game, id, n = 1) {
   if (!recipeUnlocked(st, id)) return { ok: false, reason: 'Research it in the Lab first.' };
   if (r.cat === 'special') { game.ui?.open?.('bait', { tab: 'craft' }); return { ok: true, out: [] }; }
   const c = craftCheck(st, r, n);
-  if (!c.ok) return { ok: false, reason: c.aero.ok ? 'Missing materials.' : 'Not enough Aero.' };
+  if (!c.ok) return { ok: false, reason: c.aero.ok ? 'Missing materials.' : 'Not enough Aero Bucks.' };
   st.coins -= c.aero.need;
   const inv = (st.inventory ||= { items: {}, packages: [] }).items ||= {};
   for (const x of c.items) { inv[x.id] = (inv[x.id] || 0) - x.need; if (inv[x.id] <= 0) delete inv[x.id]; }

@@ -360,16 +360,16 @@
   });
 
   // src/gfx/font.js
-  function buildFont(def2) {
+  function buildFont(def3) {
     const entries = [];
     let atlasW = 0;
-    for (const [ch, src] of Object.entries(def2.glyphs)) {
+    for (const [ch, src] of Object.entries(def3.glyphs)) {
       const rows = src.split("|");
       const w = rows[0].length;
       entries.push({ ch, rows, w, x: atlasW });
       atlasW += w + 1;
     }
-    const atlasH = def2.height + def2.descent;
+    const atlasH = def3.height + def3.descent;
     const canvas = makeCanvas(atlasW, atlasH);
     const g = ctxOf(canvas);
     g.fillStyle = "#fff";
@@ -381,7 +381,7 @@
       glyphs2.set(e.ch, { x: e.x, w: e.w, h: e.rows.length });
     }
     withHi(canvas, () => enhanceHi(canvas, { bevel: 0, outlineLum: -1 }));
-    return { ...def2, atlas: canvas, glyphs: glyphs2, tints: /* @__PURE__ */ new Map(), atlasH };
+    return { ...def3, atlas: canvas, glyphs: glyphs2, tints: /* @__PURE__ */ new Map(), atlasH };
   }
   function bigGlyphs() {
     const ROWS2 = [0, 1, 1, 2, 3, 4, 5, 5, 6];
@@ -2041,14 +2041,14 @@
     g.nodes.push(sg.fade, sg.wet);
     return sg;
   }
-  function sceneClips(def2) {
-    const ids = def2.beds.map((b) => b[0]);
-    for (const e of def2.events) ids.push(...e.ids);
+  function sceneClips(def3) {
+    const ids = def3.beds.map((b) => b[0]);
+    for (const e of def3.events) ids.push(...e.ids);
     return ids;
   }
-  function startRecorded(g, def2) {
-    for (const [id2, vol, opts] of def2.beds) sWide(g, id2, { vol, ...opts || {} });
-    return def2.events.map((e) => ({
+  function startRecorded(g, def3) {
+    for (const [id2, vol, opts] of def3.beds) sWide(g, id2, { vol, ...opts || {} });
+    return def3.events.map((e) => ({
       min: e.min,
       max: e.max,
       first: e.first,
@@ -2125,7 +2125,7 @@
     st.mi = idx;
   }
   function makeTrack(name) {
-    const def2 = TRACKS[name], t = ctx.currentTime, fadeIn = def2.fadeIn ?? 2.5;
+    const def3 = TRACKS[name], t = ctx.currentTime, fadeIn = def3.fadeIn ?? 2.5;
     const fade = gainNode(0, B.music.in), wet = gainNode(0, B.music.verb);
     for (const g of [fade, wet]) {
       g.gain.setValueAtTime(0, t);
@@ -2133,7 +2133,7 @@
     }
     const tr = {
       name,
-      def: def2,
+      def: def3,
       fade,
       wet,
       i: 0,
@@ -2142,11 +2142,11 @@
       dead: false,
       stopAt: 0,
       nodes: [fade, wet],
-      stepDur: def2.stepDur ?? 60 / def2.bpm / 4
+      stepDur: def3.stepDur ?? 60 / def3.bpm / 4
     };
     tr.g = group(fade, wet, 1, 3);
-    tr.o = (tt, dest, verb) => ({ t: tt, p: 1, out: dest || fade, wet, verb: verb ?? def2.verb ?? 0.18, pool: "music", end: 0 });
-    if (def2.init) def2.init(tr);
+    tr.o = (tt, dest, verb) => ({ t: tt, p: 1, out: dest || fade, wet, verb: verb ?? def3.verb ?? 0.18, pool: "music", end: 0 });
+    if (def3.init) def3.init(tr);
     return tr;
   }
   function stopTrack(tr, fade = 2.5) {
@@ -7684,7 +7684,9 @@ void main() {
             const sl = S13.slits;
             for (let k = 0; k < sl.n; k++) {
               const us = sl.u0 + (sl.u1 - sl.u0) * (k / Math.max(1, sl.n - 1));
-              if (Math.abs((u - us - (v - 0.4) * 0.03) * L4 * r) < 0.55 && v > sl.v0 + k * (sl.dv ?? 0) && v < sl.v1) tone3(o, -0.35);
+              const ds = (u - us - (v - 0.4) * 0.03) * L4 * r;
+              if (Math.abs(ds) < 0.55 && v > sl.v0 + k * (sl.dv ?? 0) && v < sl.v1) tone3(o, -0.35);
+              else if (sl.frill && ds >= 0.55 && ds < 0.55 + (sl.frillW ?? 1.6) * (0.75 + 0.25 * Math.sin(v * 60)) && v > sl.v0 - 0.04 && v < sl.v1 + 0.04) mix3(o, o, hexRGB2(sl.frill), 0.75);
             }
           }
           if (lat && u >= lat.u0 && u <= lat.u1) {
@@ -8350,7 +8352,7 @@ void main() {
           return packRGB2(o3);
         };
         for (const sd of [1, -1]) {
-          const snap3 = 0.12 + 0.32 * Math.max(0, Math.sin(TAU2 * ph + (sd > 0 ? 0 : 2.4)));
+          const snap4 = 0.12 + 0.32 * Math.max(0, Math.sin(TAU2 * ph + (sd > 0 ? 0 : 2.4)));
           const shoulder = [Dp * 0.55, cy - Hc * 0.2, sd * W11 * 0.6];
           const elbow = [Dp * 0.95 + L4 * 0.04 * ck, cy - Hc * 0.12, sd * (W11 * 0.92 + L4 * 0.02 * ck)];
           const wrist = [Dp * 1.05 + L4 * 0.11 * ck, cy + Hc * 0.02, sd * (W11 * 0.62 + L4 * 0.02 * ck)];
@@ -8377,7 +8379,7 @@ void main() {
           };
           sol.tube(fing(fb, -0.12, fl, -0.35), (k) => L4 * 0.032 * Math.sqrt(ck) * (1 - 0.82 * k) + L4 * 4e-3, { col: fingerCol });
           const db = add3(add3(pc, e0, pl * 0.6), e1, ph2 * 0.45);
-          sol.tube(fing(db, snap3, fl * 1.08, 0.45), (k) => L4 * 0.03 * Math.sqrt(ck) * (1 - 0.8 * k) + L4 * 4e-3, { col: fingerCol });
+          sol.tube(fing(db, snap4, fl * 1.08, 0.45), (k) => L4 * 0.03 * Math.sqrt(ck) * (1 - 0.8 * k) + L4 * 4e-3, { col: fingerCol });
         }
         const thick = S13.legThick ?? 1;
         const elK = Math.min(1, Math.pow(0.42 / (S13.legLen ?? 0.42), 0.8)), el0 = 0.42 * elK * elK;
@@ -10308,8 +10310,8 @@ void main() {
       c.pectoral.R7 = TONES7.map((a) => P2(shade(satd(vc(look.pectoral?.color || finHex)), a * contrast)));
     }
     const lidHex = (e) => vc(e.lid || bodyHex);
-    const mkEye = (e, def2) => {
-      const o = { type: "normal", ...def2, ...e };
+    const mkEye = (e, def3) => {
+      const o = { type: "normal", ...def3, ...e };
       if (kind2 === "fish" && o.type !== "dot" && !e.keepSize) o.r = clamp(Math.max(o.r * 1.25, H8 * 0.16), 1, Math.max(o.r, H8 * 0.24));
       else if (o.type !== "dot" && !e.keepSize) o.r *= 1.18;
       o.pupilSize = e.pupilSize ? Math.max(0.5, e.pupilSize) : 0.6;
@@ -12877,16 +12879,16 @@ void main() {
     let nc = 0;
     for (let i = 0; i < N2; i++) if (!ext[i] && !opq(cls[i])) queue[nc++] = i;
     for (let pass = 0; pass < 4; pass++) {
-      let changed = 0;
+      let changed2 = 0;
       for (let q = pass & 1 ? nc - 1 : 0; pass & 1 ? q >= 0 : q < nc; pass & 1 ? q-- : q++) {
         const i = queue[q];
         if (ext[i]) continue;
         if (ext[i - 1] || ext[i + 1] || ext[i - NX2] || ext[i + NX2] || ext[i - NXY] || ext[i + NXY]) {
           ext[i] = 1;
-          changed++;
+          changed2++;
         }
       }
-      if (!changed) break;
+      if (!changed2) break;
     }
     const tB = now2();
     STAT.tF += tB - tA;
@@ -17619,15 +17621,17 @@ void main() {
       }
       return mTipY + (mCornerY - mTipY) * k - (mouth.curve ?? 6e-3) * L4 * Math.sin(Math.PI * k);
     };
-    const gAng = mouth && gape > 0 && mouth.type !== "inferior" ? gape * (mouth.gapeK ?? 0.42) : 0;
+    const gOpen = mouth ? Math.max(gape, mouth.rest || 0) : 0;
+    const gAng = mouth && gOpen > 0 && mouth.type !== "inferior" ? gOpen * (mouth.gapeK ?? 0.42) : 0;
     const hx2 = mouth ? xN - mouth.u * L4 : 0, hy = mouth ? mouthY2(mouth.u) : 0;
+    const thrust = mouth?.thrust ? mouth.thrust * L4 / (mouth.gapeK ?? 0.42) : 0;
     const jaw = (p) => {
       if (!gAng) return p;
       const u = (xN - p[0]) / L4;
       if (u > mouth.u * 1.3 || p[1] >= mouthY2(Math.min(u, mouth.u))) return p;
       const w = smooth2(mouth.u * 1.3, mouth.u * 0.85, u) * gAng;
       const cs = Math.cos(-w), sn = Math.sin(-w), dx = p[0] - hx2, dy = p[1] - hy;
-      return [hx2 + dx * cs - dy * sn, hy + dx * sn + dy * cs, p[2]];
+      return [hx2 + dx * cs - dy * sn + thrust * w, hy + dx * sn + dy * cs, p[2]];
     };
     const blind = flat ? rgb01(flat.blind || "#f4f2ee") : null;
     const nose = M6.nose;
@@ -18075,6 +18079,23 @@ void main() {
         }
       }
     }
+    if (S13.fangs && mouth) {
+      const tc = rgb01(S13.mouth?.teeth?.col || "#f4f8ff");
+      for (const fg of S13.fangs) {
+        const u = Math.max(4e-3, fg.u), X = xN - u * L4, Y = mouthY2(Math.min(u, mouth.u));
+        const up = fg.up ?? 1, tl = fg.len * L4;
+        const w = Math.max(45e-4 * L4, tl * (fg.w ?? 0.14));
+        const z = surf(u, Y) * (fg.out ?? 0.82);
+        const lean = (fg.lean ?? 0.12) * tl;
+        for (const sd of [1, -1]) {
+          const y0 = Y - up * 4e-3 * L4;
+          const base = [[X - w, y0, sd * z], [X + w, y0, sd * z], [X, y0, sd * Math.max(0, z - w * 1.4)]];
+          const tip = [X + lean, Y + up * tl, sd * z * 1.04];
+          const fix = (p) => D2(up > 0 ? jaw(p) : p);
+          part3(body, base.map(fix), fix(tip), tc, W11);
+        }
+      }
+    }
     const spK = S13.spines ? Math.max(infl, S13.spines.always ? 0.6 : 0) : 0;
     if (spK > 0.05) {
       const sl = S13.spines.len * L4 * spK;
@@ -18446,7 +18467,7 @@ void main() {
     if (kind2 === "star") kind2 = "starfish";
     let c = creatureC.get(kind2);
     if (c) return c;
-    const def2 = CREATURES[kind2];
+    const def3 = CREATURES[kind2];
     if (TURTLE_SP[kind2]) {
       c = { id: "cr:" + kind2, kind: kind2, turtle: true, L: 60, H: 30, voxK: 1.35, real: { plan: "turtle" } };
       creatureC.set(kind2, c);
@@ -18462,11 +18483,11 @@ void main() {
       creatureC.set(kind2, c);
       return c;
     }
-    if (!def2) return null;
-    const real = resolveReal({ real: def2.spec }, (h) => h, null);
-    if (def2.spec.flukes === null) real.flukes = null;
-    if (def2.spec.wave != null) real.wave = def2.spec.wave;
-    c = { id: "cr:" + kind2, kind: real.plan === "solid" ? real.kind : "fish", real, L: def2.L, H: def2.L * 0.3, look: {}, vc: (h) => h, variant: null, alpha: 255 };
+    if (!def3) return null;
+    const real = resolveReal({ real: def3.spec }, (h) => h, null);
+    if (def3.spec.flukes === null) real.flukes = null;
+    if (def3.spec.wave != null) real.wave = def3.spec.wave;
+    c = { id: "cr:" + kind2, kind: real.plan === "solid" ? real.kind : "fish", real, L: def3.L, H: def3.L * 0.3, look: {}, vc: (h) => h, variant: null, alpha: 255 };
     creatureC.set(kind2, c);
     return c;
   }
@@ -18592,9 +18613,9 @@ void main() {
       if (seamAt(x, z, 0.42)) return SEAM;
       const band = seamAt(x, z, 0.95);
       const dx = x - q.gx, dz = z - q.gz, d = Math.hypot(dx, dz), phi = Math.atan2(dz, dx);
-      const h1 = hash2(q.id, 3, 71), h2 = hash2(q.id, 5, 72), h310 = hash2(q.id, 7, 73);
+      const h1 = hash2(q.id, 3, 71), h2 = hash2(q.id, 5, 72), h311 = hash2(q.id, 7, 73);
       const st = sp.streak;
-      let s = 0.6 * Math.sin(3 * phi + h1 * TAU3) + 0.4 * Math.sin(6 * phi + h2 * TAU3) + 0.16 * Math.sin(11 * phi + h310 * TAU3) + 0.12 * Math.sin(d * 1.3 + h1 * 5);
+      let s = 0.6 * Math.sin(3 * phi + h1 * TAU3) + 0.4 * Math.sin(6 * phi + h2 * TAU3) + 0.16 * Math.sin(11 * phi + h311 * TAU3) + 0.12 * Math.sin(d * 1.3 + h1 * 5);
       s *= st;
       let c = tmix(BASE, OLV, 0.35 + 0.3 * h2);
       if (s > 0.5) c = tmix(c, AMB2, clamp013((s - 0.5) * 3));
@@ -18602,7 +18623,7 @@ void main() {
       if (s < -0.3) c = tmix(c, DARK2, clamp013((-s - 0.3) * 1.8));
       if (d < 1.4) c = tmix(c, DARK2, 0.45 * (1 - d / 1.4));
       if (sp.imbricate) {
-        const fl = Math.sin(4 * phi + h310 * TAU3 + d * 0.35);
+        const fl = Math.sin(4 * phi + h311 * TAU3 + d * 0.35);
         if (fl > 0.55) c = tmix(c, DARK2, 0.75);
         else if (fl < -0.6) c = tmix(c, OCH, 0.5);
       }
@@ -21858,20 +21879,20 @@ void main() {
         const y = (i / SYB | 0) % bny;
         cur[i] = tmp2[i] | (y > 0 ? tmp2[i - SYB] : 0) | (y < bny - 1 ? tmp2[i + SYB] : 0);
       }
-      let changed = false;
+      let changed2 = false;
       for (let i = 0; i < nb; i++) {
         const z = i / SZB | 0;
         const v = cur[i] | (z > 0 ? cur[i - SZB] : 0) | (z < bnz - 1 ? cur[i + SZB] : 0);
         tmp2[i] = v;
         if (v && bdist[i] === 255) {
           bdist[i] = pass;
-          changed = true;
+          changed2 = true;
         }
       }
       const q = cur;
       cur = tmp2;
       tmp2 = q;
-      if (!changed) break;
+      if (!changed2) break;
     }
     for (let i = 0; i < nb; i++) if (bdist[i] === 255) bdist[i] = 8;
     return { occ, SY, SZ, bdist, bnx, bny };
@@ -23945,10 +23966,10 @@ void main() {
   }
   function modelFor(a, ph = 0, extraY = 0) {
     const kind2 = modelKind(a);
-    const def2 = BAIT_MODELS[kind2];
-    const m = new VoxelModel(def2.dims[0], def2.dims[1] + extraY, def2.dims[2]);
-    def2.build(m, a || {}, (ph % 1 + 1) % 1);
-    return { model: m, def: def2, kind: kind2 };
+    const def3 = BAIT_MODELS[kind2];
+    const m = new VoxelModel(def3.dims[0], def3.dims[1] + extraY, def3.dims[2]);
+    def3.build(m, a || {}, (ph % 1 + 1) % 1);
+    return { model: m, def: def3, kind: kind2 };
   }
   var GL, METAL, h3, D, BAIT_MODELS;
   var init_baitmodels = __esm({
@@ -25897,7 +25918,7 @@ void main() {
       init_pxsprites();
       init_alagard();
       init_hires();
-      CURRENCY = "Aero";
+      CURRENCY = "Aero Bucks";
       AERO = {
         sky0: "#1e8fe0",
         sky1: "#59c3ff",
@@ -26342,13 +26363,13 @@ void main() {
   function ROD_MODEL(rod = {}) {
     const L4 = rod.look || {};
     const mb = new MeshBuilder();
-    const blank = L4.shaft || "#2f9ef0", grip = L4.grip || "#d8a868", reel = L4.reel || "#dfeefa", tip = L4.tip || "#ffffff";
+    const blank2 = L4.shaft || "#2f9ef0", grip = L4.grip || "#d8a868", reel = L4.reel || "#dfeefa", tip = L4.tip || "#ffffff";
     const A2 = [-0.78, -0.82, 0], B2 = [0.82, 0.86, 0];
     const at = (k) => [A2[0] + (B2[0] - A2[0]) * k, A2[1] + (B2[1] - A2[1]) * k, 0];
     const thick = (L4.kind === "trident" || L4.kind === "coil" ? 1.25 : L4.kind === "wand" ? 1.15 : 1) * 1.55;
     tube2(mb, [at(0), at(0.26)], 0.095 * thick, 6, (i, j) => jit(grip, j, 0.08));
     tube2(mb, [at(0.26), at(0.31)], 0.075 * thick, 6, mix(grip, "#ffffff", 0.35));
-    tube2(mb, [at(0.31), at(0.64), at(1)], (i) => [0.065, 0.048, 0.026][i] * thick, 6, (i, j) => jit(blank, i * 6 + j, 0.05));
+    tube2(mb, [at(0.31), at(0.64), at(1)], (i) => [0.065, 0.048, 0.026][i] * thick, 6, (i, j) => jit(blank2, i * 6 + j, 0.05));
     sphere(mb, at(1), 0.05 * thick, 0, tip);
     for (const k of [0.5, 0.7, 0.86]) {
       const p = at(k);
@@ -27233,10 +27254,10 @@ void main() {
     }
     return m;
   }
-  function voxelizeLayers(def2, res, rollZ = 0) {
+  function voxelizeLayers(def3, res, rollZ = 0) {
     const t02 = performance.now();
-    const meshes = [def2.mesh, def2.over, def2.glass].map((m) => rolled(m, rollZ));
-    const b0 = boundsOf([def2.mesh, def2.over, def2.glass]);
+    const meshes = [def3.mesh, def3.over, def3.glass].map((m) => rolled(m, rollZ));
+    const b0 = boundsOf([def3.mesh, def3.over, def3.glass]);
     const ext2 = Math.max(b0.max[0] - b0.min[0], b0.max[1] - b0.min[1], b0.max[2] - b0.min[2], 1e-3);
     const b = rollZ ? boundsOf(meshes) : b0;
     const vs = ext2 / res, iv = 1 / vs;
@@ -27252,7 +27273,7 @@ void main() {
       ensure2(N2);
       sample(mesh.data, G);
       flood2(NX2, NY2, NZ2);
-      out[kind2] = toModel(NX2, NY2, NZ2, kind2, def2.look || {});
+      out[kind2] = toModel(NX2, NY2, NZ2, kind2, def3.look || {});
     });
     out.c = [-ox, -oy, -oz];
     const dt = performance.now() - t02;
@@ -27291,9 +27312,9 @@ void main() {
     o.scaleF = f;
     return o;
   }
-  function modelLayers(def2, res) {
-    const base = fitModel(def2.vm, res);
-    const over2 = def2.vmOver ? fitModel(def2.vmOver, res) : null, glass2 = def2.vmGlass ? fitModel(def2.vmGlass, res) : null;
+  function modelLayers(def3, res) {
+    const base = fitModel(def3.vm, res);
+    const over2 = def3.vmOver ? fitModel(def3.vmOver, res) : null, glass2 = def3.vmGlass ? fitModel(def3.vmGlass, res) : null;
     let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
     for (const m of [base, over2, glass2]) {
       const b = m && m.bounds();
@@ -27952,12 +27973,12 @@ void main() {
   function ROD_VOX(rod = {}) {
     const L4 = rod.look || {};
     const m = new VoxelModel(52, 52, 14), p = palOf(m);
-    const blank = L4.shaft || "#2f9ef0", gripC = L4.grip || "#d8a868", reelC = L4.reel || "#dfeefa", tipC = L4.tip || "#ffffff";
+    const blank2 = L4.shaft || "#2f9ef0", gripC = L4.grip || "#d8a868", reelC = L4.reel || "#dfeefa", tipC = L4.tip || "#ffffff";
     const A2 = [6, 8, 7], B2 = [45, 47, 7];
     const at = (k) => [A2[0] + (B2[0] - A2[0]) * k, A2[1] + (B2[1] - A2[1]) * k, A2[2]];
     const kind2 = L4.kind || "stick";
     const fat = kind2 === "trident" || kind2 === "coil" ? 1.15 : 1;
-    const bl = p(blank, GL2), blD = p(shade(blank, -0.3), GL2), blL = p(mix(blank, "#ffffff", 0.45), GL2);
+    const bl = p(blank2, GL2), blD = p(shade(blank2, -0.3), GL2), blL = p(mix(blank2, "#ffffff", 0.45), GL2);
     const gr = p(gripC, kind2 === "stick" ? WOOD2 : SOFT), grD = p(shade(gripC, -0.3), MATTE), grL = p(mix(gripC, "#ffffff", 0.3), SOFT);
     const metal = p("#d4dce8", METAL2), metalD = p("#7a8aa0", METAL2), wrap = p(mix(tipC, gripC, 0.3), SOFT);
     m.sphere(...at(0), 2.6 * fat, grD);
@@ -27968,7 +27989,7 @@ void main() {
     tube3(m, [[...at(0.38), 1.55 * fat], [...at(0.7), 1.1 * fat], [...at(0.98), 0.7 * fat]], (u, x, y, z, d, nx, ny) => {
       const k = 0.38 + u * 0.6;
       if (guides.some((g) => Math.abs(g - k) < 0.012)) return wrap;
-      if (kind2 === "bamboo" || kind2 === "stick" && blank === "#8be04a") {
+      if (kind2 === "bamboo" || kind2 === "stick" && blank2 === "#8be04a") {
         if (Math.floor(k * 40) % 6 === 0) return blD;
       }
       return ny - nx > 0.6 ? blL : nx - ny > 0.7 ? blD : bl;
@@ -28496,11 +28517,11 @@ void main() {
     for (const [x, y] of [[12, 15], [13, 15], [11, 14], [14, 14], [10, 13], [15, 13], [9, 11], [16, 11], [9, 10], [10, 10], [15, 10], [16, 10], [11, 9], [12, 9], [13, 9], [14, 9], [10, 12], [15, 12]]) m.set(x, y, fz(x, y), arrow2);
     return { m, yaw: 22, pitch: 18 };
   }
-  function fitRender(def2, target) {
-    const base = { yaw: def2.yaw, pitch: def2.pitch, outline: true };
-    const probe = renderVoxels(def2.m, { ...base, scale: 1 });
+  function fitRender(def3, target) {
+    const base = { yaw: def3.yaw, pitch: def3.pitch, outline: true };
+    const probe = renderVoxels(def3.m, { ...base, scale: 1 });
     const s = clamp(Math.min((target - 2) / Math.max(1, probe.w - 2), (target - 2) / Math.max(1, probe.h - 2)), 0.5, 4);
-    return renderVoxels(def2.m, { ...base, scale: Math.floor(s * 20) / 20 });
+    return renderVoxels(def3.m, { ...base, scale: Math.floor(s * 20) / 20 });
   }
   function variant(src, kind2) {
     const W11 = src.width + PAD2 * 2, H8 = src.height + PAD2 * 2;
@@ -28598,45 +28619,45 @@ void main() {
     lpDefs.set(key, d);
     return d;
   }
-  function voxOf(def2, res, roll = 0) {
+  function voxOf(def3, res, roll = 0) {
     const k = res + "|" + (roll ? roll.toFixed(3) : 0);
-    let v = def2.vox.get(k);
+    let v = def3.vox.get(k);
     if (v !== void 0) return v;
     try {
-      v = def2.vm ? modelLayers(def2, res) : voxelizeLayers(def2, res, roll);
+      v = def3.vm ? modelLayers(def3, res) : voxelizeLayers(def3, res, roll);
     } catch (e) {
       console.error("voxel icon", e);
       v = null;
     }
-    def2.vox.set(k, v);
-    if (def2.vox.size > 40) def2.vox.delete(def2.vox.keys().next().value);
+    def3.vox.set(k, v);
+    if (def3.vox.size > 40) def3.vox.delete(def3.vox.keys().next().value);
     return v;
   }
-  function renderDef(def2, px3, turn, S13) {
-    if (def2.view0 && px3 < 52) def2 = { ...def2, yaw: def2.view0.yaw, pitch: def2.view0.pitch };
-    const res = def2.vm ? Math.max(14, Math.round(px3 / 1.9)) : iconRes(px3);
+  function renderDef(def3, px3, turn, S13) {
+    if (def3.view0 && px3 < 52) def3 = { ...def3, yaw: def3.view0.yaw, pitch: def3.view0.pitch };
+    const res = def3.vm ? Math.max(14, Math.round(px3 / 1.9)) : iconRes(px3);
     const T5 = px3 >= 64 ? 2 : 1;
-    const fk = px3 + "|" + res + "|" + (def2.yaw || 0).toFixed(2);
-    let fit2 = def2.fits.get(fk);
+    const fk = px3 + "|" + res + "|" + (def3.yaw || 0).toFixed(2);
+    let fit2 = def3.fits.get(fk);
     if (!fit2) {
-      const L0 = voxOf(def2, res, 0);
+      const L0 = voxOf(def3, res, 0);
       if (!L0) return null;
-      const e = layersExtent(L0, def2.yaw || 0, def2.pitch || 0);
+      const e = layersExtent(L0, def3.yaw || 0, def3.pitch || 0);
       const s = (px3 - 2 * T5 - 2) / Math.max(e.w, e.h, 1);
       fit2 = { s, dx: -e.cx * s, dy: -e.cy * s };
-      def2.fits.set(fk, fit2);
+      def3.fits.set(fk, fit2);
     }
-    const zs = def2.spinAxis === "z";
-    const L4 = voxOf(def2, res, zs ? turn : 0);
+    const zs = def3.spinAxis === "z";
+    const L4 = voxOf(def3, res, zs ? turn : 0);
     if (!L4) return null;
     return renderLayers(L4, {
       S: S13 || Math.round(px3 * 1.3) + 8,
       s: fit2.s,
       dx: fit2.dx,
       dy: fit2.dy,
-      yaw: (def2.yaw || 0) + (zs ? 0 : turn),
-      pitch: def2.pitch || 0,
-      glassAlpha: def2.glassAlpha ?? 0.4,
+      yaw: (def3.yaw || 0) + (zs ? 0 : turn),
+      pitch: def3.pitch || 0,
+      glassAlpha: def3.glassAlpha ?? 0.4,
       T: T5
     });
   }
@@ -28668,8 +28689,8 @@ void main() {
     }
     return hiSpent < 5;
   }
-  function turnStep(def2, turn) {
-    const full = def2.spin === "full";
+  function turnStep(def3, turn) {
+    const full = def3.spin === "full";
     const steps = full ? SPIN_FULL : SPIN_WOB;
     const q = full ? Math.round((turn % 1 + 1) % 1 * steps) % steps : Math.round(Math.max(-1, Math.min(1, turn)) * (steps / 2));
     const ang = full ? q / steps * Math.PI * 2 : q / (steps / 2) * 0.5;
@@ -28677,9 +28698,9 @@ void main() {
   }
   function detailFrame(map2, key, make, px3, turn, force, minPx, eager = false) {
     px3 = Math.max(minPx, Math.round(px3));
-    const def2 = prepModel(key, make);
-    if (!def2) return null;
-    const { q, steps, ang } = turnStep(def2, turn);
+    const def3 = prepModel(key, make);
+    if (!def3) return null;
+    const { q, steps, ang } = turnStep(def3, turn);
     const k = key + "|" + px3 + "|" + q;
     let e = map2.get(k);
     if (e !== void 0) return e;
@@ -28688,7 +28709,7 @@ void main() {
     let canvas = null;
     const S13 = Math.round(px3 * 1.3) + 8;
     try {
-      canvas = renderDef(def2, px3, ang, S13);
+      canvas = renderDef(def3, px3, ang, S13);
     } catch (err) {
       console.error("voxel icon " + key, err);
       canvas = null;
@@ -28697,7 +28718,7 @@ void main() {
     if (canvas && eager) {
       let big = null;
       try {
-        big = renderDef(def2, px3 * HI, ang, S13 * HI);
+        big = renderDef(def3, px3 * HI, ang, S13 * HI);
       } catch {
         big = null;
       }
@@ -28708,7 +28729,7 @@ void main() {
         const t02 = performance.now();
         let big = null;
         try {
-          big = renderDef(def2, px3 * HI, ang, S13 * HI);
+          big = renderDef(def3, px3 * HI, ang, S13 * HI);
         } catch {
           big = null;
         }
@@ -29342,17 +29363,17 @@ kmlmk..
     if (!id2) return null;
     const n2 = countOf(state, id2);
     if (n2 <= 0) return null;
-    const def2 = baitDef(state, id2);
-    if (!def2) return null;
+    const def3 = baitDef(state, id2);
+    if (!def3) return null;
     let o = curCache.get(id2);
-    if (!o || o.def !== def2) {
+    if (!o || o.def !== def3) {
       let mini = null;
       try {
-        mini = baitMini(def2.art);
+        mini = baitMini(def3.art);
       } catch (e) {
         mini = null;
       }
-      o = { id: id2, name: def2.name, label: def2.name, type: def2.type, kind: "bait", effect: def2.effect, base: def2.recipe?.base || id2, count: n2, mods: modsOf(def2), mini, art: def2.art, def: def2 };
+      o = { id: id2, name: def3.name, label: def3.name, type: def3.type, kind: "bait", effect: def3.effect, base: def3.recipe?.base || id2, count: n2, mods: modsOf(def3), mini, art: def3.art, def: def3 };
       curCache.set(id2, o);
       if (curCache.size > 64) curCache.delete(curCache.keys().next().value);
     }
@@ -30614,7 +30635,7 @@ kmlmk..
           this.draw1(ctx3, mask, mx2, my, t, alpha, opts);
         }
         drawHi(ctx3, mask, mx2, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}, R7 = 2) {
-          var _a4;
+          var _a6;
           if (!this.hiLayers) this.hiLayers = /* @__PURE__ */ new Map();
           let L4 = this.hiLayers.get(mask);
           if (!L4) {
@@ -30628,7 +30649,7 @@ kmlmk..
           const ck = fi * 1e5 + sx;
           if (L4.ck !== ck) {
             L4.ck = ck;
-            (_a4 = L4.pats)[fi] || (_a4[fi] = g.createPattern(this.hiFrame(fi, R7), "repeat"));
+            (_a6 = L4.pats)[fi] || (_a6[fi] = g.createPattern(this.hiFrame(fi, R7), "repeat"));
             g.globalCompositeOperation = "source-over";
             g.globalAlpha = 1;
             g.clearRect(0, 0, L4.w, L4.h);
@@ -31685,6 +31706,279 @@ kmlmk..
     }
   });
 
+  // src/gfx/unlockprops.js
+  function rbox2(m, x0, y0, z0, x1, y1, z1, r, c) {
+    const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2, cz = (z0 + z1 + 1) / 2;
+    const hx2 = (x1 + 1 - x0) / 2 - r, hy = (y1 + 1 - y0) / 2 - r, hz = (z1 + 1 - z0) / 2 - r;
+    for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+      const qx = Math.abs(x + 0.5 - cx) - hx2, qy = Math.abs(y + 0.5 - cy) - hy, qz = Math.abs(z + 0.5 - cz) - hz;
+      if (Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0) <= r) m.put(x, y, z, c);
+    }
+  }
+  var h34, DEFS, def, UNLOCK_PROPS;
+  var init_unlockprops = __esm({
+    "src/gfx/unlockprops.js"() {
+      init_voxel();
+      h34 = (x, y, z, s = 0) => {
+        let h = x * 374761393 + y * 668265263 + z * 2147483647 + s * 1442695041 | 0;
+        h = Math.imul(h ^ h >>> 13, 1274126177);
+        return ((h ^ h >>> 16) >>> 0) / 4294967296;
+      };
+      DEFS = {};
+      def = (id2, meta, build4) => {
+        DEFS[id2] = { meta: { biome: "aquarium", decorOnly: true, ...meta }, build: build4 };
+      };
+      def("research_bench", {
+        name: "Research Bench",
+        tags: ["unlock", "glow", "machine"],
+        decor: { price: 5, size: 2 },
+        desc: "Professor Fizz's travel lab. Bubbling flasks, a microscope and a very serious clipboard."
+      }, () => {
+        const m = new VoxelModel(60, 54, 30);
+        const top = [m.color("#f4fbff", { smooth: 0.7, spec: 1.6, specPow: 9 }), m.color("#d8eef8", { smooth: 0.6 })];
+        const body = m.color("#3ab8e8", { smooth: 0.65, spec: 1.8, specPow: 10, jitter: 0.02 });
+        const bodyD = m.color("#2486c4", { smooth: 0.5 });
+        const leg = m.color("#c8d4e0", { smooth: 0.6, spec: 2.2, specPow: 12 });
+        const knob = m.color("#ffd84a", { smooth: 0.6, spec: 2 });
+        const glass2 = m.color("#e8fbff", { smooth: 0.8, spec: 2.6, specPow: 14, light: 0.2 });
+        const goo = m.color("#7aff6a", { emissive: 0.7, smooth: 0.5 });
+        const gooD = m.color("#3ad84a", { emissive: 0.45 });
+        const bub2 = m.color("#e8ffe0", { emissive: 0.8 });
+        const dark = m.color("#2a3442", { smooth: 0.5 });
+        const scope = m.color("#ffffff", { smooth: 0.7, spec: 2 });
+        const tubes2 = ["#ff6a8a", "#ffd23a", "#5ad0ff", "#b88aff"].map((c) => m.color(c, { emissive: 0.35, smooth: 0.5 }));
+        const paper = m.color("#fffbe8", { smooth: 0.4 });
+        const ink = m.color("#4a6aa8");
+        rbox2(m, 4, 3, 6, 26, 22, 25, 2, body);
+        m.box(6, 13, 26, 24, 13, 26, bodyD);
+        m.box(13, 17, 26, 17, 18, 27, knob);
+        m.box(13, 7, 26, 17, 8, 27, knob);
+        for (const [x, z] of [[50, 8], [50, 23], [30, 8], [30, 23]]) m.box(x, 0, z, x + 2, 22, z + 2, leg);
+        m.box(4, 0, 7, 26, 2, 24, bodyD);
+        m.box(30, 6, 8, 52, 7, 25, leg);
+        rbox2(m, 2, 23, 4, 56, 26, 27, 1, top[0]);
+        m.box(2, 23, 27, 56, 23, 27, top[1]);
+        m.sphere(13, 33, 15, 6.5, glass2);
+        m.paint(() => {
+          for (let y = 27; y <= 33; y++) for (let z = 8; z <= 22; z++) for (let x = 6; x <= 20; x++) m.put(x, y, z, y >= 33 ? gooD : goo);
+        });
+        m.cylinder(13, 15, 38, 44, 2, glass2);
+        m.cylinder(13, 15, 45, 46, 2.4, dark);
+        m.sphere(12, 49, 16, 1.2, bub2);
+        m.sphere(15, 52, 15, 0.9, bub2);
+        m.box(24, 27, 10, 32, 28, 18, dark);
+        m.box(29, 29, 12, 31, 40, 14, scope);
+        m.line(29, 40, 13, 24, 44, 15, scope, 1.3);
+        m.cylinder(24, 15, 37, 44, 1.6, dark);
+        m.box(23, 31, 13, 26, 31, 17, glass2);
+        m.cylinder(24, 15, 45, 46, 2, dark);
+        m.box(38, 27, 12, 52, 28, 18, leg);
+        m.box(38, 32, 12, 52, 32, 18, leg);
+        tubes2.forEach((c, i) => {
+          const x = 40 + i * 3.4;
+          m.cylinder(x, 15, 29, 38 - i % 2 * 2, 1.1, glass2);
+          m.cylinder(x, 15, 29, 33 - i % 2 * 1, 1.1, c);
+        });
+        m.box(42, 27, 21, 51, 27, 25, paper);
+        for (let i = 0; i < 3; i++) m.box(44, 27, 22 + i, 49 - i % 2 * 2, 27, 22 + i, ink);
+        void h34;
+        return { m, yaw: 24, pitch: 24, ground: [29, 0, 16], anchors: { top: [13, 47, 15] }, light: "#7aff6a" };
+      });
+      def("bookshelf", {
+        name: "Bookshelf",
+        tags: ["unlock", "home"],
+        decor: { price: 15, size: 1 },
+        desc: "Every fish book ever written. Mostly picture books. Fish cannot read."
+      }, () => {
+        const m = new VoxelModel(42, 70, 20);
+        const wood = [m.color("#b0703c", { jitter: 0.05, smooth: 0.4 }), m.color("#8e5630", { jitter: 0.04 }), m.color("#cf9258", { smooth: 0.5 })];
+        const back = m.color("#6a4428", { jitter: 0.04 });
+        const cols = ["#ff6a6a", "#3ab8e8", "#ffd23a", "#7ad84a", "#b88aff", "#ff9a3a", "#ffffff", "#38c8b8"].map((c) => m.color(c, { smooth: 0.55, spec: 1.2 }));
+        const gold = m.color("#ffd23a", { smooth: 0.7, spec: 2.6, specPow: 12 });
+        const fish = m.color("#ff9a3a", { smooth: 0.6, spec: 1.6 });
+        m.box(3, 0, 3, 38, 54, 4, back);
+        for (const x of [2, 37]) m.box(x, 0, 3, x + 2, 55, 17, wood[0]);
+        for (const y of [0, 18, 36, 53]) m.box(2, y, 3, 39, y + 1, 17, y === 53 ? wood[2] : wood[0]);
+        m.box(1, 56, 2, 40, 57, 18, wood[2]);
+        m.box(2, 0, 17, 39, 1, 17, wood[1]);
+        for (const [y0, seed] of [[2, 1], [20, 2], [38, 3]]) {
+          let x = 5;
+          let i = 0;
+          while (x < 35) {
+            const w = 2 + Math.floor(h34(x, y0, seed) * 2.2);
+            const h = 10 + Math.floor(h34(x, seed, y0) * 6);
+            const c = cols[Math.floor(h34(i, seed, 7) * cols.length)];
+            if (x + w > 36) break;
+            if (h34(x, y0, seed + 9) < 0.12 && x < 30) {
+              for (let k = 0; k < h; k++) m.box(x + Math.floor(k * 0.4), y0 + k, 6, x + Math.floor(k * 0.4) + w - 1, y0 + k, 15, c);
+              x += w + 5;
+            } else {
+              m.box(x, y0, 6, x + w - 1, y0 + h - 1, 15, c);
+              m.box(x, y0 + h - 3, 16, x + w - 1, y0 + h - 3, 16, gold);
+              x += w;
+            }
+            i++;
+          }
+        }
+        m.box(17, 58, 7, 24, 59, 13, gold);
+        m.box(19, 60, 9, 22, 61, 11, gold);
+        m.ellipsoid(20, 65, 10, 4, 2.6, 2, fish);
+        m.box(24, 64, 10, 26, 67, 10, fish);
+        return { m, yaw: 22, pitch: 22, ground: [20, 0, 10] };
+      });
+      def("tackle_box", {
+        name: "Tackle Box",
+        tags: ["unlock", "toy"],
+        decor: { price: 15, size: 1 },
+        desc: "Trays of shiny lures and squishy worms. Organised by vibe."
+      }, () => {
+        const m = new VoxelModel(48, 40, 30);
+        const shell = m.color("#4ac85a", { smooth: 0.65, spec: 1.8, specPow: 10, jitter: 0.02 });
+        const shellD = m.color("#2e9a48", { smooth: 0.5 });
+        const tray = m.color("#e8f6ff", { smooth: 0.6, spec: 1.4 });
+        const latch = m.color("#ffd23a", { smooth: 0.7, spec: 2.4 });
+        const handle = m.color("#2a3442", { smooth: 0.5 });
+        const lures = ["#ff4a6a", "#ffd23a", "#3ab8e8", "#ff9a3a", "#b88aff", "#ffffff"].map((c) => m.color(c, { smooth: 0.6, spec: 2, emissive: 0.15 }));
+        const hook = m.color("#c8d4e0", { spec: 2.6, specPow: 14 });
+        const worm2 = m.color("#ff8aa8", { smooth: 0.5 });
+        rbox2(m, 4, 0, 6, 43, 14, 25, 2, shell);
+        m.box(4, 0, 25, 43, 1, 25, shellD);
+        m.box(20, 10, 26, 27, 12, 26, latch);
+        rbox2(m, 4, 15, 1, 43, 33, 5, 2, shell);
+        m.box(8, 18, 6, 39, 30, 6, shellD);
+        m.box(16, 34, 2, 31, 35, 4, handle);
+        m.box(16, 31, 2, 17, 34, 4, handle);
+        m.box(30, 31, 2, 31, 34, 4, handle);
+        for (const [y, z0] of [[15, 9], [19, 15]]) {
+          m.box(6, y, z0, 41, y + 1, z0 + 8, tray);
+          for (let x = 6; x <= 41; x += 7) m.box(x, y + 2, z0, x, y + 3, z0 + 8, tray);
+          for (let c = 0; c < 5; c++) {
+            const col = lures[(c + y) % lures.length];
+            const lx = 9 + c * 7;
+            m.ellipsoid(lx, y + 3, z0 + 4, 2.2, 1.3, 1.3, col);
+            m.set(lx + 2, y + 3, z0 + 4, hook);
+            m.set(lx + 3, y + 2, z0 + 4, hook);
+          }
+        }
+        m.tube([[36, 20, 24, 0.9], [38, 17, 27, 0.9], [37, 12, 28, 0.9], [39, 9, 28, 0.9]], worm2, 4);
+        return { m, yaw: 22, pitch: 26, ground: [24, 0, 15] };
+      });
+      def("vanity_mirror", {
+        name: "Mirror",
+        tags: ["unlock", "fancy"],
+        decor: { price: 20, size: 1 },
+        desc: "Mirror, mirror, in the tank. Who is the shiniest? (It is always you.)"
+      }, () => {
+        const m = new VoxelModel(36, 64, 16);
+        const gold = [m.color("#ffd23a", { smooth: 0.75, spec: 2.8, specPow: 12 }), m.color("#e0a020", { smooth: 0.6, spec: 1.8 })];
+        const glass2 = m.color("#d8f6ff", { smooth: 0.95, spec: 3, specPow: 18, light: 0.25 });
+        const glint2 = m.color("#ffffff", { emissive: 0.6, smooth: 0.9 });
+        const wood = m.color("#b0703c", { jitter: 0.04, smooth: 0.4 });
+        const gem = m.color("#ff7ab4", { emissive: 0.35, smooth: 0.8, spec: 2.4 });
+        const cx = 18, cy = 38, rx2 = 12.5, ry2 = 19;
+        for (let y = 0; y < 64; y++) for (let x = 0; x < 36; x++) {
+          const d = ((x + 0.5 - cx) / rx2) ** 2 + ((y + 0.5 - cy) / ry2) ** 2;
+          if (d <= 1) {
+            const rim = ((x + 0.5 - cx) / (rx2 - 2.2)) ** 2 + ((y + 0.5 - cy) / (ry2 - 2.2)) ** 2 > 1;
+            if (rim) m.box(x, y, 6, x, y, 9, h34(x, y, 3) < 0.15 ? gold[1] : gold[0]);
+            else {
+              m.box(x, y, 6, x, y, 8, wood);
+              const s = x - cx + (y - cy) * 0.55;
+              m.set(x, y, 9, s > -6 && s < -3 || s > 1 && s < 2.5 ? glint2 : glass2);
+            }
+          }
+        }
+        m.sphere(cx, cy + ry2 + 1, 8, 2.2, gem);
+        m.box(cx - 3, cy + ry2 - 1, 7, cx + 3, cy + ry2, 9, gold[0]);
+        for (const s of [-1, 1]) {
+          m.line(cx + s * 8, cy - 15, 7, cx + s * 11, 1, 7, gold[0], 1.1);
+          m.box(cx + s * 11 - 2, 0, 4, cx + s * 11 + 2, 1, 11, gold[1]);
+        }
+        return { m, yaw: 18, pitch: 18, ground: [cx, 0, 8] };
+      });
+      def("net_rack", {
+        name: "Net Rack",
+        tags: ["unlock", "home"],
+        decor: { price: 20, size: 1 },
+        desc: "A landing net and a bucket. For gently moving fish about. Very gently."
+      }, () => {
+        const m = new VoxelModel(46, 58, 22);
+        const wood = [m.color("#b0703c", { jitter: 0.05, smooth: 0.4 }), m.color("#8e5630", { jitter: 0.04 })];
+        const rope = m.color("#f0e0b0", { smooth: 0.3 });
+        const hoop = m.color("#3ab8e8", { smooth: 0.7, spec: 2.2, specPow: 10 });
+        const mesh = m.color("#e8f6ff", { smooth: 0.4, light: 0.1 });
+        const pail = m.color("#ff9a3a", { smooth: 0.65, spec: 1.8 });
+        const pailD = m.color("#d86a20", { smooth: 0.5 });
+        const water = m.color("#5ad8ff", { emissive: 0.25, smooth: 0.8, spec: 2 });
+        const fin2 = m.color("#ffd23a", { smooth: 0.6 });
+        m.box(6, 0, 8, 9, 52, 11, wood[0]);
+        m.box(1, 0, 8, 14, 2, 11, wood[1]);
+        m.box(6, 0, 3, 9, 2, 16, wood[1]);
+        m.box(6, 50, 8, 30, 53, 11, wood[0]);
+        m.box(28, 46, 9, 29, 49, 10, rope);
+        m.line(28.5, 46, 10, 28.5, 34, 10, wood[1], 0.9);
+        for (let a = 0; a < 64; a++) {
+          const t = a / 64 * Math.PI * 2;
+          m.set(28.5 + Math.cos(t) * 8, 26 + Math.sin(t) * 7, 10, hoop);
+          m.set(28.5 + Math.cos(t) * 8, 26 + Math.sin(t) * 7, 11, hoop);
+        }
+        for (let y = 9; y <= 26; y++) {
+          const r = 7.5 * Math.sqrt(Math.max(0, (y - 8) / 18));
+          for (let x = Math.ceil(28.5 - r); x <= Math.floor(28.5 + r); x++) if ((x + y) % 2 === 0) m.set(x, y, 10, mesh);
+        }
+        m.cylinder(38, 15, 0, 11, 6, pail);
+        m.cylinder(38, 15, 0, 1, 6, pailD);
+        m.cylinder(38, 15, 10, 11, 6.5, pailD);
+        m.cylinder(38, 15, 9, 10, 5, water);
+        m.box(37, 11, 15, 39, 14, 15, fin2);
+        m.box(36, 14, 15, 40, 14, 15, fin2);
+        return { m, yaw: 22, pitch: 24, ground: [22, 0, 12] };
+      });
+      def("workbench", {
+        name: "Workbench",
+        tags: ["unlock", "build"],
+        decor: { price: 60, size: 2 },
+        desc: "Marina's spare bench: a vise, a mallet and a pegboard of very organised tools."
+      }, () => {
+        const m = new VoxelModel(60, 56, 28);
+        const wood = [m.color("#c8884a", { jitter: 0.05, smooth: 0.45 }), m.color("#9a6236", { jitter: 0.04 }), m.color("#e0a868", { smooth: 0.5 })];
+        const board = m.color("#e8d8b8", { smooth: 0.3 });
+        const hole = m.color("#a89878");
+        const steel = m.color("#c8d4e0", { smooth: 0.7, spec: 2.6, specPow: 12 });
+        const red = m.color("#ff5a4a", { smooth: 0.6, spec: 1.8 });
+        const blue = m.color("#3ab8e8", { smooth: 0.6, spec: 1.8 });
+        const yel = m.color("#ffd23a", { smooth: 0.6, spec: 1.8 });
+        const dark = m.color("#2a3442", { smooth: 0.5 });
+        for (const [x, z] of [[5, 7], [5, 22], [52, 7], [52, 22]]) m.box(x, 0, z, x + 3, 21, z + 3, wood[1]);
+        m.box(5, 6, 8, 55, 7, 24, wood[0]);
+        for (let x = 2; x <= 57; x++) m.box(x, 22, 4, x, 25, 26, x % 9 === 0 ? wood[1] : wood[x % 2 ? 0 : 2]);
+        m.box(6, 26, 3, 53, 52, 4, board);
+        for (let y = 29; y <= 50; y += 3) for (let x = 9; x <= 51; x += 3) m.set(x, y, 5, hole);
+        m.box(6, 52, 3, 53, 53, 5, wood[1]);
+        m.line(12, 46, 5, 12, 33, 5, steel, 0.9);
+        m.box(10, 46, 5, 14, 49, 5, steel);
+        m.box(11, 48, 5, 13, 49, 6, board);
+        m.box(19, 36, 5, 31, 41, 5, steel);
+        m.box(31, 35, 5, 35, 42, 6, red);
+        for (let x = 19; x <= 31; x += 2) m.set(x, 35, 5, steel);
+        m.line(41, 47, 5, 41, 39, 5, steel, 0.6);
+        m.box(40, 32, 5, 42, 38, 6, blue);
+        m.box(46, 45, 5, 51, 48, 6, steel);
+        m.line(48.5, 44, 5, 48.5, 32, 5, yel, 0.9);
+        m.box(6, 26, 18, 16, 29, 25, steel);
+        m.box(6, 30, 18, 8, 34, 25, steel);
+        m.box(14, 30, 18, 16, 34, 25, steel);
+        m.line(11, 28, 26, 11, 28, 28, dark, 0.7);
+        m.box(8, 27, 28, 14, 28, 28, dark);
+        m.box(30, 26, 14, 36, 30, 20, wood[2]);
+        m.line(33, 28, 20, 33, 28, 26, wood[1], 0.8);
+        for (const x of [42, 45, 47]) m.box(x, 26, 18 + x % 3, x, 27, 18 + x % 3, steel);
+        return { m, yaw: 24, pitch: 24, ground: [30, 0, 15] };
+      });
+      UNLOCK_PROPS = DEFS;
+    }
+  });
+
   // src/gfx/props.js
   function noise3(x, y, z, seed = 0) {
     x += seed * 17.13;
@@ -31930,7 +32224,7 @@ kmlmk..
       if (set && !set.has(p)) return null;
       if (p === idx[0] || p === idx[1] || p === idx[2]) return null;
       const up = m.get(x, y + 1, z);
-      return (up === idx[0] || up === idx[1]) && h34(x, y, z, seed) < 0.55 ? idx[2] : null;
+      return (up === idx[0] || up === idx[1]) && h35(x, y, z, seed) < 0.55 ? idx[2] : null;
     });
     scatter(m, rng2, Math.round(m.nx * amount * 0.25), [idx[0], idx[1]], "top", (x, y, z) => {
       m.set(x, y + 1, z, idx[1]);
@@ -31966,7 +32260,7 @@ kmlmk..
       const hh = hgt * (1 - d * d) * (0.7 + 0.6 * noise3(x * 0.12, 3, z * 0.12, seed)) + 0.5;
       return y <= hh;
     }, (x, y, z) => {
-      const r = h34(x, y, z, seed + 4);
+      const r = h35(x, y, z, seed + 4);
       return r < 0.1 ? idx[2] : r < 0.35 ? idx[1] : idx[0];
     });
     return idx;
@@ -32038,12 +32332,12 @@ kmlmk..
     for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
     return h >>> 0;
   }
-  function def(id2, meta, build4) {
-    DEFS[id2] = { meta: { name: meta.name, biome: meta.biome, tags: meta.tags || [], decor: meta.decor || null, decorOnly: !!meta.decorOnly }, build: build4 };
-    if (meta.desc) DEFS[id2].meta.desc = meta.desc;
+  function def2(id2, meta, build4) {
+    DEFS2[id2] = { meta: { name: meta.name, biome: meta.biome, tags: meta.tags || [], decor: meta.decor || null, decorOnly: !!meta.decorOnly }, build: build4 };
+    if (meta.desc) DEFS2[id2].meta.desc = meta.desc;
     if (meta.interact) {
       INTERACT[id2] = meta.interact;
-      DEFS[id2].meta.animated = true;
+      DEFS2[id2].meta.animated = true;
     }
   }
   function reefRock(m, rng2, cols = REEF_ROCK) {
@@ -32053,7 +32347,7 @@ kmlmk..
     const set = new Set(idx);
     const pick4 = patch(idx, freq, seed);
     m.recolor((x, y, z, p) => set.has(p) ? pick4(x, y, z) : null);
-    m.recolor((x, y, z, p) => set.has(p) && m.exposed(x, y, z) && h34(x, y, z, seed + 1) < 0.03 ? idx[2] : null);
+    m.recolor((x, y, z, p) => set.has(p) && m.exposed(x, y, z) && h35(x, y, z, seed + 1) < 0.03 ? idx[2] : null);
   }
   function starfish(m, cx, cy, cz, R7, col, dot4, rot3 = 0) {
     for (let k = 0; k < 5; k++) {
@@ -32061,7 +32355,7 @@ kmlmk..
       for (let t = 0; t <= R7; t += 0.5) {
         const r = 1.9 * (1 - t / R7) + 0.6;
         const x = cx + Math.cos(a) * t, z = cz + Math.sin(a) * t;
-        m.cylinder(x, z, cy, cy + (t < R7 * 0.5 ? 1 : 0), r, (xx, yy, zz) => h34(xx, yy, zz, 1) < 0.18 ? dot4 : col);
+        m.cylinder(x, z, cy, cy + (t < R7 * 0.5 ? 1 : 0), r, (xx, yy, zz) => h35(xx, yy, zz, 1) < 0.18 ? dot4 : col);
       }
     }
     m.cylinder(cx, cz, cy, cy + 1, 2.6, col);
@@ -32074,14 +32368,14 @@ kmlmk..
       const n2 = fbm3(x * freq, y * freq * 0.8, z * freq, 2, seed);
       if (n2 > 1 - amount * 0.42) return rust[0];
       if (n2 > 1 - amount * 0.5) return rust[2];
-      if (h34(x, 0, z, seed) < amount * 0.1 && fbm3(x * freq, (y + 4) * freq * 0.8, z * freq, 2, seed) > 0.5) return rust[1];
+      if (h35(x, 0, z, seed) < amount * 0.1 && fbm3(x * freq, (y + 4) * freq * 0.8, z * freq, 2, seed) > 0.5) return rust[1];
       return null;
     });
   }
   function junkMound(m, cx, cz, rx2, rz2, hgt, seed) {
     const sand = sandMound(m, cx, cz, rx2, rz2, hgt, seed, JUNK_SAND);
     const scrap = [m.color("#6a7184", { jitter: 0.1 }), m.color("#a4552f", { jitter: 0.1 }), m.color("#3c8f6a", { jitter: 0.1 })];
-    m.recolor((x, y, z, p) => sand.includes(p) && !m.get(x, y + 1, z) && h34(x, y, z, seed + 8) < 0.06 ? scrap[h34(z, x, y, 3) * 3 | 0] : null);
+    m.recolor((x, y, z, p) => sand.includes(p) && !m.get(x, y + 1, z) && h35(x, y, z, seed + 8) < 0.06 ? scrap[h35(z, x, y, 3) * 3 | 0] : null);
     return sand;
   }
   function crtPart(m, screenIdx, opts = {}) {
@@ -32111,7 +32405,7 @@ kmlmk..
     const cu = Math.floor(u / 5), cv = Math.floor(v / 6);
     const lu = (u % 5 + 5) % 5, lv = (v % 6 + 6) % 6;
     if (lu > 3 || lv > 4) return false;
-    const g = RUNES[Math.floor(h34(cu, cv, 0, seed) * RUNES.length)];
+    const g = RUNES[Math.floor(h35(cu, cv, 0, seed) * RUNES.length)];
     return g[4 - lv][lu] === "#";
   }
   function abyssStone(m, cols = ABYSS_STONE) {
@@ -32168,7 +32462,7 @@ kmlmk..
       if (y % bh === 0) return mortar;
       const off = row3 % 2 ? bw >> 1 : 0;
       if ((x + z + off) % bw === 0) return mortar;
-      return cols[h34(Math.floor((x + z + off) / bw), row3, 0, 3) * cols.length | 0];
+      return cols[h35(Math.floor((x + z + off) / bw), row3, 0, 3) * cols.length | 0];
     };
   }
   function frameBase(key, build4) {
@@ -32182,7 +32476,7 @@ kmlmk..
     m.palette = b.m.palette.slice();
     return { ...b, m };
   }
-  function rbox2(m, x0, y0, z0, x1, y1, z1, r, c) {
+  function rbox3(m, x0, y0, z0, x1, y1, z1, r, c) {
     const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2, cz = (z0 + z1 + 1) / 2;
     const hx2 = (x1 + 1 - x0) / 2 - r, hy = (y1 + 1 - y0) / 2 - r, hz = (z1 + 1 - z0) / 2 - r;
     shape(m, x0, y0, z0, x1, y1, z1, (x, y, z) => {
@@ -32242,7 +32536,7 @@ kmlmk..
     for (let y = y0; y < y1; y++) {
       const t = (y - y0) / (y1 - y0);
       const r = (5.2 + Math.sin(t * Math.PI * 0.9 + 0.2) * 2.2 - t * 1.6) * k;
-      m.cylinder(cx, cz, y, y, r, (x, yy, z) => starC && h34(x, yy, z, 3 + frame2) < 0.04 ? starC : liquid);
+      m.cylinder(cx, cz, y, y, r, (x, yy, z) => starC && h35(x, yy, z, 3 + frame2) < 0.04 ? starC : liquid);
     }
     const blobs = [[22, 4.6, 0, 3], [32, 3.2, 2, 4.5], [40, 3.4, -1.5, 3.5], [49, 2.6, 1, 3], [28, 2.2, -3.5, 3.5], [45, 2, 3, 2]];
     blobs.forEach(([by, br, bx, bz], i) => {
@@ -32313,7 +32607,7 @@ kmlmk..
     const mk = id2 + "|" + variant2 + "|" + frame2 + "|" + yaw + "|" + pitch;
     let res = MODELS2.get(mk);
     if (!res) {
-      const d = DEFS[id2];
+      const d = DEFS2[id2];
       if (!d) throw new Error("unknown prop " + id2);
       const rng2 = new RNG((hashStr(id2) ^ Math.imul(variant2 + 1, 2654435761)) >>> 0);
       res = d.build({ rng: rng2, variant: variant2, frame: frame2 });
@@ -32352,7 +32646,7 @@ kmlmk..
     const key = id2 + "|" + scale + "|" + variant2 + "|" + frame2 + (yaw !== null || pitch !== null ? "|" + yaw + "|" + pitch : "");
     let p = cache7.get(key);
     if (p) return p;
-    const d = DEFS[id2];
+    const d = DEFS2[id2];
     if (!d) throw new Error("unknown prop " + id2);
     const rng2 = new RNG((hashStr(id2) ^ Math.imul(variant2 + 1, 2654435761)) >>> 0);
     const t02 = performance.now();
@@ -32408,12 +32702,13 @@ kmlmk..
     cache7.set(key, p);
     return p;
   }
-  var PERM, NVAL, sm, h34, topOpen, unpackIdx, SAND, REEF_ROCK, MOSS, WOOD3, RUST, DEFS, INTERACT, CORAL_SCHEMES, JUNK_SAND, GUN, BEIGE2, ABYSS_STONE, ABYSS_SILT, BONE, RUNES, GEMS, CASTLE_STONE, LAVA, BASES, GLYPH, PIANO_TUNE, TV_BARS, JUKE, LAMP_INTERACT, ROCKET_SEQ, PROPS, PROP_VARIANTS, TAG_INTERACT, EXTRA_INTERACT, interactCache, ANIMATED_DECOR, stepCache, MODELS2, FINE, cache7;
+  var PERM, NVAL, sm, h35, topOpen, unpackIdx, SAND, REEF_ROCK, MOSS, WOOD3, RUST, DEFS2, INTERACT, CORAL_SCHEMES, JUNK_SAND, GUN, BEIGE2, ABYSS_STONE, ABYSS_SILT, BONE, RUNES, GEMS, CASTLE_STONE, LAVA, BASES, GLYPH, PIANO_TUNE, TV_BARS, JUKE, LAMP_INTERACT, ROCKET_SEQ, PROPS, PROP_VARIANTS, TAG_INTERACT, EXTRA_INTERACT, interactCache, ANIMATED_DECOR, stepCache, MODELS2, FINE, cache7;
   var init_props = __esm({
     "src/gfx/props.js"() {
       init_voxel();
       init_slabrender();
       init_rng();
+      init_unlockprops();
       init_math();
       PERM = new Uint8Array(512);
       NVAL = new Float32Array(256);
@@ -32425,7 +32720,7 @@ kmlmk..
         for (let i = 0; i < 256; i++) NVAL[i] = r.next();
       }
       sm = (t) => t * t * (3 - 2 * t);
-      h34 = (x, y, z, s = 0) => hash3(x, y, z, s);
+      h35 = (x, y, z, s = 0) => hash3(x, y, z, s);
       topOpen = (m, x, y, z) => !m.get(x, y + 1, z);
       unpackIdx = (m, i) => [i % m.nx, Math.floor(i / m.nx) % m.ny, Math.floor(i / (m.nx * m.ny))];
       SAND = ["#e8cf96", "#d8ba80", "#f6e4b4"];
@@ -32433,9 +32728,9 @@ kmlmk..
       MOSS = ["#7fcf8c", "#4fa58a", "#3b8a82"];
       WOOD3 = ["#9c6136", "#8a532f", "#ae7140"];
       RUST = ["#a4552f", "#c27840", "#7d3f2c"];
-      DEFS = {};
+      DEFS2 = {};
       INTERACT = {};
-      def("rock_small", { name: "Pebble Rock", biome: "shallows", tags: ["rock"], decor: { price: 20, size: 1 } }, ({ rng: rng2 }) => {
+      def2("rock_small", { name: "Pebble Rock", biome: "shallows", tags: ["rock"], decor: { price: 20, size: 1 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(34, 18, 26);
         const st = reefRock(m, rng2);
         const seed = rng2.int(0, 999);
@@ -32447,7 +32742,7 @@ kmlmk..
         barnacles(m, rng2, 2, st);
         return { m, yaw: 30 };
       });
-      def("rock_big", { name: "Reef Boulder", biome: "shallows", tags: ["rock"], decor: { price: 60, size: 2 } }, ({ rng: rng2 }) => {
+      def2("rock_big", { name: "Reef Boulder", biome: "shallows", tags: ["rock"], decor: { price: 60, size: 2 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(60, 40, 44);
         const st = reefRock(m, rng2);
         const seed = rng2.int(0, 999);
@@ -32466,7 +32761,7 @@ kmlmk..
         });
         return { m, yaw: 30 };
       });
-      def("rock_arch", { name: "Rock Arch", biome: "shallows", tags: ["rock", "swimthrough"], decor: { price: 180, size: 3 } }, ({ rng: rng2 }) => {
+      def2("rock_arch", { name: "Rock Arch", biome: "shallows", tags: ["rock", "swimthrough"], decor: { price: 180, size: 3 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(96, 66, 36);
         const st = reefRock(m, rng2);
         const seed = rng2.int(0, 999);
@@ -32511,7 +32806,7 @@ kmlmk..
         ["#ffc14d", "#fff0b5", "#d98a2b"]
         // yellow
       ];
-      def("coral_branch", { name: "Tree Coral", biome: "shallows", tags: ["coral"], decor: { price: 50, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
+      def2("coral_branch", { name: "Tree Coral", biome: "shallows", tags: ["coral"], decor: { price: 50, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
         const sc = CORAL_SCHEMES[variant2 % CORAL_SCHEMES.length];
         const m = new VoxelModel(56, 50, 40);
         const body = m.color(sc[0], { smooth: 0.55, jitter: 0.12 });
@@ -32520,12 +32815,12 @@ kmlmk..
         const st = reefRock(m, rng2);
         facetRock(m, rng2, 28, 2, 20, 9, 5, 8, st[0], 10);
         stoneTex(m, st, 3);
-        const col = (x, y, z) => h34(x, y, z, 2) < 0.12 ? tip : y < 10 ? dk : body;
+        const col = (x, y, z) => h35(x, y, z, 2) < 0.12 ? tip : y < 10 ? dk : body;
         branchCoral(m, rng2, [28, 4, 20], [0, 1, 0], 13, 3.1, 4, col, tip, { spread: 0.75, shrink: 0.72, lenK: 0.8 });
-        surface(m, (x, y, z, p) => p === body && h34(x, y, z, 9) < 0.07 ? tip : null);
+        surface(m, (x, y, z, p) => p === body && h35(x, y, z, 9) < 0.07 ? tip : null);
         return { m, yaw: 32 };
       });
-      def("coral_fan", { name: "Sea Fan", biome: "shallows", tags: ["coral"], decor: { price: 70, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
+      def2("coral_fan", { name: "Sea Fan", biome: "shallows", tags: ["coral"], decor: { price: 70, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
         const schemes = [["#c24fd0", "#f2a6ff", "#7e2f9a"], ["#e8475d", "#ffb0b0", "#9c2440"], ["#f2b53c", "#fff1a6", "#b0702a"]];
         const sc = schemes[variant2 % schemes.length];
         const W11 = 60, H8 = 56, D2 = 14;
@@ -32562,10 +32857,10 @@ kmlmk..
         m.line(cx, 0, 6, cx, 8, 6.5, trunk, 2.2);
         const st = reefRock(m, rng2);
         facetRock(m, rng2, cx, 1.5, 7, 7, 4, 6, st[0], 9);
-        m.recolor((x, y, z, p) => p === vein && h34(x, y, z, 5) < 0.08 ? rim : null);
+        m.recolor((x, y, z, p) => p === vein && h35(x, y, z, 5) < 0.08 ? rim : null);
         return { m, yaw: 22, pitch: 22 };
       });
-      def("coral_brain", { name: "Brain Coral", biome: "shallows", tags: ["coral"], decor: { price: 45, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
+      def2("coral_brain", { name: "Brain Coral", biome: "shallows", tags: ["coral"], decor: { price: 45, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
         const W11 = 46, H8 = 26, D2 = 40;
         const m = new VoxelModel(W11, H8, D2);
         const schemes = [["#ee8f62", "#a8463c", "#ffd08a"], ["#b9d65e", "#557f36", "#eef59a"], ["#e07fb4", "#86397a", "#ffc4de"]];
@@ -32593,7 +32888,7 @@ kmlmk..
         m.recolor((x, y, z, p) => p === body && m.exposed(x, y, z) && g(x + 0.5, y + 0.5, z + 0.5) < 0.2 ? groove : null);
         return { m, yaw: 30 };
       });
-      def("coral_tube", { name: "Tube Sponge", biome: "shallows", tags: ["coral"], decor: { price: 55, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
+      def2("coral_tube", { name: "Tube Sponge", biome: "shallows", tags: ["coral"], decor: { price: 55, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
         const schemes = [["#f2b84b", "#ffe49a", "#9a4f2c", "#c97f2e"], ["#8f6ad8", "#d7c2ff", "#3c2668", "#6c4bb0"], ["#3fbfaa", "#a8f0d8", "#1d4f5a", "#2a8f88"]];
         const sc = schemes[variant2 % schemes.length];
         const m = new VoxelModel(48, 50, 40);
@@ -32618,10 +32913,10 @@ kmlmk..
           m.box(top[0] - 0.5, top[1] - 7, top[2] - 0.5, top[0] + 0.5, top[1] - 7, top[2] + 0.5, inner);
           m.paint(() => m.cylinder(top[0], top[2], top[1] - 6, top[1] - 2.5, r - 1, inner));
         }
-        m.recolor((x, y, z, p) => p === body && m.exposed(x, y, z) && h34(x, y, z, 3) < 0.09 ? pore : null);
+        m.recolor((x, y, z, p) => p === body && m.exposed(x, y, z) && h35(x, y, z, 3) < 0.09 ? pore : null);
         return { m, yaw: 30 };
       });
-      def("coral_staghorn", { name: "Staghorn Coral", biome: "shallows", tags: ["coral"], decor: { price: 65, size: 2 } }, ({ rng: rng2, variant: variant2 }) => {
+      def2("coral_staghorn", { name: "Staghorn Coral", biome: "shallows", tags: ["coral"], decor: { price: 65, size: 2 } }, ({ rng: rng2, variant: variant2 }) => {
         const schemes = [["#d9a36f", "#fbead0", "#a8714c"], ["#a98ad8", "#f0e2ff", "#7559a8"], ["#7ec8c0", "#e0fff6", "#4f8f96"]];
         const sc = schemes[variant2 % schemes.length];
         const m = new VoxelModel(62, 44, 46);
@@ -32636,10 +32931,10 @@ kmlmk..
           branchCoral(m, rng2, [31 + Math.cos(a) * 3, 1, 23 + Math.sin(a) * 3], [Math.cos(a) * out, 0.75, Math.sin(a) * out], rng2.float(11, 14), 1.9, 2, col, tip, { spread: 0.55, shrink: 0.8, lenK: 0.82, up: 0.16, three: 0.1, tipK: 0.75 });
         }
         m.sphere(31, 1, 23, 5, dk);
-        surface(m, (x, y, z, p) => p === body && h34(x, y, z, 6) < 0.1 ? dk : null);
+        surface(m, (x, y, z, p) => p === body && h35(x, y, z, 6) < 0.1 ? dk : null);
         return { m, yaw: 30 };
       });
-      def("anemone_base", { name: "Anemone", biome: "shallows", tags: ["coral", "home"], decor: { price: 90, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
+      def2("anemone_base", { name: "Anemone", biome: "shallows", tags: ["coral", "home"], decor: { price: 90, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
         const schemes = [["#e66aa0", "#ffb2d4", "#fff0f7", "#8f3f8a"], ["#5bc7b4", "#a8f5e0", "#f0fff8", "#2f7a84"], ["#f08a4b", "#ffc78f", "#fff2d8", "#a24a3a"]];
         const sc = schemes[variant2 % schemes.length];
         const m = new VoxelModel(46, 34, 42);
@@ -32669,7 +32964,7 @@ kmlmk..
         m.ellipsoid(23, 15, 21, 2, 1, 2, mouth);
         return { m, yaw: 30 };
       });
-      def("sandcastle", { name: "Sandcastle", biome: "shallows", tags: ["build"], decor: { price: 120, size: 2 } }, ({ rng: rng2 }) => {
+      def2("sandcastle", { name: "Sandcastle", biome: "shallows", tags: ["build"], decor: { price: 120, size: 2 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(64, 64, 48);
         const sand = [m.color("#e9cf92", { jitter: 0.16 }), m.color("#dcbd7c", { jitter: 0.16 }), m.color("#f4e0aa", { jitter: 0.14 })];
         const wet = m.color("#c69e66", { jitter: 0.12 });
@@ -32679,7 +32974,7 @@ kmlmk..
         const pole = m.color("#8a5a3a", { jitter: 0 });
         const shellP = m.color("#ffb0c8", { jitter: 0.05, smooth: 0.4 });
         const shellW = m.color("#fff3e6", { jitter: 0.05, smooth: 0.4 });
-        const tex3 = (x, y, z) => y % 6 === 0 ? sand[1] : h34(x, y, z, 1) < 0.18 ? sand[2] : h34(x, y, z, 2) < 0.18 ? sand[1] : sand[0];
+        const tex3 = (x, y, z) => y % 6 === 0 ? sand[1] : h35(x, y, z, 1) < 0.18 ? sand[2] : h35(x, y, z, 2) < 0.18 ? sand[1] : sand[0];
         shape(m, 2, 0, 2, 61, 6, 45, (x, y, z) => {
           const d = ((x - 32) / 30) ** 2 + ((z - 24) / 22) ** 2;
           return d < 1 && y < 6 * (1 - d) ** 0.6 + 1;
@@ -32734,7 +33029,7 @@ kmlmk..
         m.set(10, 4, 40, star);
         return { m, yaw: 30 };
       });
-      def("treasure_chest", { name: "Treasure Chest", biome: "shallows", tags: ["wreck", "treasure"], decor: { price: 250, size: 1 } }, ({ frame: frame2, rng: rng2 }) => {
+      def2("treasure_chest", { name: "Treasure Chest", biome: "shallows", tags: ["wreck", "treasure"], decor: { price: 250, size: 1 } }, ({ frame: frame2, rng: rng2 }) => {
         const W11 = 46, H8 = 44, D2 = 52;
         const m = new VoxelModel(W11, H8, D2);
         const plank = [m.color("#8e512c", { jitter: 0.14 }), m.color("#a0602f", { jitter: 0.14 }), m.color("#7c4428", { jitter: 0.14 })];
@@ -32747,10 +33042,10 @@ kmlmk..
         const coin2 = m.color("#ffd45e", { jitter: 0.1, emissive: 0.2 });
         const coinL = m.color("#fff2a8", { jitter: 0.05, emissive: 0.4 });
         const coinD = m.color("#d99a2b", { jitter: 0.08, emissive: 0.1 });
-        const gems = [m.color("#ff5b7a", { emissive: 0.7, jitter: 0 }), m.color("#5be0ff", { emissive: 0.7, jitter: 0 }), m.color("#a8ff6b", { emissive: 0.7, jitter: 0 })];
+        const gems2 = [m.color("#ff5b7a", { emissive: 0.7, jitter: 0 }), m.color("#5be0ff", { emissive: 0.7, jitter: 0 }), m.color("#a8ff6b", { emissive: 0.7, jitter: 0 })];
         const inner = m.color("#3e1e18", { jitter: 0.05 });
         const x0 = 3, x1 = 42, z0 = 22, z1 = 47, yTop = 17;
-        const pl = (x, y, z) => h34(x, Math.floor(y / 4), 0, 3) < 0.25 && (x * 7 + y) % 5 === 0 ? grain2 : plank[Math.floor(y / 4) % 3];
+        const pl = (x, y, z) => h35(x, Math.floor(y / 4), 0, 3) < 0.25 && (x * 7 + y) % 5 === 0 ? grain2 : plank[Math.floor(y / 4) % 3];
         m.box(x0, 0, z0, x1, yTop, z1, pl);
         m.sub(() => m.box(x0 + 2, 3, z0 + 2, x1 - 2, yTop, z1 - 2));
         m.box(x0 + 2, 3, z0 + 2, x1 - 2, 3, z1 - 2, inner);
@@ -32778,8 +33073,8 @@ kmlmk..
             const d = ((x - cx) / 19) ** 2 + ((z - cz) / 12) ** 2;
             return y < yTop + 6 * (1 - d) + noise3(x * 0.4, 0, z * 0.4, 3) * 2;
           }, (x, y, z) => {
-            const r = h34(x, y, z, 2);
-            return r < 0.04 ? gems[h34(x, z, y, 5) * 3 | 0] : r < 0.25 ? coinL : r < 0.45 ? coinD : coin2;
+            const r = h35(x, y, z, 2);
+            return r < 0.04 ? gems2[h35(x, z, y, 5) * 3 | 0] : r < 0.25 ? coinL : r < 0.45 ? coinD : coin2;
           });
           const lid = part(m, W11, 16, 28);
           const zc = 13, rz2 = 13;
@@ -32789,16 +33084,16 @@ kmlmk..
           lid.paint(() => lid.box(x0 + 2, 0, 0, x1 - 2, 12, 27, (x, y, z) => lid.exposed(x, y, z) && y < 10 ? inner : null));
           stampRot(m, lid, [0, 0, 0], [0, yTop + 1, z0], -104, 0, 0);
           for (let i = 0; i < 12; i++) {
-            const x = 4 + (h34(i, 1, 1, 9) * 36 | 0), z = Math.min(D2 - 1, z1 + 2 + (h34(i, 2, 1, 9) * 3 | 0));
+            const x = 4 + (h35(i, 1, 1, 9) * 36 | 0), z = Math.min(D2 - 1, z1 + 2 + (h35(i, 2, 1, 9) * 3 | 0));
             m.set(x, 0, z, i % 3 ? coin2 : coinL);
             if (i % 4 === 0) m.set(x + 1, 0, z, coinD);
           }
-          m.set(x0 + 5, yTop + 4, cz, gems[0]);
+          m.set(x0 + 5, yTop + 4, cz, gems2[0]);
         }
         barnacles(m, rng2, 3, plank);
         return { m, yaw: 28, light: "#ffd45e" };
       });
-      def("clam_pearl", { name: "Pearl Clam", biome: "shallows", tags: ["treasure"], decor: { price: 300, size: 1 } }, ({ rng: rng2 }) => {
+      def2("clam_pearl", { name: "Pearl Clam", biome: "shallows", tags: ["treasure"], decor: { price: 300, size: 1 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(54, 44, 46);
         const shell = [m.color("#c7a3d8", { smooth: 0.45, jitter: 0.1 }), m.color("#e2c4ec", { smooth: 0.45, jitter: 0.1 }), m.color("#9d78b8", { smooth: 0.45, jitter: 0.1 })];
         const mantle = [m.color("#2fa7c9", { smooth: 0.6, jitter: 0.1 }), m.color("#7fe0f0", { smooth: 0.6, jitter: 0.05 }), m.color("#1f6f9f", { smooth: 0.6, jitter: 0.08 })];
@@ -32816,7 +33111,7 @@ kmlmk..
         }, shellCol);
         m.sub(() => shape(m, cx - RX, 4, cz - RZ, cx + RX, RY + 1, cz + RZ, (x, y, z) => ((x - cx) / (RX - 2.5)) ** 2 + ((y - RY) / (RY - 2.5)) ** 2 + ((z - cz) / (RZ - 2.5)) ** 2 <= 1, 0));
         shape(m, cx - RX, 3, cz - RZ, cx + RX, RY - 2, cz + RZ, (x, y, z) => ((x - cx) / (RX - 2)) ** 2 + ((y - RY) / (RY - 2)) ** 2 + ((z - cz) / (RZ - 2)) ** 2 <= 1 && y <= RY - 3 + Math.sin(x * 0.6) * 0.8, (x, y, z) => {
-          const n2 = h34(x, y, z, 4);
+          const n2 = h35(x, y, z, 4);
           return n2 < 0.12 ? mantle[1] : noise3(x * 0.3, y * 0.3, z * 0.3, 2) < 0.4 ? mantle[2] : mantle[0];
         });
         const top = part(m, 54, 20, 46);
@@ -32832,7 +33127,7 @@ kmlmk..
         barnacles(m, rng2, 3, shell);
         return { m, yaw: 30, light: "#ffe8f4" };
       });
-      def("message_bottle", { name: "Message in a Bottle", biome: "shallows", tags: ["treasure"], decor: { price: 80, size: 1 } }, ({ rng: rng2 }) => {
+      def2("message_bottle", { name: "Message in a Bottle", biome: "shallows", tags: ["treasure"], decor: { price: 80, size: 1 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(52, 22, 30);
         const glass2 = m.color("#79d6b2", { smooth: 0.85, spec: 2.2, specPow: 16, light: 0.3, jitter: 0.04 });
         const glassD = m.color("#3f9e8c", { smooth: 0.85, jitter: 0.04 });
@@ -32865,7 +33160,7 @@ kmlmk..
         void rng2;
         return { m, yaw: 26 };
       });
-      def("anchor", { name: "Old Anchor", biome: "shallows", tags: ["wreck", "metal"], decor: { price: 140, size: 2 } }, ({ rng: rng2 }) => {
+      def2("anchor", { name: "Old Anchor", biome: "shallows", tags: ["wreck", "metal"], decor: { price: 140, size: 2 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(70, 76, 44);
         const iron2 = [m.color("#5a6074", { jitter: 0.1, smooth: 0.35 }), m.color("#4a4e62", { jitter: 0.1, smooth: 0.35 }), m.color("#737a8e", { jitter: 0.08, smooth: 0.35 })];
         const rust = [m.color("#a4552f", { jitter: 0.12, smooth: 0.35 }), m.color("#c47c42", { jitter: 0.1, smooth: 0.35 }), m.color("#7a3f2e", { jitter: 0.1, smooth: 0.35 })];
@@ -32907,7 +33202,7 @@ kmlmk..
         moss(m, rng2, 8, MOSS, 0.2, 0.2, [...iron2, ...rust]);
         return { m, yaw: 30 };
       });
-      def("barrel", { name: "Old Barrel", biome: "shallows", tags: ["wreck"], decor: { price: 70, size: 1 } }, ({ rng: rng2 }) => {
+      def2("barrel", { name: "Old Barrel", biome: "shallows", tags: ["wreck"], decor: { price: 70, size: 1 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(34, 44, 34);
         const wood = WOOD3.map((c) => m.color(c, { jitter: 0.12, smooth: 0.5 }));
         const seam = m.color("#5a3120", { jitter: 0.05, smooth: 0.5 });
@@ -32927,7 +33222,7 @@ kmlmk..
             return wood[st * 7 % 3];
           });
         }
-        for (const by of [4, 5, 32, 33, 13, 24]) m.paint(() => m.cylinder(cx, cz, by, by, 16, (x, y, z) => h34(x, y, z, 3) < 0.25 ? rust : band));
+        for (const by of [4, 5, 32, 33, 13, 24]) m.paint(() => m.cylinder(cx, cz, by, by, 16, (x, y, z) => h35(x, y, z, 3) < 0.25 ? rust : band));
         m.paint(() => m.box(0, 37, 0, 33, 37, 33, lid));
         m.sub(() => m.cylinder(cx, cz, 37, 37, 10));
         m.paint(() => m.box(0, 36, 0, 33, 36, 33, (x, y, z) => Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 10.5 ? (x >> 2) % 2 ? lid : lidD : null));
@@ -32936,7 +33231,7 @@ kmlmk..
         sandMound(m, cx, cz, 17, 17, 3, 2);
         return { m, yaw: 30 };
       });
-      def("starfish_rock", { name: "Starfish Rock", biome: "shallows", tags: ["rock"], decor: { price: 75, size: 1 } }, ({ rng: rng2 }) => {
+      def2("starfish_rock", { name: "Starfish Rock", biome: "shallows", tags: ["rock"], decor: { price: 75, size: 1 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(46, 34, 38);
         const st = reefRock(m, rng2);
         const seed = rng2.int(0, 999);
@@ -32966,7 +33261,7 @@ kmlmk..
         barnacles(m, rng2, 3, st);
         return { m, yaw: 30 };
       });
-      def("sunken_boat", { name: "Sunken Sloop", biome: "shallows", tags: ["wreck", "hero"] }, ({ rng: rng2 }) => {
+      def2("sunken_boat", { name: "Sunken Sloop", biome: "shallows", tags: ["wreck", "hero"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(132, 116, 76);
         const hull2 = part(m, 108, 96, 40);
         const wood = [m.color("#8e5a36", { jitter: 0.1, smooth: 0.3 }), m.color("#a0683c", { jitter: 0.1, smooth: 0.3 }), m.color("#7c4c2e", { jitter: 0.1, smooth: 0.3 })];
@@ -33058,7 +33353,7 @@ kmlmk..
           for (let y = top; y >= bottom; y--) {
             if (noise3(x * 0.25, y * 0.25, 1, 7) > 0.7) continue;
             const bil = Math.round(Math.sin((x - 36) / 34 * Math.PI) * 2.5 + (top - y) * 0.06);
-            hull2.set(x, y, zc + 3 + bil, (y >> 2) % 3 === 0 ? sailStripe : sail[h34(x, y, 2, 1) < 0.3 ? 1 : 0]);
+            hull2.set(x, y, zc + 3 + bil, (y >> 2) % 3 === 0 ? sailStripe : sail[h35(x, y, 2, 1) < 0.3 ? 1 : 0]);
           }
         }
         hull2.line(50, 66, zc, 98, 34, zc, rope, 0.45);
@@ -33090,7 +33385,7 @@ kmlmk..
       JUNK_SAND = ["#9a8f7c", "#857a6a", "#b0a58e"];
       GUN = ["#555c6e", "#434859", "#6c7488"];
       BEIGE2 = ["#d9cfb2", "#c2b796", "#ece3c8"];
-      def("crt_monitor", { name: "Old CRT", biome: "junkyard", tags: ["computer", "screen"], decor: null }, ({ rng: rng2 }) => {
+      def2("crt_monitor", { name: "Old CRT", biome: "junkyard", tags: ["computer", "screen"], decor: null }, ({ rng: rng2 }) => {
         const m = new VoxelModel(52, 46, 48);
         const screen = m.color("#2d6b5e", { emissive: 0.6, jitter: 0.03 });
         const crt = crtPart(m, screen);
@@ -33102,7 +33397,7 @@ kmlmk..
         barnacles(m, rng2, 3);
         return { m, yaw: 18, screens: [screen], light: "#7fffd0" };
       });
-      def("crt_pile", { name: "CRT Pile", biome: "junkyard", tags: ["computer", "screen", "hero"] }, ({ rng: rng2 }) => {
+      def2("crt_pile", { name: "CRT Pile", biome: "junkyard", tags: ["computer", "screen", "hero"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(96, 84, 64);
         const scr = [m.color("#2d6b5e", { emissive: 0.6, jitter: 0.03 }), m.color("#3a4f7a", { emissive: 0.55, jitter: 0.03 }), m.color("#5a3a6a", { emissive: 0.5, jitter: 0.03 })];
         const grey = [m.color("#9a9a9e", { jitter: 0.08 }), m.color("#7c7c84", { jitter: 0.08 }), m.color("#b8b8bc", { jitter: 0.06 })];
@@ -33121,7 +33416,7 @@ kmlmk..
         barnacles(m, rng2, 6);
         return { m, yaw: 22, screens: scr, vs: 1.7, light: "#8fd8ff" };
       });
-      def("keyboard_slab", { name: "Keyboard Slab", biome: "junkyard", tags: ["computer"] }, ({ rng: rng2 }) => {
+      def2("keyboard_slab", { name: "Keyboard Slab", biome: "junkyard", tags: ["computer"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(70, 16, 44);
         const body = [m.color("#3c3d48", { jitter: 0.05 }), m.color("#2c2d36", { jitter: 0.05 }), m.color("#555665", { jitter: 0.04 })];
         const key = [m.color("#e8e0c8", { jitter: 0.04 }), m.color("#d4cbb0", { jitter: 0.04 })];
@@ -33139,7 +33434,7 @@ kmlmk..
             if (c === 4) m.box(x, 5, z, x + 26, 6, z + 2, key[0]);
             continue;
           }
-          if (h34(r, c, 0, 4) < 0.05) continue;
+          if (h35(r, c, 0, 4) < 0.05) continue;
           const col = r === 0 && c === 0 ? keyR : r === 3 && c === 13 ? keyB : c > 12 ? keyD : key[(r + c) % 5 === 0 ? 1 : 0];
           m.box(x, 5, z, x + 2, 6, z + 2, col);
         }
@@ -33150,7 +33445,7 @@ kmlmk..
         barnacles(m, rng2, 2, body);
         return { m, yaw: 18, pitch: 30 };
       });
-      def("vending_machine", { name: "Vending Machine", biome: "junkyard", tags: ["machine", "glow"] }, ({ rng: rng2 }) => {
+      def2("vending_machine", { name: "Vending Machine", biome: "junkyard", tags: ["machine", "glow"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(50, 74, 46);
         const vm = part(m, 34, 64, 26);
         const red = [m.color("#c8423f", { jitter: 0.08 }), m.color("#a3343a", { jitter: 0.08 }), m.color("#e2645a", { jitter: 0.06 })];
@@ -33195,7 +33490,7 @@ kmlmk..
         barnacles(m, rng2, 4, red);
         return { m, yaw: 24, light: "#bff6ff", screens: [glassC] };
       });
-      def("server_rack", { name: "Server Rack", biome: "junkyard", tags: ["computer", "glow"] }, ({ rng: rng2, frame: frame2 }) => {
+      def2("server_rack", { name: "Server Rack", biome: "junkyard", tags: ["computer", "glow"] }, ({ rng: rng2, frame: frame2 }) => {
         const m = new VoxelModel(44, 80, 40);
         const frameC = [m.color(GUN[1], { jitter: 0.06 }), m.color(GUN[0], { jitter: 0.06 }), m.color(GUN[2], { jitter: 0.05 })];
         const unit = [m.color("#2e3240", { jitter: 0.05 }), m.color("#3a3f50", { jitter: 0.05 }), m.color("#252834", { jitter: 0.04 })];
@@ -33220,7 +33515,7 @@ kmlmk..
           if (h >= 5) for (let x = x0 + 5; x < x1 - 8; x += 2) m.box(x, y + 1, z1, x, y + h - 2, z1, vent2);
           else for (let x = x0 + 5; x < x1 - 8; x += 3) m.set(x, y + 1, z1, vent2);
           for (let k = 0; k < 3; k++) {
-            const on = h34(u, k, frame2, 11) < 0.62;
+            const on = h35(u, k, frame2, 11) < 0.62;
             m.set(x1 - 4 - k * 2, y + Math.floor(h / 2), z1 + 1, on ? ledOn[(u + k) % 3] : ledOff);
           }
           y += h + 1;
@@ -33241,7 +33536,7 @@ kmlmk..
         moss(m, rng2, 2, MOSS, 0.3, 0.2);
         return { m, yaw: 30, light: "#5dff7a" };
       });
-      def("tire", { name: "Old Tire", biome: "junkyard", tags: ["junk"] }, ({ rng: rng2 }) => {
+      def2("tire", { name: "Old Tire", biome: "junkyard", tags: ["junk"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(48, 34, 40);
         const t = part(m, 34, 34, 16);
         const rub = [m.color("#33313a", { jitter: 0.08, smooth: 0.6 }), m.color("#26252c", { jitter: 0.06, smooth: 0.6 }), m.color("#4a4752", { jitter: 0.06, smooth: 0.6 })];
@@ -33265,7 +33560,7 @@ kmlmk..
         moss(m, rng2, 4, MOSS, 0.4, 0.2);
         return { m, yaw: 30 };
       });
-      def("rusty_barrel", { name: "Toxic Drum", biome: "junkyard", tags: ["junk", "glow"] }, ({ rng: rng2 }) => {
+      def2("rusty_barrel", { name: "Toxic Drum", biome: "junkyard", tags: ["junk", "glow"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(52, 42, 44);
         const d = part(m, 26, 34, 26);
         const paint7 = [m.color("#3f7a8c", { jitter: 0.08, smooth: 0.55 }), m.color("#35687a", { jitter: 0.08, smooth: 0.55 })];
@@ -33288,12 +33583,12 @@ kmlmk..
         shape(m, 30, 0, 12, 51, 3, 40, (x, y, z) => {
           const r = ((x - 41) / 10) ** 2 + ((z - 26) / 12) ** 2 + noise3(x * 0.25, 0, z * 0.25, 3) * 0.6;
           return r < 1 && y <= 1.5 - r;
-        }, (x, y, z) => h34(x, y, z, 2) < 0.3 ? goo[0] : goo[1]);
+        }, (x, y, z) => h35(x, y, z, 2) < 0.3 ? goo[0] : goo[1]);
         junkMound(m, 24, 22, 23, 19, 4, 7);
         moss(m, rng2, 2, MOSS, 0.25, 0.2);
         return { m, yaw: 30, light: "#9dff4a" };
       });
-      def("shopping_cart", { name: "Shopping Cart", biome: "junkyard", tags: ["junk"] }, ({ rng: rng2 }) => {
+      def2("shopping_cart", { name: "Shopping Cart", biome: "junkyard", tags: ["junk"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(64, 56, 50);
         const c = part(m, 48, 40, 28);
         const wire = [m.color("#b4bac6", { jitter: 0.05, spec: 1 }), m.color("#8c93a0", { jitter: 0.05 })];
@@ -33328,7 +33623,7 @@ kmlmk..
         m.tube([[30, 30, 18, 0.6], [34, 37, 20, 0.6], [32, 44, 22, 0.6]], kelp3[1]);
         return { m, yaw: 30 };
       });
-      def("satellite_dish", { name: "Satellite Dish", biome: "junkyard", tags: ["machine"] }, ({ rng: rng2 }) => {
+      def2("satellite_dish", { name: "Satellite Dish", biome: "junkyard", tags: ["machine"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(64, 72, 56);
         const white = [m.color("#d2d7de", { jitter: 0.04, smooth: 0.8 }), m.color("#bfc5ce", { jitter: 0.04, smooth: 0.8 }), m.color("#eceef2", { jitter: 0.03, smooth: 0.6 })];
         const metal = [m.color(GUN[0], { jitter: 0.06 }), m.color(GUN[2], { jitter: 0.05, spec: 1 })];
@@ -33341,7 +33636,7 @@ kmlmk..
           if (r2 > R7 * R7) return false;
           const zs = -6 + r2 / (R7 * R7) * 9;
           return z >= zs && z <= zs + 2.4;
-        }, (x, y, z) => white[h34(x >> 2, y >> 2, z >> 2, 3) < 0.3 ? 1 : 0]);
+        }, (x, y, z) => white[h35(x >> 2, y >> 2, z >> 2, 3) < 0.3 ? 1 : 0]);
         shapeRot(m, c, R7 + 3, rot3, (x, y, z) => {
           const r = Math.hypot(x, y);
           return r > R7 - 1.2 && r <= R7 + 0.3 && z >= 2.2 && z <= 4.2;
@@ -33364,7 +33659,7 @@ kmlmk..
         barnacles(m, rng2, 4, base);
         return { m, yaw: 30 };
       });
-      def("gear_big", { name: "Giant Gear", biome: "junkyard", tags: ["machine", "metal"] }, ({ rng: rng2 }) => {
+      def2("gear_big", { name: "Giant Gear", biome: "junkyard", tags: ["machine", "metal"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(70, 60, 44);
         const g = part(m, 56, 56, 10);
         const steel = [m.color("#7a8292", { jitter: 0.06, smooth: 0.3 }), m.color("#626a7a", { jitter: 0.06, smooth: 0.3 }), m.color("#98a0ae", { jitter: 0.05, smooth: 0.3, spec: 0.8 })];
@@ -33400,7 +33695,7 @@ kmlmk..
         barnacles(m, rng2, 5, steel);
         return { m, yaw: 30 };
       });
-      def("circuit_coral", { name: "Circuit Coral", biome: "junkyard", tags: ["coral", "glow"], decor: { price: 220, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
+      def2("circuit_coral", { name: "Circuit Coral", biome: "junkyard", tags: ["coral", "glow"], decor: { price: 220, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
         const m = new VoxelModel(64, 70, 54);
         const pcb = [m.color("#2f8a4e", { jitter: 0.05 }), m.color("#236e3e", { jitter: 0.05 }), m.color("#4cbd70", { jitter: 0.04 })];
         const trace = m.color("#e8c050", { jitter: 0.03, spec: 1.2 });
@@ -33435,7 +33730,7 @@ kmlmk..
           if (edge) {
             m.set(x, y, z, pcb[2]);
             if ((x + z) % 3 === 0) {
-              const l = leds2[h34(z, x, y, 2) * 3 | 0];
+              const l = leds2[h35(z, x, y, 2) * 3 | 0];
               m.set(x, y + 1, z, l);
               m.set(x, y + 2, z, l);
             }
@@ -33450,7 +33745,7 @@ kmlmk..
         junkMound(m, cx, cz, 18, 15, 2, 5);
         return { m, yaw: 30, light: m.palette[leds2[0]].color };
       });
-      def("floppy_pile", { name: "Floppy Pile", biome: "junkyard", tags: ["computer"] }, ({ rng: rng2 }) => {
+      def2("floppy_pile", { name: "Floppy Pile", biome: "junkyard", tags: ["computer"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(60, 26, 50);
         const bodies = ["#2d2f3a", "#3a5bd1", "#d84a4a", "#d9cfb2", "#3aa86a", "#e2b84a"].map((c) => m.color(c, { jitter: 0.05 }));
         const shutter = m.color("#b8bec8", { jitter: 0.04, spec: 1.2 });
@@ -33475,7 +33770,7 @@ kmlmk..
         junkMound(m, 30, 27, 27, 20, 3, 8);
         return { m, yaw: 28 };
       });
-      def("broken_robot", { name: "Broken Robot", biome: "junkyard", tags: ["machine", "glow", "hero"] }, ({ rng: rng2 }) => {
+      def2("broken_robot", { name: "Broken Robot", biome: "junkyard", tags: ["machine", "glow", "hero"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(76, 80, 58);
         const body = [m.color("#d2a24a", { jitter: 0.07, smooth: 0.25 }), m.color("#b8862f", { jitter: 0.07, smooth: 0.25 }), m.color("#e8c46e", { jitter: 0.05, smooth: 0.25 })];
         const joint = [m.color(GUN[1], { jitter: 0.06, smooth: 0.5 }), m.color(GUN[0], { jitter: 0.06, smooth: 0.5 })];
@@ -33532,7 +33827,7 @@ kmlmk..
         barnacles(m, rng2, 5, body);
         return { m, yaw: 28, vs: 1.7, light: "#5ff4ff" };
       });
-      def("pipe_bend", { name: "Pipe Bend", biome: "junkyard", tags: ["junk", "metal"] }, ({ rng: rng2 }) => {
+      def2("pipe_bend", { name: "Pipe Bend", biome: "junkyard", tags: ["junk", "metal"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(64, 56, 40);
         const pipe2 = [m.color("#6f7a6c", { jitter: 0.07, smooth: 0.6 }), m.color("#5c6659", { jitter: 0.07, smooth: 0.6 })];
         const flange = [m.color("#8a8f98", { jitter: 0.05, smooth: 0.4 }), m.color("#5a5f6a", { jitter: 0.05 })];
@@ -33583,7 +33878,7 @@ kmlmk..
         "#.##|#..#|####|#...|##.#",
         "..#.|.###|#.#.|..#.|.#.#"
       ].map((r) => r.split("|"));
-      def("pillar_ruin", { name: "Ancient Pillar", biome: "abyss", tags: ["ruin", "glow"], decor: { price: 260, size: 1 } }, ({ rng: rng2 }) => {
+      def2("pillar_ruin", { name: "Ancient Pillar", biome: "abyss", tags: ["ruin", "glow"], decor: { price: 260, size: 1 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(40, 96, 40);
         const st = abyssStone(m);
         const dark = m.color("#262447", { jitter: 0.05 });
@@ -33599,7 +33894,7 @@ kmlmk..
         sandMound(m, 20, 20, 16, 16, 2, 3, ABYSS_SILT);
         return { m, yaw: 30, light: "#5ff4ff" };
       });
-      def("pillar_broken", { name: "Broken Pillar", biome: "abyss", tags: ["ruin"], decor: { price: 160, size: 2 } }, ({ rng: rng2 }) => {
+      def2("pillar_broken", { name: "Broken Pillar", biome: "abyss", tags: ["ruin"], decor: { price: 160, size: 2 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(80, 54, 50);
         const st = abyssStone(m);
         const dark = m.color("#262447", { jitter: 0.05 });
@@ -33617,14 +33912,14 @@ kmlmk..
         sandMound(m, 38, 26, 36, 20, 2, 5, ABYSS_SILT);
         return { m, yaw: 30, light: "#b46bff" };
       });
-      def("arch_ruin", { name: "Sunken Archway", biome: "abyss", tags: ["ruin", "swimthrough", "glow"], decor: { price: 700, size: 3 } }, ({ rng: rng2 }) => {
+      def2("arch_ruin", { name: "Sunken Archway", biome: "abyss", tags: ["ruin", "swimthrough", "glow"], decor: { price: 700, size: 3 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(92, 92, 34);
         const st = abyssStone(m);
         const seam = m.color("#2a2850", { jitter: 0.04 });
         const glow2 = m.color("#5ff4ff", { emissive: 1, jitter: 0 });
         const glowV = m.color("#b46bff", { emissive: 1, jitter: 0 });
         const zc = 17;
-        const blockCol = (x, y, z) => y % 8 === 0 || (x + Math.floor(y / 8) % 2 * 5) % 10 === 0 ? seam : st[h34(x >> 3, y >> 3, z >> 3, 2) * 3 | 0];
+        const blockCol = (x, y, z) => y % 8 === 0 || (x + Math.floor(y / 8) % 2 * 5) % 10 === 0 ? seam : st[h35(x >> 3, y >> 3, z >> 3, 2) * 3 | 0];
         m.box(6, 0, zc - 9, 23, 58, zc + 8, blockCol);
         m.box(68, 0, zc - 9, 85, 58, zc + 8, blockCol);
         m.box(4, 0, zc - 11, 25, 3, zc + 10, st[1]);
@@ -33666,7 +33961,7 @@ kmlmk..
         biolum(m, rng2, 18, st);
         return { m, yaw: 26, vs: 1.7, light: "#5ff4ff" };
       });
-      def("statue_head", { name: "Elder Head", biome: "abyss", tags: ["ruin", "glow", "hero"] }, ({ rng: rng2 }) => {
+      def2("statue_head", { name: "Elder Head", biome: "abyss", tags: ["ruin", "glow", "hero"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(96, 100, 80);
         const st = [m.color("#56548e", { jitter: 0.12, smooth: 0.65 }), m.color("#454378", { jitter: 0.12, smooth: 0.65 }), m.color("#6a68a6", { jitter: 0.1, smooth: 0.65 })];
         const deep = m.color("#2a2850", { jitter: 0.05, smooth: 0.4 });
@@ -33734,7 +34029,7 @@ kmlmk..
         ["Sapphire", "#4a8dff", "#2a4fd1", "#cfe2ff"],
         ["Ruby", "#ff4a6b", "#c21f4a", "#ffd0d8"]
       ];
-      def("crystal_cluster", { name: "Crystal Cluster", biome: "abyss", tags: ["crystal", "glow"], decor: { price: 400, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
+      def2("crystal_cluster", { name: "Crystal Cluster", biome: "abyss", tags: ["crystal", "glow"], decor: { price: 400, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
         const g = GEMS[variant2 % GEMS.length];
         const m = new VoxelModel(54, 72, 46);
         const st = abyssStone(m);
@@ -33768,7 +34063,7 @@ kmlmk..
         sandMound(m, 27, 24, 22, 18, 2, seed, ABYSS_SILT);
         return { m, yaw: 32, light: g[1] };
       });
-      def("glow_mushroom", { name: "Glow Shrooms", biome: "abyss", tags: ["plant", "glow"], decor: { price: 180, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
+      def2("glow_mushroom", { name: "Glow Shrooms", biome: "abyss", tags: ["plant", "glow"], decor: { price: 180, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
         const schemes = [["#4ae0ff", "#c8faff", "#2a7fb8"], ["#c07bff", "#f2dcff", "#6a3ab0"], ["#7dff9a", "#e2ffe8", "#2f9a5a"]];
         const sc = schemes[variant2 % schemes.length];
         const m = new VoxelModel(58, 60, 50);
@@ -33789,7 +34084,7 @@ kmlmk..
             return d <= 1 && yy >= ty - 0.5 - r * 0.12 * (1 - Math.hypot(xx - tx, zz - z) / r);
           }, (xx, yy, zz) => yy < ty + 0.6 ? gill : yy > ty + r * 0.35 ? capL : cap2);
         }
-        m.recolor((x, y, z, p) => (p === cap2 || p === capL) && !m.get(x, y + 1, z) && h34(x >> 1, y, z >> 1, 3) < 0.16 ? spot : null);
+        m.recolor((x, y, z, p) => (p === cap2 || p === capL) && !m.get(x, y + 1, z) && h35(x >> 1, y, z >> 1, 3) < 0.16 ? spot : null);
         scatter(m, rng2, 8, st, "top", (x, y, z) => {
           m.set(x, y + 1, z, stem[1]);
           m.set(x, y + 2, z, capL);
@@ -33797,7 +34092,7 @@ kmlmk..
         sandMound(m, 29, 25, 22, 19, 2, 6, ABYSS_SILT);
         return { m, yaw: 30, light: sc[0] };
       });
-      def("tube_worms", { name: "Tube Worms", biome: "abyss", tags: ["plant", "vent"], decor: { price: 150, size: 1 } }, ({ rng: rng2 }) => {
+      def2("tube_worms", { name: "Tube Worms", biome: "abyss", tags: ["plant", "vent"], decor: { price: 150, size: 1 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(54, 66, 48);
         const tube4 = [m.color("#ece6da", { smooth: 0.55, jitter: 0.06 }), m.color("#cfc6b6", { smooth: 0.55, jitter: 0.06 }), m.color("#a89e8e", { smooth: 0.55, jitter: 0.05 })];
         const plume = [m.color("#ff3d5a", { smooth: 0.4, jitter: 0.08, emissive: 0.35 }), m.color("#ff8a9a", { smooth: 0.4, jitter: 0.06, emissive: 0.5 }), m.color("#b8203e", { smooth: 0.4, jitter: 0.06, emissive: 0.2 })];
@@ -33828,7 +34123,7 @@ kmlmk..
         sandMound(m, 27, 25, 22, 19, 2, 9, ABYSS_SILT);
         return { m, yaw: 30, light: "#ff4a6b" };
       });
-      def("ribcage", { name: "Leviathan Ribs", biome: "abyss", tags: ["bone", "hero", "swimthrough"], decor: { price: 900, size: 3 } }, ({ rng: rng2 }) => {
+      def2("ribcage", { name: "Leviathan Ribs", biome: "abyss", tags: ["bone", "hero", "swimthrough"], decor: { price: 900, size: 3 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(122, 82, 96);
         const rc = part(m, 124, 70, 64);
         const bone = BONE.map((c, i) => m.color(c, { smooth: 0.55, jitter: 0.08, light: i === 2 ? 0.1 : 0 }));
@@ -33858,7 +34153,7 @@ kmlmk..
             const ang = t * Math.PI * 0.92;
             pts.push([x + t * 5, y0 + Math.sin(ang) * H8 * 0.86, zc + 2 + (1 - Math.cos(ang)) * W11 * 0.62, 2.7 - t * 1.5]);
           }
-          rc.tube(pts, (xx, yy, zz) => h34(xx, yy, zz, 1) < 0.07 ? bone[2] : bone[0], 3);
+          rc.tube(pts, (xx, yy, zz) => h35(xx, yy, zz, 1) < 0.07 ? bone[2] : bone[0], 3);
           const back = pts.slice(0, 7).map(([px3, py, pz, pr]) => [px3, py, zc - (pz - zc) * 0.85 - 2, pr]);
           rc.tube(back, bone[1], 3);
           if (broken) rc.tube([[x + 10, 2, zc + 32, 1.6], [x + 16, 2, zc + 28, 1.4], [x + 22, 2, zc + 30, 1.2]], bone[1]);
@@ -33870,7 +34165,7 @@ kmlmk..
         sandMound(m, 60, 50, 46, 36, 6, 8, ABYSS_SILT);
         return { m, yaw: 30, vs: 1.6, light: "#5ff4ff", turn: -32 };
       });
-      def("giant_skull", { name: "Giant Skull", biome: "abyss", tags: ["bone", "glow"], decor: { price: 550, size: 2 } }, ({ rng: rng2 }) => {
+      def2("giant_skull", { name: "Giant Skull", biome: "abyss", tags: ["bone", "glow"], decor: { price: 550, size: 2 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(90, 60, 58);
         const bone = BONE.map((c, i) => m.color(c, { smooth: 0.6, jitter: 0.08, light: i === 2 ? 0.1 : 0 }));
         const deep = m.color("#1c1830", { jitter: 0.02, light: -0.5 });
@@ -33907,7 +34202,7 @@ kmlmk..
         biolum(m, rng2, 8, bone, "#5ff4ff");
         return { m, yaw: 28, light: "#ffd84a" };
       });
-      def("vent_chimney", { name: "Black Smoker", biome: "abyss", tags: ["vent", "glow"] }, ({ rng: rng2 }) => {
+      def2("vent_chimney", { name: "Black Smoker", biome: "abyss", tags: ["vent", "glow"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(56, 92, 50);
         const rock = [m.color("#2a2634", { smooth: 0.55, jitter: 0.12 }), m.color("#3a3442", { smooth: 0.55, jitter: 0.12 }), m.color("#4c4250", { smooth: 0.55, jitter: 0.1 })];
         const crust = [m.color("#c8963a", { smooth: 0.5, jitter: 0.1 }), m.color("#e2c25a", { smooth: 0.5, jitter: 0.08 }), m.color("#8a5a3a", { smooth: 0.5, jitter: 0.1 })];
@@ -33953,7 +34248,7 @@ kmlmk..
         sandMound(m, 28, 25, 24, 21, 3, 5, ABYSS_SILT);
         return { m, yaw: 30, light: "#ff9a3a" };
       });
-      def("glyph_stone", { name: "Glyph Stone", biome: "abyss", tags: ["ruin", "glow"], decor: { price: 320, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
+      def2("glyph_stone", { name: "Glyph Stone", biome: "abyss", tags: ["ruin", "glow"], decor: { price: 320, size: 1 } }, ({ rng: rng2, variant: variant2 }) => {
         const glows = ["#5ff4ff", "#c07bff", "#7dff9a"];
         const m = new VoxelModel(44, 70, 34);
         const st = abyssStone(m);
@@ -33965,7 +34260,7 @@ kmlmk..
           if (dx > 13 || dz > 5.5) return false;
           if (y > 48 && ((x - 15) / 13) ** 2 + ((y - 48) / 14) ** 2 > 1) return false;
           return dx + dz < 17.5;
-        }, (x, y, z) => st[h34(x >> 2, y >> 2, 0, 3) * 2 | 0]);
+        }, (x, y, z) => st[h35(x >> 2, y >> 2, 0, 3) * 2 | 0]);
         for (let y = 6; y < 56; y++) for (let x = 4; x < 27; x++) {
           if (!slab5.get(x, y, 12)) continue;
           const border = x === 4 || x === 26 || y === 6;
@@ -33982,7 +34277,7 @@ kmlmk..
         return { m, yaw: 22, light: glows[variant2 % glows.length] };
       });
       CASTLE_STONE = ["#b9b2c9", "#a39bb6", "#cdc7da"];
-      def("castle", { name: "Fairy Castle", biome: "aquarium", tags: ["build", "glow"], decor: { price: 600, size: 3 }, decorOnly: true }, ({ rng: rng2 }) => {
+      def2("castle", { name: "Fairy Castle", biome: "aquarium", tags: ["build", "glow"], decor: { price: 600, size: 3 }, decorOnly: true }, ({ rng: rng2 }) => {
         const m = new VoxelModel(84, 104, 60);
         const st = CASTLE_STONE.map((c) => m.color(c, { jitter: 0.08 }));
         const mortar = m.color("#7c7492", { jitter: 0.04 });
@@ -34041,7 +34336,7 @@ kmlmk..
         moss(m, rng2, 3, MOSS, 0.4, 0.2, [...rk, ...st]);
         return { m, yaw: 30, vs: 1.6, light: "#ffd86a" };
       });
-      def("moai_head", { name: "Moai Head", biome: "aquarium", tags: ["statue"], decor: { price: 350, size: 2 }, decorOnly: true }, ({ rng: rng2 }) => {
+      def2("moai_head", { name: "Moai Head", biome: "aquarium", tags: ["statue"], decor: { price: 350, size: 2 }, decorOnly: true }, ({ rng: rng2 }) => {
         const m = new VoxelModel(54, 92, 54);
         const st = [m.color("#9a8e80", { jitter: 0.1, smooth: 0.55 }), m.color("#837768", { jitter: 0.1, smooth: 0.55 }), m.color("#b2a696", { jitter: 0.08, smooth: 0.55 })];
         const deep = m.color("#3e3436", { jitter: 0.04, smooth: 0.3 });
@@ -34082,7 +34377,7 @@ kmlmk..
         sandMound(m, cx, cz + 2, 21, 19, 3, 3);
         return { m, yaw: 24 };
       });
-      def("diver_helmet", { name: "Diver Helmet", biome: "aquarium", tags: ["wreck", "metal"], decor: { price: 280, size: 1 }, decorOnly: true }, ({ rng: rng2 }) => {
+      def2("diver_helmet", { name: "Diver Helmet", biome: "aquarium", tags: ["wreck", "metal"], decor: { price: 280, size: 1 }, decorOnly: true }, ({ rng: rng2 }) => {
         const m = new VoxelModel(50, 50, 46);
         const brass = [m.color("#d6a046", { jitter: 0.06, smooth: 0.8, spec: 1.8, specPow: 12 }), m.color("#b8822f", { jitter: 0.06, smooth: 0.8, spec: 1 })];
         const copper = [m.color("#c0704a", { jitter: 0.06, smooth: 0.7, spec: 1.2 }), m.color("#9a5638", { jitter: 0.05, smooth: 0.7 })];
@@ -34114,7 +34409,7 @@ kmlmk..
         barnacles(m, rng2, 3, [...brass, ...copper]);
         return { m, yaw: 30 };
       });
-      def("pirate_ship", { name: "Pirate Ship", biome: "aquarium", tags: ["ship", "glow"], decor: { price: 1500, size: 3 }, decorOnly: true }, ({ rng: rng2 }) => {
+      def2("pirate_ship", { name: "Pirate Ship", biome: "aquarium", tags: ["ship", "glow"], decor: { price: 1500, size: 3 }, decorOnly: true }, ({ rng: rng2 }) => {
         const m = new VoxelModel(124, 126, 56);
         const wood = [m.color("#5a3a2a", { jitter: 0.08 }), m.color("#6b4530", { jitter: 0.08 }), m.color("#4a2e22", { jitter: 0.08 })];
         const seam = m.color("#2e1c18", { jitter: 0.03 });
@@ -34196,7 +34491,7 @@ kmlmk..
         sandMound(m, 60, 28, 56, 22, 6, 5);
         return { m, yaw: 30, vs: 1.55, light: "#ffd06a" };
       });
-      def("sunken_pc", { name: "Sunken PC", biome: "aquarium", tags: ["computer", "screen"], decor: { price: 420, size: 2 }, decorOnly: true }, ({ rng: rng2 }) => {
+      def2("sunken_pc", { name: "Sunken PC", biome: "aquarium", tags: ["computer", "screen"], decor: { price: 420, size: 2 }, decorOnly: true }, ({ rng: rng2 }) => {
         const m = new VoxelModel(84, 58, 60);
         const screen = m.color("#2d6b5e", { emissive: 0.6, jitter: 0.03 });
         const crt = crtPart(m, screen);
@@ -34234,8 +34529,8 @@ kmlmk..
         return { m, yaw: 22, screens: [screen], light: "#7fffd0" };
       });
       LAVA = [["#ff4a8a", "#ffd84a"], ["#2ac8d8", "#e0ff6a"], ["#8a4aff", "#ffa0e0"], ["#3ac83a", "#e8ff5a"], ["#ff6a2a", "#ffd0e0"], ["#1a2a6a", "#a8c0ff"]];
-      def("lava_lamp", { name: "Lava Lamp", biome: "aquarium", tags: ["glow", "retro"], decor: { price: 240, size: 1 }, decorOnly: true }, ({ variant: variant2, frame: frame2 }) => lavaLamp(LAVA[variant2 % LAVA.length], frame2));
-      def("rubber_duck", { name: "Rubber Duck", biome: "aquarium", tags: ["toy"], decor: { price: 30, size: 1 }, decorOnly: true }, () => {
+      def2("lava_lamp", { name: "Lava Lamp", biome: "aquarium", tags: ["glow", "retro"], decor: { price: 240, size: 1 }, decorOnly: true }, ({ variant: variant2, frame: frame2 }) => lavaLamp(LAVA[variant2 % LAVA.length], frame2));
+      def2("rubber_duck", { name: "Rubber Duck", biome: "aquarium", tags: ["toy"], decor: { price: 30, size: 1 }, decorOnly: true }, () => {
         const m = new VoxelModel(40, 36, 30);
         const yel = [m.color("#ffd23a", { smooth: 0.85, jitter: 0.03, spec: 1.6, specPow: 14 }), m.color("#f2b42a", { smooth: 0.85, jitter: 0.03 })];
         const beak = m.color("#ff8a2a", { smooth: 0.7, jitter: 0.02 });
@@ -34255,7 +34550,7 @@ kmlmk..
         m.ellipsoid(15, 11, 6.5, 6, 3.5, 2, yel[1]);
         return { m, yaw: 30 };
       });
-      def("pagoda_lantern", { name: "Stone Lantern", biome: "aquarium", tags: ["glow", "statue"], decor: { price: 320, size: 1 }, decorOnly: true }, ({ rng: rng2 }) => {
+      def2("pagoda_lantern", { name: "Stone Lantern", biome: "aquarium", tags: ["glow", "statue"], decor: { price: 320, size: 1 }, decorOnly: true }, ({ rng: rng2 }) => {
         const m = new VoxelModel(44, 84, 44);
         const st = [m.color("#9a9a8c", { jitter: 0.1, smooth: 0.3 }), m.color("#85857a", { jitter: 0.1, smooth: 0.3 }), m.color("#b0b0a2", { jitter: 0.08, smooth: 0.3 })];
         const lightC = m.color("#ffcf6a", { emissive: 1, jitter: 0.02 });
@@ -34286,7 +34581,7 @@ kmlmk..
         sandMound(m, cx, cz, 17, 17, 2, 3);
         return { m, yaw: 30, light: "#ffcf6a" };
       });
-      def("mushroom_house", { name: "Mushroom House", biome: "aquarium", tags: ["build", "glow"], decor: { price: 480, size: 2 }, decorOnly: true }, ({ rng: rng2 }) => {
+      def2("mushroom_house", { name: "Mushroom House", biome: "aquarium", tags: ["build", "glow"], decor: { price: 480, size: 2 }, decorOnly: true }, ({ rng: rng2 }) => {
         const m = new VoxelModel(70, 90, 64);
         const stem = [m.color("#f2e6cc", { jitter: 0.06, smooth: 0.65 }), m.color("#e0d0b0", { jitter: 0.06, smooth: 0.65 })];
         const cap2 = [m.color("#e0443a", { jitter: 0.06, smooth: 0.8, spec: 0.8 }), m.color("#c2343a", { jitter: 0.06, smooth: 0.8 })];
@@ -34301,13 +34596,13 @@ kmlmk..
         for (let y = 0; y < 44; y++) {
           const t = y / 44;
           const r = 15 + Math.sin(t * Math.PI) * 4 - t * 3;
-          m.cylinder(cx, cz, y, y, r, (x, yy, z) => h34(x, yy, z, 3) < 0.08 ? stem[1] : stem[0]);
+          m.cylinder(cx, cz, y, y, r, (x, yy, z) => h35(x, yy, z, 3) < 0.08 ? stem[1] : stem[0]);
         }
         shape(m, cx - 32, 38, cz - 30, cx + 32, 80, cz + 30, (x, y, z) => {
           const d = ((x - cx) / 31) ** 2 + ((y - 42) / 30) ** 2 + ((z - cz) / 28) ** 2;
           return d <= 1 && y >= 42 - Math.hypot(x - cx, z - cz) * 0.12;
         }, (x, y, z) => y < 44 ? gill : cap2[0]);
-        m.recolor((x, y, z, p) => p === cap2[0] && !m.get(x, y + 1, z) === false && h34(x, y, z, 1) < 0.05 ? cap2[1] : null);
+        m.recolor((x, y, z, p) => p === cap2[0] && !m.get(x, y + 1, z) === false && h35(x, y, z, 1) < 0.05 ? cap2[1] : null);
         const spots = [[cx - 14, 64, cz + 12, 4], [cx + 10, 68, cz + 14, 5], [cx + 2, 74, cz - 2, 4], [cx - 22, 56, cz - 4, 3.5], [cx + 22, 58, cz + 2, 3.5], [cx - 6, 60, cz + 22, 3.5], [cx + 18, 52, cz + 18, 3]];
         for (const [x, y, z, r] of spots) m.paint(() => m.sphere(x, y, z, r, (xx, yy, zz) => m.exposed(xx, yy, zz) ? spot : null));
         const dz = cz + 18;
@@ -34334,7 +34629,7 @@ kmlmk..
         sandMound(m, cx, cz + 2, 26, 24, 3, 5);
         return { m, yaw: 28, vs: 1.6, light: "#ffd86a" };
       });
-      def("tiki_head", { name: "Tiki Totem", biome: "aquarium", tags: ["statue"], decor: { price: 260, size: 1 }, decorOnly: true }, ({ rng: rng2 }) => {
+      def2("tiki_head", { name: "Tiki Totem", biome: "aquarium", tags: ["statue"], decor: { price: 260, size: 1 }, decorOnly: true }, ({ rng: rng2 }) => {
         const m = new VoxelModel(36, 82, 32);
         const wood = [m.color("#9a6038", { jitter: 0.1, smooth: 0.35 }), m.color("#83502e", { jitter: 0.1, smooth: 0.35 }), m.color("#b27848", { jitter: 0.08, smooth: 0.35 })];
         const deep = m.color("#3a2018", { jitter: 0.03 });
@@ -34370,7 +34665,7 @@ kmlmk..
         sandMound(m, cx, cz, 14, 14, 2, 8);
         return { m, yaw: 24 };
       });
-      def("bridge", { name: "Moon Bridge", biome: "aquarium", tags: ["build", "swimthrough"], decor: { price: 380, size: 3 }, decorOnly: true }, ({ rng: rng2 }) => {
+      def2("bridge", { name: "Moon Bridge", biome: "aquarium", tags: ["build", "swimthrough"], decor: { price: 380, size: 3 }, decorOnly: true }, ({ rng: rng2 }) => {
         const m = new VoxelModel(110, 50, 34);
         const red = [m.color("#d8463a", { jitter: 0.05 }), m.color("#b8343a", { jitter: 0.05 }), m.color("#ee6a52", { jitter: 0.04 })];
         const plank = [m.color("#a87848", { jitter: 0.06 }), m.color("#94683e", { jitter: 0.06 })];
@@ -34425,7 +34720,7 @@ kmlmk..
         3: ["##.", "..#", ".#.", "..#", "##."],
         0: ["###", "#.#", "#.#", "#.#", "###"]
       };
-      def("toilet", {
+      def2("toilet", {
         name: "Toilet",
         biome: "aquarium",
         tags: ["dumb", "home"],
@@ -34466,8 +34761,8 @@ kmlmk..
         } else {
           shape(m, cx - 12, 24, 12, cx + 12, 56, 14, (x, y, z) => ((x - cx) / 11.4) ** 2 + ((y - 39.6) / 14.6) ** 2 <= (z > 13 ? 0.86 : 1), seatC);
         }
-        rbox2(m, 7, 23, 3, 33, 44, 11, 2.2, por);
-        rbox2(m, 6, 45, 2, 34, 48, 12, 1.4, por);
+        rbox3(m, 7, 23, 3, 33, 44, 11, 2.2, por);
+        rbox3(m, 6, 45, 2, 34, 48, 12, 1.4, por);
         m.box(8, 44, 11, 32, 44, 11, porD);
         m.box(cx - 2, 20, 11, cx + 1, 24, 14, por);
         const ly = frame2 === 3 ? 38 : 41;
@@ -34490,7 +34785,7 @@ kmlmk..
         } : null;
         return { m, yaw: 30, ground: [cx, 0, 25], front, anchors: { bowl: [cx, 18, cz + 2], top: [cx, 49, 7] } };
       });
-      def("garden_gnome", {
+      def2("garden_gnome", {
         name: "Garden Gnome",
         biome: "aquarium",
         tags: ["dumb", "statue"],
@@ -34563,7 +34858,7 @@ kmlmk..
         }
         return { m, yaw: 28, ground: [cx, 0, cz + 2], anchors: { hat: [cx + 4, hy + 18, cz + 1], face: [cx, 27, cz + 7] } };
       });
-      def("plastic_flamingo", {
+      def2("plastic_flamingo", {
         name: "Plastic Flamingo",
         biome: "aquarium",
         tags: ["dumb"],
@@ -34614,7 +34909,7 @@ kmlmk..
         }
         return { m, yaw: 26, ground: [20, 0, cz], anchors: { head: [hx2, hy, cz] } };
       });
-      def("toaster", {
+      def2("toaster", {
         name: "Toaster",
         biome: "aquarium",
         tags: ["dumb", "retro"],
@@ -34641,8 +34936,8 @@ kmlmk..
         const red = m.color("#e04a3a", { smooth: 0.5 });
         const cord = m.color("#2e2a30", { smooth: 0.5 });
         const cx = 20;
-        rbox2(m, 5, 0, 7, 35, 2, 23, 1, black);
-        rbox2(m, 6, 2, 8, 34, 25, 22, 4, chrome);
+        rbox3(m, 5, 0, 7, 35, 2, 23, 1, black);
+        rbox3(m, 6, 2, 8, 34, 25, 22, 4, chrome);
         for (const z of [11, 17]) m.sub(() => m.box(10, 19, z, 30, 25, z + 2));
         for (const z of [11, 17]) m.box(10, 18, z, 30, 18, z + 2, slot);
         const top = 25 + [0, 9, 19][frame2];
@@ -34656,7 +34951,7 @@ kmlmk..
           }
         }
         if (frame2 === 0) m.sub(() => m.box(6, 9, 8, 34, 17, 22));
-        if (frame2 === 0) rbox2(m, 6, 2, 8, 34, 17, 22, 4, chrome);
+        if (frame2 === 0) rbox3(m, 6, 2, 8, 34, 17, 22, 4, chrome);
         const ly = frame2 === 0 ? 8 : 18;
         m.box(35, 5, 13, 35, 21, 16, black);
         m.box(36, ly, 12, 38, ly + 2, 17, black);
@@ -34666,7 +34961,7 @@ kmlmk..
         m.tube([[cx, 3, 8, 0.9], [cx - 6, 1, 4, 0.9], [cx - 14, 1, 3, 0.9], [cx - 17, 1, 9, 0.9]], cord, 3);
         return { m, yaw: 30, ground: [cx, 0, 15], anchors: { slot: [cx, 27, 15] } };
       });
-      def("disco_ball", {
+      def2("disco_ball", {
         name: "Disco Ball",
         biome: "aquarium",
         tags: ["glow", "party"],
@@ -34705,15 +35000,15 @@ kmlmk..
           const fa = lat / LAT, fo = lon / LON;
           if (fa % 1 < 0.14 || fo % 1 < 0.12) return grout;
           const ti = Math.floor(fa), to = Math.floor(fo) % 22;
-          const h = h34(ti, to, 3, 7);
-          if (h34(ti, to, frame2, 11) < 0.07) return flash[(ti + to) % 3];
+          const h = h35(ti, to, 3, 7);
+          if (h35(ti, to, frame2, 11) < 0.07) return flash[(ti + to) % 3];
           return tiles[Math.floor(h * tiles.length)];
         });
         m.sub(() => m.sphere(cx, by, cz, R7 - 2.2));
         return { m, yaw: 30, ground: [cx, 0, cz], light: "#ffe8f0", anchors: { ball: [cx, by, cz] } };
       });
       PIANO_TUNE = [[0.2, 0.5], [0.42, 0.63], [0.64, 0.75], [0.86, 1], [1.08, 0.84], [1.3, 0.75], [1.52, 0.63], [1.74, 0.75], [1.96, 1]];
-      def("tiny_piano", {
+      def2("tiny_piano", {
         name: "Tiny Grand Piano",
         biome: "aquarium",
         tags: ["music", "fancy"],
@@ -34765,7 +35060,7 @@ kmlmk..
         m.box(X02, 14, KZ0, X02 + W11, 16, KZ1, lac);
         for (let x = X02 + 2; x <= X02 + W11 - 2; x++) {
           const key = Math.floor((x - X02 - 2) / 2);
-          const pressed = frame2 >= 2 && h34(key, frame2, 1, 5) < 0.28;
+          const pressed = frame2 >= 2 && h35(key, frame2, 1, 5) < 0.28;
           m.box(x, pressed ? 16 : 17, KZ0, x, pressed ? 16 : 17, KZ1, (x - X02 - 2) % 2 === 1 ? ivoryD : ivory);
           const b = key % 7;
           if ((x - X02 - 2) % 2 === 1 && b !== 2 && b !== 6) m.box(x, 18, KZ0, x, 18, KZ0 + 3, ebony);
@@ -34794,7 +35089,7 @@ kmlmk..
         return { m, yaw: 30, pitch: 28, ground: [X02 + W11 / 2, 0, 30], anchors: { lid: [X02 + 22, 40, 22], keys: [X02 + W11 / 2, 18, KZ0 + 3] } };
       });
       TV_BARS = ["#f4f4f4", "#f4e04a", "#4ae0f0", "#4ad84a", "#e84ae0", "#e84a4a", "#4a5ae8"];
-      def("retro_tv", {
+      def2("retro_tv", {
         name: "Retro TV",
         biome: "aquarium",
         tags: ["retro", "screen", "glow"],
@@ -34829,19 +35124,19 @@ kmlmk..
         const sea = [em("#2a7ad0"), em("#3a9ae0"), em("#5ac0f0")];
         const fishC = [em("#ff8a2a"), em("#ffd04a"), em("#1a1a2a"), em("#ffffff")];
         for (const [x, z, dx, dz] of [[9, 9, -2, -2], [38, 9, 2, -2], [9, 26, -2, 2], [38, 26, 2, 2]]) m.line(x + dx, 0, z + dz, x, 9, z, woodD, 0.9);
-        rbox2(m, 4, 9, 6, 43, 42, 29, 3, (x, y) => y % 3 === 0 ? woodD : wood);
+        rbox3(m, 4, 9, 6, 43, 42, 29, 3, (x, y) => y % 3 === 0 ? woodD : wood);
         m.box(6, 11, 30, 41, 40, 30, bezel);
         const sx0 = 8, sx1 = 30, sy0 = 14, sy1 = 37;
         const scr = (x, y) => {
           const u = (x - sx0) / (sx1 - sx0), v = (y - sy0) / (sy1 - sy0);
           if (frame2 === 0) return u + v > 1.1 && u + v < 1.3 || u + v > 1.4 && u + v < 1.48 ? glint2 : glass2;
-          if (frame2 <= 2) return stat2[Math.floor(h34(x, y, frame2, 9) * 4)];
+          if (frame2 <= 2) return stat2[Math.floor(h35(x, y, frame2, 9) * 4)];
           if (frame2 === 3) return v < 0.75 ? bars[Math.min(6, Math.floor(u * 7))] : bars[6 - Math.min(6, Math.floor(u * 7))];
           const fx = 0.3 + (frame2 === 5 ? 0.25 : 0), fy = 0.5 + (frame2 === 5 ? 0.06 : 0);
           const du = (u - fx) / 0.2, dv = (v - fy) / 0.13;
           if (du * du + dv * dv < 1) return Math.abs(du - 0.25) < 0.18 ? fishC[3] : du > 0.45 && dv > -0.1 && dv < 0.4 && du < 0.75 ? fishC[2] : fishC[0];
           if (u < fx - 0.15 && u > fx - 0.32 && Math.abs(v - fy) < (fx - 0.15 - u) * 1.2) return fishC[1];
-          if (h34(x, Math.floor(y + frame2 * 3), 4, 3) < 0.03) return fishC[3];
+          if (h35(x, Math.floor(y + frame2 * 3), 4, 3) < 0.03) return fishC[3];
           return sea[Math.min(2, Math.floor((1 - v) * 3))];
         };
         for (let y = sy0; y <= sy1; y++) for (let x = sx0; x <= sx1; x++) {
@@ -34867,7 +35162,7 @@ kmlmk..
         }
         return { m, yaw: 30, ground: [24, 0, 18], anchors: { screen: [19, 26, 33], front: [22, 22, 46] } };
       });
-      def("bathtub", {
+      def2("bathtub", {
         name: "Bubble Bath",
         biome: "aquarium",
         tags: ["dumb", "home"],
@@ -34910,10 +35205,10 @@ kmlmk..
         }
         const N2 = 26 + frame2 * 8;
         for (let i = 0; i < N2; i++) {
-          const a = h34(i, 1, 2, 3) * Math.PI * 2, r = Math.sqrt(h34(i, 2, 2, 3)) * 0.8;
+          const a = h35(i, 1, 2, 3) * Math.PI * 2, r = Math.sqrt(h35(i, 2, 2, 3)) * 0.8;
           const x = cx + Math.cos(a) * r * rx2 * 0.86, z = cz + Math.sin(a) * r * rz2 * 0.86;
-          const y = 19 + (1 - r) * (4 + frame2 * 1.5) + h34(i, 3, 2, 3) * 2;
-          m.sphere(x, y, z, 1.6 + h34(i, 4, 2, 3) * 2.2 + frame2 * 0.2, foam[i % 2]);
+          const y = 19 + (1 - r) * (4 + frame2 * 1.5) + h35(i, 3, 2, 3) * 2;
+          m.sphere(x, y, z, 1.6 + h35(i, 4, 2, 3) * 2.2 + frame2 * 0.2, foam[i % 2]);
         }
         const bobY = [0, 1, 2][frame2];
         miniDuck(m, cx - 9, 22 + bobY, cz + 3, 1, yel, beak, eye2, 1);
@@ -34927,7 +35222,7 @@ kmlmk..
         const front = (x, y, z) => z + 0.5 > cz - 1 && !inner.has(m.get(x, y, z));
         return { m, yaw: 30, ground: [cx, 0, cz + 4], front, anchors: { water: [cx + 2, 21, cz], foam: [cx, 26, cz] } };
       });
-      def("traffic_cone", {
+      def2("traffic_cone", {
         name: "Traffic Cone",
         biome: "aquarium",
         tags: ["dumb", "junk"],
@@ -34949,7 +35244,7 @@ kmlmk..
         const rub = m.color("#2a2a30", { jitter: 0.04 });
         const orange = m.color("#ff7a1a", { smooth: 0.5, spec: 0.7, jitter: 0.03 });
         const refl = m.color("#f6f6f2", { emissive: 0.15, spec: 1.4, jitter: 0.02 });
-        rbox2(P7, 3, 0, 3, 26, 2, 26, 1.4, rub);
+        rbox3(P7, 3, 0, 3, 26, 2, 26, 1.4, rub);
         lathe2(P7, 15, 15, 3, 38, (t) => 9.6 - t * 8.2, (x, y) => y >= 12 && y <= 16 || y >= 23 && y <= 26 ? refl : orange);
         P7.sphere(15, 38.5, 15, 1.6, orange);
         const rz2 = [0, 13, -13][frame2], pv = frame2 === 2 ? [27, 0, 15] : [3, 0, 15];
@@ -34958,7 +35253,7 @@ kmlmk..
         const tip = xformPt([15, 39, 15], pv, [pv[0] + 7, 0, 16], 0, 0, rz2);
         return { m, yaw: 30, ground: [22, 0, 16], anchors: { top: tip, base: [22, 2, 26] } };
       });
-      def("phone_booth", {
+      def2("phone_booth", {
         name: "Phone Booth",
         biome: "aquarium",
         tags: ["dumb", "glow", "build"],
@@ -35016,7 +35311,7 @@ kmlmk..
         m.box(19, Y1 + 14, 19, 24, Y1 + 14, 24, red);
         return { m, yaw: 30, ground: [21.5, 0, 21.5], light: "#ffe8a0", anchors: { door: [24, 22, 40], top: [21.5, 80, 21.5] } };
       });
-      def("mini_volcano", {
+      def2("mini_volcano", {
         name: "Mini Volcano",
         biome: "aquarium",
         tags: ["glow", "rock"],
@@ -35049,7 +35344,7 @@ kmlmk..
             if (y > 41) return false;
             if (r > Rat(y, Math.atan2(dz, dx))) return false;
             return !(y > 33 && r < (y - 33) * 0.75 + 3.5);
-          }, (x, y, z) => y > 34 && h34(x, y, z, 2) < 0.4 ? rock[3] : rock[Math.floor(fbm3(x * 0.15, y * 0.15, z * 0.15, 2, seed) * 2.99 * 1.2) % 3]);
+          }, (x, y, z) => y > 34 && h35(x, y, z, 2) < 0.4 ? rock[3] : rock[Math.floor(fbm3(x * 0.15, y * 0.15, z * 0.15, 2, seed) * 2.99 * 1.2) % 3]);
           shape(m2, cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z) => Math.hypot(x - cx, z - cz) < 4 + (y - 33) * 0.75, (x, y, z, p) => p ? null : pool);
           m2.recolor((x, y, z, p) => y > 32 && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 8 && m2.exposed(x, y, z) && p !== pool ? ash : null);
           const px3 = 9, pz = 46;
@@ -35069,7 +35364,7 @@ kmlmk..
         if (frame2 >= 1) {
           const hot = m.color("#ffb03a", { emissive: 1, jitter: 0.03 });
           m.paint(() => m.box(cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z, p) => p === B2.pool ? hot : null));
-          surface(m, (x, y, z, p) => y < 30 && y > 3 && h34(x, y, z, 7) < 0.025 && p !== B2.pool ? crack : null);
+          surface(m, (x, y, z, p) => y < 30 && y > 3 && h35(x, y, z, 7) < 0.025 && p !== B2.pool ? crack : null);
         }
         if (frame2 >= 2) {
           const reach = frame2 === 2 ? 22 : 6;
@@ -35088,12 +35383,12 @@ kmlmk..
           const top = frame2 === 2 ? 58 : 52;
           for (let i = 0; i < 12; i++) {
             const t = i / 11, y = 40 + t * (top - 40);
-            m.sphere(cx + Math.sin(i * 2.1) * (1 + t * 3), y, cz + Math.cos(i * 1.7) * (1 + t * 2), 2.6 - t * 1.2 + h34(i, frame2, 1, 2), t < 0.5 ? core : lava);
+            m.sphere(cx + Math.sin(i * 2.1) * (1 + t * 3), y, cz + Math.cos(i * 1.7) * (1 + t * 2), 2.6 - t * 1.2 + h35(i, frame2, 1, 2), t < 0.5 ? core : lava);
           }
         }
         return { m, yaw: 30, ground: [cx, 0, cz], light: "#ff9a3a", anchors: { crater: [cx, 42, cz] } };
       });
-      def("windmill", {
+      def2("windmill", {
         name: "Windmill",
         biome: "aquarium",
         tags: ["build"],
@@ -35160,7 +35455,7 @@ kmlmk..
         }
         return { m, yaw: 30, ground: [cx, 0, cz], anchors: { hub: [cx, hy, hz + 3], top: [cx, 74, cz] } };
       });
-      def("drawbridge_keep", {
+      def2("drawbridge_keep", {
         name: "Drawbridge Keep",
         biome: "aquarium",
         tags: ["build", "glow", "swimthrough"],
@@ -35242,7 +35537,7 @@ kmlmk..
         m.line(51, 26, 53, 50, ex, ez, chainC, 0.5);
         return { m, yaw: 30, vs: 1.5, ground: [43, 0, 38], light: "#ffd86a", anchors: { gate: [43, 12, 60], top: [43, 84, 28] } };
       });
-      def("dance_robot", {
+      def2("dance_robot", {
         name: "Disco Robot",
         biome: "aquarium",
         tags: ["machine", "glow", "party"],
@@ -35275,7 +35570,7 @@ kmlmk..
           m.box(fx - 4, 0, cz - 5, fx + 3, 3, cz + 7, dark);
           for (let y = 4; y < 18 - dy; y++) m.cylinder(fx - 0.5, cz + 1, y, y, y % 2 ? 2.4 : 2, steel);
         }
-        rbox2(m, 12, 18 - dy, 7, 37, 40 - dy, 24, 2.5, tin);
+        rbox3(m, 12, 18 - dy, 7, 37, 40 - dy, 24, 2.5, tin);
         m.box(15, 22 - dy, 25, 34, 36 - dy, 25, steel);
         for (let i = 0; i < 4; i++) m.box(17 + i * 4, 32 - dy, 26, 18 + i * 4, 33 - dy, 26, lights[i]);
         for (const kx of [19, 29]) m.cylinder(kx, 27 - dy, 26, 26, 2.2, dark, "z");
@@ -35296,7 +35591,7 @@ kmlmk..
         }
         m.cylinder(cx, cz + 0.5, 40 - dy, 43 - dy, 2.2, steel);
         const H8 = part(m, 24, 24, 20);
-        rbox2(H8, 2, 0, 2, 21, 13, 17, 2, tinB);
+        rbox3(H8, 2, 0, 2, 21, 13, 17, 2, tinB);
         for (const ex of [7, 15]) {
           H8.cylinder(ex, 8, 17, 18, 2.4, steel, "z");
           H8.cylinder(ex, 8, 18, 18, 1.5, eyeC, "z");
@@ -35309,7 +35604,7 @@ kmlmk..
         stampRot(m, H8, [11.5, 0, 9.5], [cx, 43 - dy, cz], 0, 0, tilt);
         return { m, yaw: 28, ground: [cx, 0, cz + 1], light: "#5af4ff", anchors: { head: [cx, 62, cz], chest: [cx, 28, cz + 10] } };
       });
-      def("ufo", {
+      def2("ufo", {
         name: "Little UFO",
         biome: "aquarium",
         tags: ["glow", "machine"],
@@ -35382,7 +35677,7 @@ kmlmk..
         }
         return { m, yaw: 30, ground: [cx, 0, cz], light: "#9affd8", anchors: { dome: [cx, cy + 12, cz], beam: [cx, 6, cz], under: [cx, cy - 7, cz] } };
       });
-      def("pizza_slice", {
+      def2("pizza_slice", {
         name: "Giant Pizza Slice",
         biome: "aquarium",
         tags: ["dumb", "food"],
@@ -35430,17 +35725,17 @@ kmlmk..
           const y0 = Math.round(2 + lift(r)), top = Math.round(hgt(r) + lift(r));
           if (r > LEN - 3) {
             const ch = top + 3 + Math.round(Math.sin((r - LEN + 3) / 6 * Math.PI) * 3);
-            for (let y = y0; y <= ch; y++) m.set(x, y, z, h34(x, y, z, 4) < 0.15 ? bake : crust);
+            for (let y = y0; y <= ch; y++) m.set(x, y, z, h35(x, y, z, 4) < 0.15 ? bake : crust);
             continue;
           }
           for (let y = y0; y < top; y++) m.set(x, y, z, Math.abs(a) > HALF - 0.04 ? sauce : dough);
-          m.set(x, top, z, h34(x, 0, z, 6) < 0.18 ? melt : cheese);
+          m.set(x, top, z, h35(x, 0, z, 6) < 0.18 ? melt : cheese);
         }
         for (const [r, a] of [[12, 0.05], [22, -0.18], [24, 0.2], [33, 0.02], [36, -0.24], [38, 0.24]]) {
           if (bite && r < 10) continue;
           const x = A2[0] + (dir[0] * Math.cos(a) - dir[1] * Math.sin(a)) * r, z = A2[1] + (dir[1] * Math.cos(a) + dir[0] * Math.sin(a)) * r;
           const y = Math.round(hgt(r) + lift(r)) + 1;
-          m.cylinder(x, z, y, y, 3.4, (xx, yy, zz) => h34(xx, yy, zz, 2) < 0.18 ? pepD : pep);
+          m.cylinder(x, z, y, y, 3.4, (xx, yy, zz) => h35(xx, yy, zz, 2) < 0.18 ? pepD : pep);
         }
         for (const [r, a, c] of [[17, -0.1, olive], [29, 0.14, green], [30, -0.1, olive], [41, -0.05, green], [18, 0.2, green]]) {
           const x = A2[0] + (dir[0] * Math.cos(a) - dir[1] * Math.sin(a)) * r, z = A2[1] + (dir[1] * Math.cos(a) + dir[0] * Math.sin(a)) * r;
@@ -35456,7 +35751,7 @@ kmlmk..
         }
         return { m, yaw: 30, pitch: 32, ground: [30, 0, 26], anchors: { tip: [A2[0] + 6, 8, A2[1] - 6], center: [30, 8, 26] } };
       });
-      def("burger", {
+      def2("burger", {
         name: "Mega Burger",
         biome: "aquarium",
         tags: ["dumb", "food"],
@@ -35487,7 +35782,7 @@ kmlmk..
         const flag = m.color("#ff4a5a", { jitter: 0 });
         const cx = 25, cz = 25;
         lathe2(m, cx, cz, 0, 6, (t) => 16 + Math.sin(t * Math.PI * 0.5) * 2, (x, y) => y < 2 ? bunD : bun);
-        lathe2(m, cx, cz, 7, 12, () => 19, (x, y, z) => y === 12 && (x + z) % 5 === 0 ? char : h34(x, y, z, 3) < 0.25 ? char : patty);
+        lathe2(m, cx, cz, 7, 12, () => 19, (x, y, z) => y === 12 && (x + z) % 5 === 0 ? char : h35(x, y, z, 3) < 0.25 ? char : patty);
         m.recolor((x, y, z, p) => p === patty && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) > 18.2 + noise3(x * 0.4, y, z * 0.4, 3) ? 0 : null);
         shape(m, cx - 22, 11, cz - 22, cx + 22, 13, cz + 22, (x, y, z) => {
           const d = Math.abs(x - cx) + Math.abs(z - cz);
@@ -35497,7 +35792,7 @@ kmlmk..
         shape(m, cx - 22, 14, cz - 22, cx + 22, 16, cz + 22, (x, y, z) => {
           const a = Math.atan2(z - cz, x - cx), r = Math.hypot(x - cx, z - cz);
           return r < 20.5 + Math.sin(a * 9) * 1.2 && Math.floor(y) === 14 + (Math.sin(a * 9) > 0.3 && r > 17 ? 1 : 0);
-        }, (x, y, z) => lettuce[h34(x, y, z, 5) < 0.4 ? 1 : 0]);
+        }, (x, y, z) => lettuce[h35(x, y, z, 5) < 0.4 ? 1 : 0]);
         lathe2(m, cx, cz, 16, 17, () => 17, tomato);
         const T5 = part(m, 40, 30, 40);
         shape(T5, 0, 0, 0, 39, 18, 39, (x, y, z) => ((x - 20) / 18) ** 2 + (y / 15) ** 2 + ((z - 20) / 18) ** 2 <= 1, (x, y) => y < 2 ? bunD : bunT);
@@ -35514,7 +35809,7 @@ kmlmk..
         stampRot(m, T5, [20, 0, 4], [cx, 18 + lift, cz - 16], tilt, 0, 0);
         return { m, yaw: 30, ground: [cx, 0, cz], anchors: { top: [cx, 34 + lift, cz] } };
       });
-      def("cactus_pot", {
+      def2("cactus_pot", {
         name: "Potted Cactus",
         biome: "aquarium",
         tags: ["dumb", "plant"],
@@ -35548,7 +35843,7 @@ kmlmk..
         lathe2(m, cx, cz, 14, 17, () => 12.6, terraL);
         m.recolor((x, y, z, p) => p === terra && y >= 5 && y <= 8 && m.exposed(x, y, z) && (Math.floor(Math.atan2(z - cz, x - cx) * 6) + y) % 2 === 0 ? teal : null);
         m.sub(() => m.cylinder(cx, cz, 16, 17, 11));
-        m.cylinder(cx, cz, 16, 16, 11.2, (x, y, z) => h34(x, y, z, 3) < 0.08 ? pebble : soil);
+        m.cylinder(cx, cz, 16, 16, 11.2, (x, y, z) => h35(x, y, z, 3) < 0.08 ? pebble : soil);
         const col = (x, y, z) => Math.cos(Math.atan2(z + 0.5 - cz, x + 0.5 - cx) * 8) > 0.55 ? g[1] : g[0];
         lathe2(m, cx, cz, 17, 49, () => 5.6, col);
         m.sphere(cx, 49, cz, 5.6, col);
@@ -35557,7 +35852,7 @@ kmlmk..
         m.tube(armL, col, 3);
         m.tube(armR, col, 3);
         for (const a of [armL, armR]) m.sphere(a[3][0], a[3][1], a[3][2], a[3][3], col);
-        surface(m, (x, y, z, p) => p === g[1] && y > 18 && y % 3 === 0 && h34(x, y, z, 8) < 0.5 ? spine : null);
+        surface(m, (x, y, z, p) => p === g[1] && y > 18 && y % 3 === 0 && h35(x, y, z, 8) < 0.5 ? spine : null);
         const fz = cz + 5;
         m.box(cx - 3, 40, fz, cx - 2, 41, fz + 1, eye2);
         m.box(cx + 2, 40, fz, cx + 3, 41, fz + 1, eye2);
@@ -35576,7 +35871,7 @@ kmlmk..
         }
         return { m, yaw: 28, ground: [cx, 0, cz], anchors: { top: [cx, 58, cz] } };
       });
-      def("snowman", {
+      def2("snowman", {
         name: "Snowman",
         biome: "aquarium",
         tags: ["dumb"],
@@ -35636,7 +35931,7 @@ kmlmk..
         m.line((cx + 8 + hand[0] * 2) / 3, (32 + hand[1] * 2) / 3, cz + 1, hand[0] + 2, hand[1] + 3, cz + 1, twig, 0);
         return { m, yaw: 28, ground: [cx, 0, cz], anchors: { top: [cx, 64, cz], head: [cx, 48, cz + 6] } };
       });
-      def("telescope", {
+      def2("telescope", {
         name: "Brass Telescope",
         biome: "aquarium",
         tags: ["fancy", "metal"],
@@ -35689,7 +35984,7 @@ kmlmk..
         m.line(f0[0] + o[0], f0[1] + o[1] + 1, f0[2] + o[2], f1[0] + o[0], f1[1] + o[1] + 1, f1[2] + o[2], brass, 1);
         return { m, yaw: 30, ground: [cx, 0, cz + 2], anchors: { lens: P7(27) } };
       });
-      def("campfire", {
+      def2("campfire", {
         name: "Campfire",
         biome: "aquarium",
         tags: ["dumb", "glow"],
@@ -35726,7 +36021,7 @@ kmlmk..
           facetRock(m, rng2, cx + Math.cos(a) * 11.5, 2, cz + Math.sin(a) * 11.5, 3.4, 2.8, 3, stone[k % 2], 9);
         }
         stoneTex(m, stone, 5);
-        m.cylinder(cx, cz, 1, 2, 7.5, (x, y, z) => h34(x, y, z, 4) < 0.2 ? ember : ash);
+        m.cylinder(cx, cz, 1, 2, 7.5, (x, y, z) => h35(x, y, z, 4) < 0.2 ? ember : ash);
         for (let k = 0; k < 4; k++) {
           const a = k * Math.PI / 2 + 0.4;
           m.line(cx + Math.cos(a) * 8.5, 2.5, cz + Math.sin(a) * 8.5, cx + Math.cos(a) * 1.5, 13, cz + Math.sin(a) * 1.5, bark, 1.7);
@@ -35741,14 +36036,14 @@ kmlmk..
           const sway = Math.sin(t * 3 + frame2) * t * 2;
           return Math.hypot(x - cx - sway, z - cz) <= W11 * Math.pow(1 - t, 0.75) * (t > 0.35 ? wob : 1);
         }, (x, y, z) => {
-          const k = (y - 3) / H8 * 0.9 + Math.hypot(x + 0.5 - cx, z + 0.5 - cz) / W11 * 0.7 + h34(x, y, z, frame2) * 0.15;
+          const k = (y - 3) / H8 * 0.9 + Math.hypot(x + 0.5 - cx, z + 0.5 - cz) / W11 * 0.7 + h35(x, y, z, frame2) * 0.15;
           return fl[k < 0.45 ? 3 : k < 0.75 ? 2 : k < 1.05 ? 1 : 0];
         });
         m.line(cx + 16, 1, cz + 14, cx + 6, 12, cz + 6, stick, 0.5);
         m.box(cx + 4, 11, cz + 4, cx + 6, 13, cz + 6, mallow);
         return { m, yaw: 30, ground: [cx, 0, cz], light: "#ff9a3a", anchors: { flame: [cx, 3 + H8 * 0.6, cz], side: [cx + 16, 9, cz + 9] } };
       });
-      def("arcade_cabinet", {
+      def2("arcade_cabinet", {
         name: "Arcade Cabinet",
         biome: "aquarium",
         tags: ["retro", "screen", "glow"],
@@ -35819,14 +36114,14 @@ kmlmk..
             if (fu2 >= 0 && fu2 <= 7 && Math.abs(fv2) <= 2 - (fu2 === 0 || fu2 === 7 ? 1 : 0)) return fu2 === 5 && fv2 === -1 ? wht : org;
             if (fu2 === -1 && Math.abs(fv2) <= 2) return org;
             if (v === 17 && u % 3 !== 0 && u > 2 && u < 17) return wht;
-            return h34(u, v, 1, 2) < 0.04 ? star : bg4;
+            return h35(u, v, 1, 2) < 0.04 ? star : bg4;
           }
           if (v === 0) return u < 8 ? cyan : bg4;
           if (v >= 3 && v <= 4 && (u % 6 === 2 || u % 6 === 3)) return v === 3 ? red : grn;
           if (u === 9 && v >= 7 && v <= 12 && v % 2) return wht;
           const fu = u - 6, fv = v - 15;
           if (fu >= 0 && fu <= 6 && Math.abs(fv) <= 1) return fu === 4 && fv === -1 ? wht : org;
-          return h34(u, v, 2, 2) < 0.05 ? star : bg4;
+          return h35(u, v, 2, 2) < 0.05 ? star : bg4;
         };
         for (let v = 0; v < 20; v++) for (let u = 0; u < 20; u++) m.set(10 + u, 59 - v, 26, pix(u, v));
         m.box(8, 38, 26, 31, 39, 26, black);
@@ -35839,7 +36134,7 @@ kmlmk..
         return { m, yaw: 28, ground: [20, 0, 20], light: "#ff6ad8", anchors: { screen: [20, 50, 28], top: [20, 76, 20], front: [20, 22, 44] } };
       });
       JUKE = ["#ff4ad8", "#ffd84a", "#4af4ff"];
-      def("jukebox", {
+      def2("jukebox", {
         name: "Jukebox",
         biome: "aquarium",
         tags: ["retro", "music", "glow"],
@@ -35869,8 +36164,8 @@ kmlmk..
         const tubes2 = JUKE.map((c) => m.color(c, { emissive: 1, jitter: 0 }));
         const label3 = m.color(JUKE[frame2], { emissive: 0.6 });
         const cx = 22.5, cz = 15, ay = 34;
-        rbox2(m, 5, 0, 3, 40, 3, 27, 1, chromeD);
-        rbox2(m, 6, 3, 4, 39, ay + 1, 26, 2, wood);
+        rbox3(m, 5, 0, 3, 40, 3, 27, 1, chromeD);
+        rbox3(m, 6, 3, 4, 39, ay + 1, 26, 2, wood);
         shape(m, 5, ay, 4, 40, ay + 18, 26, (x, y, z) => Math.hypot(x - cx, y - ay) <= 17, wood);
         shape(m, 5, ay, 27, 40, ay + 18, 27, (x, y) => {
           const r = Math.hypot(x - cx, y - ay);
@@ -35889,7 +36184,7 @@ kmlmk..
         m.ellipsoid(cx, ay + 18, cz, 4, 2, 3, chrome);
         return { m, yaw: 28, ground: [cx, 0, cz], light: JUKE[frame2], anchors: { top: [cx, ay + 22, cz], front: [cx, 18, 36] } };
       });
-      def("beach_set", {
+      def2("beach_set", {
         name: "Beach Day",
         biome: "aquarium",
         tags: ["dumb", "home"],
@@ -35950,7 +36245,7 @@ kmlmk..
         m.box(12, 0, 31, 14, 2, 33, spade);
         return { m, yaw: 30, ground: [32, 0, 27], anchors: { chair: [47, 10, 37], top: [ucx, 52, ucz], ball: [12, 8, 41] } };
       });
-      def("trampoline", {
+      def2("trampoline", {
         name: "Trampoline",
         biome: "aquarium",
         tags: ["dumb", "toy"],
@@ -35994,7 +36289,7 @@ kmlmk..
         }
         return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], anchors: { mat: [cx, 17 + off(0), cz] } };
       });
-      def("fish_statue", {
+      def2("fish_statue", {
         name: "Golden Fish Statue",
         biome: "aquarium",
         tags: ["statue", "fancy"],
@@ -36035,7 +36330,7 @@ kmlmk..
         const rad = (t) => t < 0.25 ? 1.6 + t / 0.25 * 3 : t < 0.8 ? 4.6 + Math.sin((t - 0.25) / 0.55 * Math.PI) * 2.4 : 4.6 - ((t - 0.8) / 0.2) ** 2 * 1.8;
         for (let t = 0; t <= 1; t += 0.01) {
           const [x, y, z] = P7(t), r = rad(t);
-          m.ellipsoid(x, y, z, r, r, r * 0.74, (xx, yy, zz) => yy < y - r * 0.3 && xx > x ? goldL : h34(xx, yy, zz, 3) < 0.1 ? goldL : gold);
+          m.ellipsoid(x, y, z, r, r, r * 0.74, (xx, yy, zz) => yy < y - r * 0.3 && xx > x ? goldL : h35(xx, yy, zz, 3) < 0.1 ? goldL : gold);
         }
         const tri5 = (a, b, c, z0, z1, col) => {
           const minx = Math.min(a[0], b[0], c[0]), maxx = Math.max(a[0], b[0], c[0]), miny = Math.min(a[1], b[1], c[1]), maxy = Math.max(a[1], b[1], c[1]);
@@ -36071,7 +36366,7 @@ kmlmk..
         }
         return { m, yaw: 30, ground: [cx, 0, cz], anchors: { mouth: [M6[0] + 2, M6[1] + 2, cz], fish: P7(0.5) } };
       });
-      def("giant_sneaker", {
+      def2("giant_sneaker", {
         name: "Lost Sneaker",
         biome: "aquarium",
         tags: ["dumb", "junk", "home"],
@@ -36151,7 +36446,7 @@ kmlmk..
         const X = (p) => xformPt(p, pv, dp, 0, 0, rz2);
         return { m, yaw: 30, ground: [36, 0, 17], anchors: { opening: X([11, 20, zc]), toe: X([58, 3, zc]) } };
       });
-      def("bowling_pins", {
+      def2("bowling_pins", {
         name: "Bowling Set",
         biome: "aquarium",
         tags: ["dumb", "toy"],
@@ -36205,7 +36500,7 @@ kmlmk..
         }
         return { m, yaw: 30, ground: [28, 0, 26], anchors: { top: [28, 38, 26], pins: [28, 14, 27] } };
       });
-      def("hot_tub", {
+      def2("hot_tub", {
         name: "Hot Tub",
         biome: "aquarium",
         tags: ["home", "glow"],
@@ -36249,8 +36544,8 @@ kmlmk..
         shape(m, cx - R7, 15, cz - R7, cx + R7, 15, cz + R7, (x, y, z) => oct(x, z, R7 - 3.2), water);
         const nb = frame2 === 0 ? 6 : 22;
         for (let i = 0; i < nb; i++) {
-          const a = h34(i, frame2, 1, 4) * Math.PI * 2, r = Math.sqrt(h34(i, frame2, 2, 4)) * (R7 - 6);
-          m.sphere(cx + Math.cos(a) * r, 16, cz + Math.sin(a) * r, 0.9 + h34(i, frame2, 3, 4) * (frame2 ? 1.1 : 0.4), foam);
+          const a = h35(i, frame2, 1, 4) * Math.PI * 2, r = Math.sqrt(h35(i, frame2, 2, 4)) * (R7 - 6);
+          m.sphere(cx + Math.cos(a) * r, 16, cz + Math.sin(a) * r, 0.9 + h35(i, frame2, 3, 4) * (frame2 ? 1.1 : 0.4), foam);
         }
         miniDuck(m, cx - 6, 15, cz + 6, 0.9, yel, beak, eye2, 1);
         m.box(cx - 8, 0, cz + R7 + 1, cx + 8, 5, cz + R7 + 7, (x, y, z) => step[z % 3 === 0 ? 1 : 0]);
@@ -36267,7 +36562,7 @@ kmlmk..
         const front = (x, y, z) => z + 0.5 > cz - 2 && !inner.has(m.get(x, y, z));
         return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], light: "#4ad8e0", front, anchors: { water: [cx, 17, cz], top: [cx, 24, cz] } };
       });
-      def("map_table", {
+      def2("map_table", {
         name: "Treasure Map Table",
         biome: "aquarium",
         tags: ["treasure", "wreck"],
@@ -36347,22 +36642,22 @@ kmlmk..
         fx: [{ at: 0.1, kind: "sparkle", from: "top", n: 6 }, { at: 0.3, kind: "bubbles", from: "top", n: 6 }],
         fish: "gather"
       };
-      def(
+      def2(
         "lava_lamp_giant",
         { name: "Giant Lava Lamp", biome: "aquarium", tags: ["glow", "retro"], decor: { price: 520, size: 2 }, decorOnly: true, desc: "The same groovy lamp, but taller than most of your fish.", interact: LAMP_INTERACT },
         ({ variant: variant2, frame: frame2 }) => lavaLamp(LAVA[(variant2 + 4) % LAVA.length], frame2, 1.5)
       );
-      def(
+      def2(
         "lava_lamp_slime",
         { name: "Slime Lamp", biome: "aquarium", tags: ["glow", "retro"], decor: { price: 260, size: 1 }, decorOnly: true, desc: "Toxic-green goo in a lamp. Probably fine.", interact: LAMP_INTERACT },
         ({ frame: frame2 }) => lavaLamp(LAVA[3], frame2, 1, { metal: "#4a4e5a", metal2: "#2e323c" })
       );
-      def(
+      def2(
         "lava_lamp_galaxy",
         { name: "Galaxy Lamp", biome: "aquarium", tags: ["glow", "retro"], decor: { price: 300, size: 1 }, decorOnly: true, desc: "A pocket universe with drifting nebula blobs.", interact: LAMP_INTERACT },
         ({ frame: frame2 }) => lavaLamp(LAVA[5], frame2, 1, { stars: true, metal: "#d8c890", metal2: "#a89060" })
       );
-      def("plasma_globe", {
+      def2("plasma_globe", {
         name: "Plasma Globe",
         biome: "aquarium",
         tags: ["glow", "machine"],
@@ -36402,14 +36697,14 @@ kmlmk..
         m.sphere(cx, cy, cz, 3.2, orb2);
         for (let k = 0; k < 7; k++) {
           const th = k / 7 * Math.PI * 2 + frame2 * 0.45 + Math.sin(k * 3.1 + frame2) * 0.3;
-          const ph = (h34(k, frame2, 1, 6) - 0.5) * 1.5;
+          const ph = (h35(k, frame2, 1, 6) - 0.5) * 1.5;
           let ez = Math.cos(ph) * Math.sin(th);
           if (ez < -0.3) ez = -ez;
           const E = [cx + R7 * 0.92 * Math.cos(ph) * Math.cos(th), cy + R7 * 0.92 * Math.sin(ph), cz + R7 * 0.92 * ez];
           let prev = [cx, cy, cz];
           for (let i = 1; i <= 6; i++) {
             const t = i / 6, j = i < 6 ? 1.3 : 0;
-            const p = [cx + (E[0] - cx) * t + (h34(k, i, frame2, 1) - 0.5) * 2 * j, cy + (E[1] - cy) * t + (h34(k, i, frame2, 2) - 0.5) * 2 * j, cz + (E[2] - cz) * t + (h34(k, i, frame2, 3) - 0.5) * 2 * j];
+            const p = [cx + (E[0] - cx) * t + (h35(k, i, frame2, 1) - 0.5) * 2 * j, cy + (E[1] - cy) * t + (h35(k, i, frame2, 2) - 0.5) * 2 * j, cz + (E[2] - cz) * t + (h35(k, i, frame2, 3) - 0.5) * 2 * j];
             m.line(prev[0], prev[1], prev[2], p[0], p[1], p[2], arc2, 0);
             prev = p;
           }
@@ -36417,7 +36712,7 @@ kmlmk..
         }
         return { m, yaw: 30, ground: [cx, 0, cz], light: "#ff9aff", anchors: { orb: [cx, cy, cz], top: [cx, cy + R7, cz] } };
       });
-      def("crystal_throne", {
+      def2("crystal_throne", {
         name: "Crystal Throne",
         biome: "aquarium",
         tags: ["crystal", "glow", "fancy"],
@@ -36448,11 +36743,11 @@ kmlmk..
         m.box(10, 4, 8, 53, 7, 45, stone);
         for (let x = 12; x <= 51; x += 3) m.box(x, 5, 46, x + 1, 6, 46, rune2);
         for (const [dx, len, r, tilt] of [[0, 30, 5, 0], [-7, 24, 4, -0.26], [7, 25, 4, 0.26], [-12, 18, 3.4, -0.55], [12, 19, 3.4, 0.55], [-3, 20, 3, -0.1], [4, 22, 3, 0.12]]) {
-          shaft(m, [cx + dx, 44, 12], [Math.sin(tilt), Math.cos(tilt), -0.12], len, r, 7, (x, y) => y > 44 + len * 0.8 ? cr2[1] : h34(x, y, 0, 2) < 0.15 ? cr2[2] : cr2[0], 6, dx * 0.1);
+          shaft(m, [cx + dx, 44, 12], [Math.sin(tilt), Math.cos(tilt), -0.12], len, r, 7, (x, y) => y > 44 + len * 0.8 ? cr2[1] : h35(x, y, 0, 2) < 0.15 ? cr2[2] : cr2[0], 6, dx * 0.1);
         }
         m.box(17, 8, 12, 46, 19, 38, stone);
         m.box(17, 19, 38, 46, 19, 38, gold);
-        rbox2(m, 18, 20, 14, 45, 23, 37, 1.6, velvet);
+        rbox3(m, 18, 20, 14, 45, 23, 37, 1.6, velvet);
         for (const ax of [12, 46]) {
           m.box(ax, 20, 14, ax + 5, 29, 38, stone);
           m.box(ax, 30, 14, ax + 5, 30, 38, gold);
@@ -36468,7 +36763,7 @@ kmlmk..
         for (const [x, z] of [[8, 6], [55, 6], [8, 47], [55, 47]]) shaft(m, [x, 3, z], [0.1 * Math.sign(x - cx), 1, 0.1 * Math.sign(z - cz)], 9, 1.8, 3, cr2[0], 6);
         return { m, yaw: 30, ground: [cx, 0, cz], light: "#c88aff", anchors: { seat: [cx, 26, 30], back: [cx, 62, 12] } };
       });
-      def("sunken_car", {
+      def2("sunken_car", {
         name: "Sunken Beetle",
         biome: "aquarium",
         tags: ["wreck", "metal", "home"],
@@ -36524,7 +36819,7 @@ kmlmk..
           return (x + y) % 9 === 0 ? glint2 : glass2;
         });
         const rust = [m.color("#c27840", { jitter: 0.08 }), m.color("#a4552f", { jitter: 0.08 })];
-        m.recolor((x, y, z, p) => (p === paint7 || p === paintD) && fbm3(x * 0.12, y * 0.12, z * 0.12, 2, 7) > 0.64 ? rust[h34(x, y, z, 2) < 0.5 ? 0 : 1] : null);
+        m.recolor((x, y, z, p) => (p === paint7 || p === paintD) && fbm3(x * 0.12, y * 0.12, z * 0.12, 2, 7) > 0.64 ? rust[h35(x, y, z, 2) < 0.5 ? 0 : 1] : null);
         for (const wx of [22, 68]) for (const [z0, z1, hz] of [[5, 10, 5], [42, 47, 47]]) {
           m.cylinder(wx, 7, z0, z1, 7, tire, "z");
           m.cylinder(wx, 7, hz, hz, 3.4, chrome, "z");
@@ -36552,7 +36847,7 @@ kmlmk..
         return { m, yaw: 30, light: "#fff6c0", ground: [46, 0, cz], anchors: { window: [42, 26, 44], exhaust: [5, 8, 36], front: [84, 18, cz] } };
       });
       ROCKET_SEQ = [1, 1, 2, 2, ...Array(29).fill(2), 2, 1, 1, 0];
-      def("rocket_ship", {
+      def2("rocket_ship", {
         name: "Retro Rocket",
         biome: "aquarium",
         tags: ["machine", "glow"],
@@ -36615,7 +36910,7 @@ kmlmk..
         else m.box(11, 62, 8, 14, 62, 10, grey);
         if (frame2 === 3) {
           const smoke = [m.color("#d8dce4", { smooth: 0.9, jitter: 0.04 }), m.color("#b8bcc8", { smooth: 0.9, jitter: 0.04 })];
-          for (let y = 6; y <= 88; y += 3) m.sphere(rx2 + Math.sin(y * 0.3) * 1.5, y, rz2 + Math.cos(y * 0.23), 4.6 - y * 0.03 + h34(y, 1, 1, 3) * 1.4, smoke[y / 3 % 2]);
+          for (let y = 6; y <= 88; y += 3) m.sphere(rx2 + Math.sin(y * 0.3) * 1.5, y, rz2 + Math.cos(y * 0.23), 4.6 - y * 0.03 + h35(y, 1, 1, 3) * 1.4, smoke[y / 3 % 2]);
           return { m, yaw: 30, ground: [cx, 0, cz], anchors: { nozzle: [rx2, 8, rz2], pad: [cx, 5, 40], top: [rx2, 86, rz2] } };
         }
         const R7 = part(m, 52, 98, 52);
@@ -36654,7 +36949,7 @@ kmlmk..
         for (let i = 0; i < R7.data.length; i++) if (R7.data[i]) m.data[i] = R7.data[i];
         return { m, yaw: 30, ground: [cx, 0, cz], light: "#ffb04a", split: (x, y, z) => R7.get(x, y, z) !== 0, anchors: { nozzle: [rx2, 8, rz2], pad: [cx, 5, 40], top: [rx2, 86, rz2] } };
       });
-      def("cuckoo_clock", {
+      def2("cuckoo_clock", {
         name: "Cuckoo Clock",
         biome: "aquarium",
         tags: ["retro", "home"],
@@ -36687,7 +36982,7 @@ kmlmk..
         const beak = m.color("#ff9a2a", { jitter: 0 });
         const cone = [m.color("#5a3a22", { jitter: 0.04 }), m.color("#7a5230", { jitter: 0.04 })];
         const cx = 20.5, fz = 18;
-        rbox2(m, 13, 0, 5, 28, 3, 21, 1, stone);
+        rbox3(m, 13, 0, 5, 28, 3, 21, 1, stone);
         m.cylinder(cx, 12, 3, 36, 2.2, wood);
         m.box(7, 36, 6, 34, 62, fz, (x, y, z) => z === fz && (x - 7) % 4 === 0 ? woodL : wood);
         shape(m, 2, 60, 3, 39, 73, 21, (x, y, z) => {
@@ -36734,7 +37029,7 @@ kmlmk..
         }
         return { m, yaw: 28, ground: [cx, 0, 13], anchors: { door: [cx, 58, fz + 6], top: [cx, 76, 12] } };
       });
-      def("gumball_machine", {
+      def2("gumball_machine", {
         name: "Gumball Machine",
         biome: "aquarium",
         tags: ["dumb", "retro", "treasure"],
@@ -36762,12 +37057,12 @@ kmlmk..
         const cx = 19, cz = 19, gy = 41;
         lathe2(m, cx, cz, 0, 4, (t) => 10 - t * 1.5, redD);
         lathe2(m, cx, cz, 5, 17, (t) => 5 + t * 1.2, red);
-        rbox2(m, 10, 17, 10, 28, 30, 28, 3, red);
+        rbox3(m, 10, 17, 10, 28, 30, 28, 3, red);
         torus2(m, cx, 31, cz, 7, 0.8, chrome);
         m.sphere(cx, gy, cz, 11.5, (x, y, z) => {
           const nx = (x + 0.5 - cx) / 11.5, ny = (y + 0.5 - gy) / 11.5, nz = (z + 0.5 - cz) / 11.5;
           if (nz > 0.45 && ny > 0.1 && ny < 0.75 && nx < -0.15 && nx > -0.55) return glint2;
-          return gums[Math.floor(h34(Math.floor(x / 2.5), Math.floor(y / 2.5), Math.floor(z / 2.5), 5) * gums.length)];
+          return gums[Math.floor(h35(Math.floor(x / 2.5), Math.floor(y / 2.5), Math.floor(z / 2.5), 5) * gums.length)];
         });
         lathe2(m, cx, cz, 51, 55, (t) => 6.4 - t * 2.4, red);
         m.sphere(cx, 56.5, cz, 1.8, chrome);
@@ -36787,7 +37082,7 @@ kmlmk..
         if (frame2 === 2) m.sphere(cx, 18, 31.5, 1.6, gums[4]);
         return { m, yaw: 30, ground: [cx, 0, cz], anchors: { chute: [cx, 18, 34], top: [cx, 58, cz] } };
       });
-      def("shop_stall", { name: "Bait Stall", biome: "shop", tags: ["shop", "glow"] }, ({ rng: rng2 }) => {
+      def2("shop_stall", { name: "Bait Stall", biome: "shop", tags: ["shop", "glow"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(96, 96, 60);
         const wood = [m.color("#a06a3c", { jitter: 0.08 }), m.color("#8a5a32", { jitter: 0.08 }), m.color("#b88050", { jitter: 0.06 })];
         const seam = m.color("#5a3420", { jitter: 0.03 });
@@ -36806,7 +37101,7 @@ kmlmk..
         for (const sy of [14, 28, 42]) {
           m.box(x0 + 2, sy, zb + 3, x1 - 2, sy + 1, zb + 9, wood[2]);
           for (let jx = x0 + 4, k = 0; jx < x1 - 6; jx += 7, k++) {
-            const h = 6 + (h34(jx, sy, 0, 3) * 3 | 0);
+            const h = 6 + (h35(jx, sy, 0, 3) * 3 | 0);
             m.box(jx, sy + 2, zb + 4, jx + 4, sy + 1 + h, zb + 8, glassC);
             m.box(jx + 1, sy + 2, zb + 5, jx + 3, sy + h - 1, zb + 8, contents[(k + sy) % contents.length]);
             m.box(jx, sy + 2 + h, zb + 4, jx + 4, sy + 3 + h, zb + 8, lid[(k + (sy >> 2)) % lid.length]);
@@ -36867,8 +37162,9 @@ kmlmk..
           anchors: { keeper: [kx, 10, kz] }
         };
       });
+      for (const [id2, d] of Object.entries(UNLOCK_PROPS)) def2(id2, d.meta, d.build);
       PROPS = {};
-      for (const [id2, d] of Object.entries(DEFS)) PROPS[id2] = d.meta;
+      for (const [id2, d] of Object.entries(DEFS2)) PROPS[id2] = d.meta;
       PROP_VARIANTS = {
         treasure_chest: [{ frame: 0, label: "chest" }, { frame: 1, label: "chest open" }],
         crystal_cluster: GEMS.map((g, i) => ({ variant: i, label: g[0] })),
@@ -39433,17 +39729,49 @@ kmlmk..
     }
   });
 
+  // src/fishing/line.js
+  function rodBaseLine(rod) {
+    const tier = Math.max(0, Number(rod?.tier) || 0);
+    return Math.round((LINE_BASE + tier * LINE_PER_TIER + (ROD_BONUS[rod?.id] || 0)) * 100) / 100;
+  }
+  function lineReachOf(rod, stats2 = null, tackle = []) {
+    let v = rod?.stats?.line ?? rodBaseLine(rod);
+    v += Number(stats2?.lineReach) || 0;
+    for (const t of tackle || []) v += TACKLE_LINE[t?.id] || 0;
+    return Math.max(1, Math.min(LINE_MAX, Math.round(v * 100) / 100));
+  }
+  function lineInfo(reach) {
+    const r = Math.max(1, Math.min(LINE_MAX, Number(reach) || 1));
+    if (r >= LINE_MAX - 0.01) return { label: "Abyss floor", zone: "abyss", pct: 100 };
+    const i = Math.max(0, Math.min(3, Math.floor(r - 0.15)));
+    const pct2 = i === 0 ? 100 : Math.round(Math.min(1, r - i) * 100);
+    return { label: LINE_ZONE_NAMES[i], zone: LINE_ZONES[i], pct: pct2 };
+  }
+  var LINE_ZONES, LINE_ZONE_NAMES, LINE_MAX, LINE_BASE, LINE_PER_TIER, ROD_BONUS, TACKLE_LINE, lineLabel;
+  var init_line = __esm({
+    "src/fishing/line.js"() {
+      LINE_ZONES = ["sunlit", "twilight", "midnight", "abyss"];
+      LINE_ZONE_NAMES = ["Sunlit", "Twilight", "Midnight", "Abyss"];
+      LINE_MAX = 4;
+      LINE_BASE = 1.1;
+      LINE_PER_TIER = 0.07;
+      ROD_BONUS = { leviathan: 0.4, glow: 0.15, trident: 0.2 };
+      TACKLE_LINE = { line_braid: 0.15, line_glow: 0.3, line_titan: 0.5 };
+      lineLabel = (reach) => lineInfo(reach).label;
+    }
+  });
+
   // src/game/rods.js
   function ensureRods(state) {
-    var _a4, _b;
+    var _a6, _b2;
     const r = state.rods || (state.rods = { owned: ["twig"], equipped: "twig", skins: {} });
     if (!Array.isArray(r.owned)) r.owned = ["twig"];
     if (!r.owned.includes("twig")) r.owned.unshift("twig");
     r.skins || (r.skins = {});
     if (!r.lv || typeof r.lv !== "object") r.lv = {};
     if (!r.tackle || typeof r.tackle !== "object") r.tackle = {};
-    (_a4 = r.tackle).owned || (_a4.owned = {});
-    (_b = r.tackle).on || (_b.on = {});
+    (_a6 = r.tackle).owned || (_a6.owned = {});
+    (_b2 = r.tackle).on || (_b2.on = {});
     for (const s of TACKLE_SLOTS) {
       const id2 = r.tackle.on[s];
       if (id2 && (!TACKLE_BY_ID[id2] || !r.tackle.owned[id2] || TACKLE_BY_ID[id2].slot !== s)) delete r.tackle.on[s];
@@ -39525,7 +39853,9 @@ kmlmk..
       strength: r.strength * (1 + 0.1 * lv) * m.strength * (s.rodStrength || 1),
       shock: { ...r.shock, power: r.shock.power * (1 + 0.04 * lv) * (s.shockPower || 1), charges: r.shock.charges + m.charges + (s.shockCharges || 0), cooldown: r.shock.cooldown * (s.shockCooldown || 1) },
       perk: rod.perk || null,
-      level: lv
+      level: lv,
+      line: lineReachOf(rod, s, opts.tackle !== false && state ? equippedTackle(state) : [])
+      // [crate26] + Lab lineReach + line spools
     };
   }
   function rodStats(state, stats2 = null) {
@@ -39552,6 +39882,7 @@ kmlmk..
   var init_rods = __esm({
     "src/game/rods.js"() {
       init_pixart();
+      init_line();
       R = (id2, tier, rarity, name, desc, stats2, look, extra = {}) => ({ id: id2, tier, rarity, name, desc, stats: stats2, look, src: "lab", ...extra });
       S8 = (lureSpeed, luck, control, resilience, strength, power, charges, cooldown) => ({ lureSpeed, luck, control, resilience, strength, shock: { power, charges, cooldown } });
       W3 = { src: "workshop" };
@@ -39783,6 +40114,7 @@ kmlmk..
         )
       ];
       ROD_BY_ID = Object.fromEntries(RODS.map((r) => [r.id, r]));
+      for (const r of RODS) r.stats.line = rodBaseLine(r);
       registerRods(RODS);
       PERKS = {
         bouncy: { name: "Bouncy Line", desc: "Keep more progress when a fish yanks. Snaps less.", icon: "heart" },
@@ -39802,9 +40134,9 @@ kmlmk..
         T2("reel_spin", "reel", "Spin Reel", "common", "Smooth and steady.", { control: 1.06, lure: 1.04 }),
         T2("reel_turbo", "reel", "Turbo Reel", "rare", "Brrrrr! Much faster reeling.", { lure: 1.12 }, { reelSpeed: 8 }),
         T2("reel_gold", "reel", "Golden Reel", "epic", "Silky, shiny and a little lucky.", { control: 1.12, lure: 1.1, luck: 1.05 }, { reelSpeed: 6 }),
-        T2("line_braid", "line", "Braided Line", "common", "Holds heavier fish.", { strength: 1.2 }),
-        T2("line_glow", "line", "Glow Line", "rare", "Strong, and it glows in the dark.", { strength: 1.3, luck: 1.05 }, { lantern: 1 }),
-        T2("line_titan", "line", "Titan Line", "epic", "Rated for whales. And whale-sized memes.", { strength: 1.6, resil: 0.06 }),
+        T2("line_braid", "line", "Braided Line", "common", "Holds heavier fish. A longer spool, too.", { strength: 1.2 }),
+        T2("line_glow", "line", "Glow Line", "rare", "Strong, long, and it glows in the dark.", { strength: 1.3, luck: 1.05 }, { lantern: 1 }),
+        T2("line_titan", "line", "Titan Line", "epic", "Rated for whales. Spools deep into the dark.", { strength: 1.6, resil: 0.06 }),
         T2("lure_spoon", "lure", "Shiny Spoon", "common", "Flash! Fish notice it sooner.", { lure: 1.08 }),
         T2("lure_frog", "lure", "Froggy Popper", "uncommon", "Ribbit. Irresistible.", { lure: 1.12, luck: 1.04 }),
         T2("lure_squid", "lure", "Glow Squid", "rare", "Rare fish love a glowing snack.", { luck: 1.12, lure: 1.06 }),
@@ -39822,7 +40154,9 @@ kmlmk..
         { key: "control", label: "Control", icon: "mouse_l", max: 2 },
         { key: "resilience", label: "Resilience", icon: "heart", max: 0.8 },
         { key: "strength", label: "Strength", icon: "trophy", max: 400, log: true },
-        { key: "shock", label: "Shock", icon: "storm", max: 2.6 }
+        { key: "shock", label: "Shock", icon: "storm", max: 2.6 },
+        { key: "line", label: "Line", icon: "line", max: 4 }
+        // [crate26] line length (zones of reach; lineLabel() names it)
       ];
       CTX = { deep: false };
       PERK_FX = {
@@ -40678,8 +41012,8 @@ kmlmk..
   function registerTool(kind2, build4) {
     TOOLS.set(kind2, build4);
   }
-  function registerPose(name, def2) {
-    POSES[name] = { n: def2.n, dur: def2.dur, loop: !!def2.loop, fn: (u, i) => P5({ noRod: true, ...def2.fn(u, i) }) };
+  function registerPose(name, def3) {
+    POSES[name] = { n: def3.n, dur: def3.dur, loop: !!def3.loop, fn: (u, i) => P5({ noRod: true, ...def3.fn(u, i) }) };
   }
   function toolKit(kit2) {
     return { model: (nx, ny, nz) => kit2.model(nx, ny, nz), col: (h, o = {}) => K(kit2, h, o), gloss: (h, o = {}) => KG(kit2, h, o), glow: (h, a = 0.8) => kit2.col(h, { emissive: a, jitter: 0 }) };
@@ -41160,7 +41494,7 @@ kmlmk..
     const hw = (Math.abs(ax) + Math.abs(bx)) * ext2 + 1, hh = (Math.abs(ay) + Math.abs(by)) * ext2 + 1;
     const x0 = Math.floor(f.x - hw), x1 = Math.ceil(f.x + hw), y0 = Math.floor(f.y - hh), y1 = Math.ceil(f.y + hh);
     for (let y = y0; y <= y1; y++) {
-      let run34 = null, rs2 = 0;
+      let run35 = null, rs2 = 0;
       const dy = y + 0.5 - f.y;
       for (let x = x0; x <= x1 + 1; x++) {
         let c = null;
@@ -41169,12 +41503,12 @@ kmlmk..
           const u = (dx * by - dy * bx) / det, v = (ax * dy - ay * dx) / det;
           if (u > -ext2 && u < ext2 && v > -ext2 && v < ext2) c = fn(u, v);
         }
-        if (c !== run34) {
-          if (run34) {
-            ctx3.fillStyle = run34;
+        if (c !== run35) {
+          if (run35) {
+            ctx3.fillStyle = run35;
             ctx3.fillRect(X + rs2, Y + y, x - rs2, 1);
           }
-          run34 = c;
+          run35 = c;
           rs2 = x;
         }
       }
@@ -41197,83 +41531,103 @@ kmlmk..
     const a = x * x + y * y - 1;
     return a * a * a - x * x * y * y * y <= 0;
   }
-  function eyePixel(E, u, v) {
-    const { style, gu, gv, su, sv, lid, px: px3 } = E;
-    const th = Math.max(0.17, 1.15 / px3);
-    let st = style;
+  function eyeArt(set, h) {
+    const k = h > 12 ? Math.ceil(h / 12) : 1;
+    return { rows: artFor(EYE_ART[set], Math.max(2, Math.round(h / k))), k };
+  }
+  function drawEye(ctx3, X, Y, f, E, mask) {
+    const h = clamp(Math.round(E.px * 1.35), 2, 48);
+    let st = E.style;
     if (st === "wink") st = E.side < 0 ? "happy" : "bean";
     if (E.mode === "happy" && st !== "led" && st !== "heart" && st !== "star") st = "happy";
-    if (st === "happy") {
-      const c = -0.42 + 0.78 * u * u;
-      return Math.abs(u) < 0.86 && Math.abs(v - c) < th * 1.05 ? INK : null;
-    }
-    if (lid >= 0.82 && st !== "led") {
-      const c = 0.18 - 0.4 * u * u;
-      return Math.abs(u) < 0.82 && Math.abs(v - c) < th ? INK : null;
-    }
-    const lidY = -1.05 + 2.1 * lid;
+    let set = "open", lid = E.lid, tear = st === "teary" || E.mood === "sad", slant = 0, k = 1;
+    if (st === "happy") set = "happy";
+    else if (st === "heart" || st === "star") set = st;
+    else if (st === "swirl") set = h <= 3 ? "open" : "swirl";
+    else if (st === "dot") set = "dot";
+    if (E.wide && set === "open") set = "wide";
+    if (E.mood === "sad") slant = 1;
+    else if (E.mood === "angry") slant = -1;
+    const closed = E.blink || lid >= 0.82 && st !== "led";
+    let rows;
     if (st === "led") {
-      const ry2 = 0.48 * (1 - lid * 0.9) + 0.04;
-      if (Math.abs(u) > 0.82 || Math.abs(v) > ry2) return null;
-      if (Math.abs(u) > 0.62 && Math.abs(v) > ry2 - 0.2 && (Math.abs(u) - 0.62) ** 2 + (Math.abs(v) - (ry2 - 0.2)) ** 2 > 0.04) return null;
-      return Math.floor((v + 2) * px3 * 0.5) % 2 ? "#3fe0ff" : "#b8fbff";
-    }
-    if (st === "dot") {
-      const uu = u - gu * 0.4, vv = v - gv * 0.4;
-      if (!inE(uu, vv, 0.42, 0.48) || v < lidY) return null;
-      return (uu + 0.16) ** 2 + (vv + 0.18) ** 2 < Math.max(0.02, (0.55 / px3) ** 2) ? "#ffffff" : INK;
-    }
-    const scale = st === "derp" ? E.side > 0 ? 1.08 : 0.82 : 1;
-    u /= scale;
-    v /= scale;
-    const tall = st === "anime" ? 0.82 : st === "bean" || st === "sleepy" || st === "teary" ? 0.86 : 1;
-    if (st === "teary" && inE(u - 0.5, v - 1.12, 0.2, 0.28) && v > 0.95) return "#7fd8ff";
-    if (!inE(u, v, tall, 1)) return null;
-    if (v < lidY) return null;
-    if (lid > 0.02 && v < lidY + th) return INK;
-    const shine = (cx, cy, r) => (u - cx) ** 2 + (v - cy) ** 2 < Math.max(r * r, (0.7 / px3) ** 2);
-    if (st === "bean" || st === "sleepy" || st === "teary") {
-      const ou = gu * 0.18, ov = gv * 0.18;
-      if (shine(su * 0.36 + ou, sv * 0.4 + ov, st === "teary" ? 0.34 : 0.3)) return "#ffffff";
-      if (shine(-su * 0.34 + ou, -sv * 0.4 + ov, 0.13)) return "#cfeaff";
-      if (st === "teary" && shine(su * 0.05 + ou, 0.52, 0.12)) return "#ffffff";
-      const rr5 = (u / tall) ** 2 + v * v;
-      if (rr5 > (1 - th * 1.1) ** 2) return INK;
-      return v < -0.15 ? "#16245a" : v < 0.4 ? "#1f3f88" : "#3f86e8";
-    }
-    const rr4 = (u / tall) ** 2 + v * v;
-    if (rr4 > (1 - th) ** 2) return INK;
-    if (st === "swirl") {
-      const r = Math.sqrt(rr4), a = Math.atan2(v, u);
-      return r < 0.86 && fract3(a / TAU + r * 2.1 - E.t * 1.4) < 0.36 ? INK : "#ffffff";
-    }
-    const gx = gu * 0.3, gy = gv * 0.3 + (st === "derp" ? 0 : 0);
-    const dgx = st === "derp" ? (E.side > 0 ? -0.32 : 0.34) + gu * 0.1 : gx, dgy = st === "derp" ? E.side > 0 ? -0.3 : 0.32 : gy;
-    const iu = u - dgx, iv = v - dgy;
-    if (st === "heart") {
-      if (heartIn(iu, iv + 0.05, 0.78)) {
-        if (shine(su * 0.3 + dgx, sv * 0.32 + dgy, 0.16)) return "#ffffff";
-        return iv < -0.1 ? "#ff7ab0" : "#ff3a7a";
+      const w = Math.max(2, Math.round(h * 0.7)), hh = Math.max(1, Math.round(h * 0.55 * (1 - lid * 0.85)));
+      rows = [];
+      for (let y = 0; y < hh; y++) rows.push([...Array(w)].map((_, x) => (x === 0 || x === w - 1) && (y === 0 || y === hh - 1) && w > 2 && hh > 2 ? "." : y % 2 ? "*" : "+"));
+    } else {
+      const a = st === "derp" && E.side < 0 && set === "open" ? eyeArt("dot", h) : eyeArt(set, st === "derp" && E.side > 0 ? h + 2 : st === "anime" ? h + 1 : h);
+      rows = a.rows;
+      k = a.k;
+      if (set === "open") {
+        const W12 = rows[0].length, H9 = rows.length;
+        if (st === "sparkle" && W12 >= 3 && H9 >= 4) rows[H9 - 2][W12 - 2] = "o";
+        if (st === "anime" && H9 >= 5) {
+          for (let y = Math.ceil(H9 * 0.6); y < H9 - 1; y++) for (let x = 1; x < W12 - 1; x++) if (rows[y][x] === "#") rows[y][x] = "+";
+        }
       }
-      return "#ffffff";
+      if (set === "swirl") {
+        const r = Math.floor((E.t || 0) * 6) % 4;
+        for (let i = 0; i < r; i++) rows = rows[0].map((_, x) => rows.map((row3) => row3[x]).reverse());
+      }
     }
-    if (st === "star") {
-      const r = Math.hypot(iu, iv);
-      if (r < starR(iu, iv) * 1.05) return r < 0.18 ? "#fff6c0" : iv < 0 ? "#ffe04a" : "#ffb81a";
-      return "#ffffff";
+    let H8 = rows.length, W11 = rows[0].length;
+    if (closed && set !== "heart" && set !== "star") {
+      const w = Math.max(2, W11 + (W11 >= 4 ? 0 : 1));
+      rows = [[...Array(w)].map(() => "#")];
+      W11 = w;
+      lid = 0;
+      slant = 0;
+    } else if (set === "open" || set === "wide") {
+      if (st === "sleepy") lid = Math.max(lid, 0.48);
+      if (slant) lid = Math.max(lid, 0.3);
+      if (lid > 0.05) {
+        rows = rows.map((r) => r.slice());
+        for (let x = 0; x < W11; x++) {
+          const fromInner = E.inner > 0 ? W11 - 1 - x : x;
+          const tIn = fromInner / Math.max(1, W11 - 1);
+          const cut = !slant ? Math.round(lid * H8 * 0.9) : Math.round(lid * H8 * 0.45 + (slant > 0 ? tIn : 1 - tIn) * H8 * 0.35);
+          for (let y = 0; y < Math.min(H8 - 1, cut); y++) rows[y][x] = ".";
+          if (cut > 0 && cut < H8 && rows[cut][x] !== ".") rows[cut][x] = "#";
+        }
+      }
     }
-    const irisR = st === "anime" ? 0.74 : st === "derp" ? 0.4 : 0.66;
-    const ir = (iu / (st === "anime" ? 0.82 : 1)) ** 2 + iv * iv;
-    if (shine(su * 0.38 + dgx, sv * 0.4 + dgy, st === "anime" ? 0.24 : 0.21)) return "#ffffff";
-    if (shine(-su * 0.3 + dgx, -sv * 0.34 + dgy, 0.1)) return "#ffffff";
-    if (st === "anime" && shine(su * 0.05 + dgx, sv * 0.5 + dgy, 0.08)) return "#ffffff";
-    if (ir < irisR * irisR) {
-      if (st === "derp" || ir < (irisR * 0.5) ** 2) return INK;
-      if (st === "anime") return iv < -0.2 ? "#127a58" : iv < 0.25 ? "#2bb878" : "#9cf0b8";
-      return iv < -0.2 ? "#0f78c8" : iv < 0.25 ? "#22b8e8" : "#8ff2ff";
+    if (tear && !closed && set === "open") {
+      rows = [...rows.map((r) => r.slice()), [...Array(W11)].map(() => "."), [...Array(W11)].map(() => ".")];
+      const tx = E.inner > 0 ? 0 : W11 - 1;
+      rows[H8][tx] = "-";
+      rows[H8 + 1][tx] = "-";
     }
-    if (st === "anime" && v < -0.72) return INK;
-    return "#ffffff";
+    H8 = rows.length;
+    const la = Math.hypot(f.ax, f.ay), lb = Math.hypot(f.bx, f.by) || 1;
+    const cols = Math.max(Math.min(W11, 2), Math.min(W11, Math.round(W11 * Math.min(1, la / lb * 1.15))));
+    if (cols < W11) rows = rows.map((r) => {
+      r = r.slice();
+      while (r.length > cols) r.splice(r.length >> 1, 1);
+      return r;
+    });
+    W11 = cols;
+    const sc = STYLE_COL[st] || STYLE_COL[set] || ["#3fe0ff", "#b8fbff"];
+    const ow = cols * k, oh = H8 * k;
+    const gm = Math.max(1, Math.round(h * 0.16));
+    const x0 = Math.round(f.x - ow / 2 + E.gu * gm), y0 = Math.round(f.y - oh / 2 + (closed ? oh * 0.15 : 0) + E.gv * gm * 0.8);
+    const outline = set === "heart" || set === "star";
+    const put2 = (px3, py, c) => {
+      for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) {
+        const x = px3 + i, y = py + j;
+        if (mask && !(x >= 0 && y >= 0 && x < mask.w && y < mask.h && mask.d[y * mask.w + x])) continue;
+        ctx3.fillStyle = c;
+        ctx3.fillRect(X + x, Y + y, 1, 1);
+      }
+    };
+    const cell = (x, y) => x < 0 || y < 0 || x >= cols || y >= H8 ? "." : rows[y][x];
+    if (outline) {
+      for (let y = -1; y <= H8; y++) for (let x = -1; x <= cols; x++) if (cell(x, y) === "." && (cell(x - 1, y) !== "." || cell(x + 1, y) !== "." || cell(x, y - 1) !== "." || cell(x, y + 1) !== ".")) put2(x0 + x * k, y0 + y * k, INK);
+    }
+    for (let y = 0; y < H8; y++) for (let x = 0; x < cols; x++) {
+      const ch = cell(x, y);
+      if (ch === ".") continue;
+      put2(x0 + x * k, y0 + y * k, ch === "+" ? sc[0] : ch === "*" ? sc[1] : EYE_COL[ch]);
+    }
   }
   function mouthPixel(Mo, u, v) {
     const th = Math.max(0.17, 1.1 / Mo.px);
@@ -41459,7 +41813,7 @@ kmlmk..
     }
     st.gx = clamp(st.gx + st.vx * dt, -1, 1);
     st.gy = clamp(st.gy + st.vy * dt, -1, 1);
-    const blink = st.blinkT > 0 ? 1 : 0;
+    const blink = o.blink || st.blinkT > 0 ? 1 : 0;
     const lidBase = Math.max(p.lid || 0, (p.squint || 0) * 0.55, md.lid || 0, eyes === "sleepy" ? 0.48 : 0);
     const lid = blink ? 1 : md.wide ? 0 : lidBase;
     const mstate = o.talk > 0.05 ? "rest" : md.mouth && p.mouth === "rest" ? md.mouth : p.mouth;
@@ -41472,13 +41826,11 @@ kmlmk..
       const vis = o.opaque ? f.z < 0.02 ? 0 : f.z < 0.15 ? f.z / 0.15 : 1 : f.z < 0 ? 0.28 : f.z < 0.12 ? lerp(0.28, 1, f.z / 0.12) : 1;
       if (vis <= 0) continue;
       ctx3.globalAlpha = a0 * vis;
-      const [su, sv] = localDir(f, -0.7, -0.7);
       if (k === "eyeL" || k === "eyeR") {
         const [gu, gv] = localDir(f, st.gx, st.gy);
         const gl2 = Math.min(1, Math.hypot(st.gx, st.gy));
-        const E = { style: eyes, gu: gu * gl2, gv: gv * gl2, su, sv, lid, t: o.t || 0, side: k === "eyeL" ? 1 : -1, px: px3, mode: blink ? null : p.eyeMode };
-        if (md.wide) E.lid = blink ? 1 : 0;
-        rasterFeature(ctx3, X, Y, f, 1, 1.5, face3.mask, (u, v) => eyePixel(E, u, v));
+        const E = { style: eyes, gu: gu * gl2, gv: gv * gl2, lid, blink, wide: md.wide && !blink, mood: o.mood, t: o.t || 0, side: k === "eyeL" ? 1 : -1, inner: Math.sign(F3.mid.x - f.x) || 1, px: px3, mode: blink ? null : p.eyeMode };
+        drawEye(ctx3, X, Y, f, E, face3.mask);
       } else if (k === "mouth") {
         const mpx = Math.hypot(f.ax, f.ay);
         const Mo = { style: o.mouth || "smile", state: mstate, open: clamp012(o.talk || 0), px: mpx };
@@ -41656,7 +42008,7 @@ kmlmk..
       ctx3.globalCompositeOperation = prev;
       ctx3.globalAlpha = pa;
     }
-    drawFaceLayer(ctx3, fr.face, X, Y, { id: o.id ?? "main", eyes: look.eyes, mouth: look.mouth, faceAcc: look.face, p: fr.p, lookAt: o.lookAt, talk: o.talk, mood: o.mood, t, sx });
+    drawFaceLayer(ctx3, fr.face, X, Y, { id: o.id ?? "main", eyes: look.eyes, mouth: look.mouth, faceAcc: look.face, p: fr.p, lookAt: o.lookAt, talk: o.talk, mood: o.mood, blink: o.blink, t, sx });
     const A2 = fr.anchors;
     const ax = (a) => [Math.round(x + a[0]), Math.round(y + a[1])];
     if (pose2 === "hold" && o.fish?.compiled) {
@@ -41782,7 +42134,7 @@ kmlmk..
       else drawEmoteFx(ctx3, pv.fx, x + (pv.head?.[0] || 0), y + (pv.head?.[1] || -50), t, k);
     }
   }
-  var TINTS, skinOfTint, WARDROBE_SLOTS, it, pkg, lab2, WARDROBE, WARDROBE_BY_ID, EMOTES, DEFAULT_CHARACTER, SLOT_KEYS, VALID, _a, LEGACY, HULL_NAMES, ROD_SKINS, TWIG, lookKey, DEG7, I3, M, mv, mul, ap, add5, sub2, scl, dot2, cross2, norm2, Tr, Ro, hsh, KITS, K, KG, HEAD2, HAT_SEAT, HAT_TILT, TORSO, WAIST, TOPS, BOTTOMS, topCol, botCol, ARM, LEG, ROD, HIP_Y, J, OLD_SH, AK, conv, BASE_POSE, P5, S9, POSES, POSE_NAMES, TOOLS, FEATS, fract3, HUE, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, MAX_PIXELS, framePx, FRAMES2, FAMS, budgetMs2, spent2, windowStart, statBuilt, statFallback, statMs, now4, PROF, RENDER, vsFor, INK, inE, MOOD_FACE, EYESTATE, TRAILS, PREVIEWS, HEAD_SLOTS, TRAIL_IDS;
+  var TINTS, skinOfTint, WARDROBE_SLOTS, it, pkg, lab2, WARDROBE, WARDROBE_BY_ID, EMOTES, DEFAULT_CHARACTER, SLOT_KEYS, VALID, _a, LEGACY, HULL_NAMES, ROD_SKINS, TWIG, lookKey, DEG7, I3, M, mv, mul, ap, add5, sub2, scl, dot2, cross2, norm2, Tr, Ro, hsh, KITS, K, KG, HEAD2, HAT_SEAT, HAT_TILT, TORSO, WAIST, TOPS, BOTTOMS, topCol, botCol, ARM, LEG, ROD, HIP_Y, J, OLD_SH, AK, conv, BASE_POSE, P5, S9, POSES, POSE_NAMES, TOOLS, FEATS, fract3, HUE, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, MAX_PIXELS, framePx, FRAMES2, FAMS, budgetMs2, spent2, windowStart, statBuilt, statFallback, statMs, now4, PROF, RENDER, vsFor, INK, inE, EYE_ART, EYE_COL, STYLE_COL, artFor, MOOD_FACE, EYESTATE, TRAILS, PREVIEWS, HEAD_SLOTS, TRAIL_IDS;
   var init_character = __esm({
     "src/gfx/character.js"() {
       init_voxel();
@@ -42430,6 +42782,56 @@ kmlmk..
       vsFor = (scale) => Math.max(0.5, Math.round(BASE_VS * (scale ?? 1) * 4) / 4);
       INK = "#13234a";
       inE = (u, v, rx2, ry2) => (u / rx2) ** 2 + (v / ry2) ** 2 <= 1;
+      EYE_ART = {
+        open: {
+          2: ["#", "#"],
+          3: ["##", "##", "##"],
+          4: [".#.", "#o#", "###", ".#."],
+          5: [".#.", "#o#", "###", "###", ".#."],
+          6: [".##.", "#o##", "####", "####", "####", ".##."],
+          7: [".##.", "#o##", "####", "####", "####", "####", ".##."],
+          8: [".###.", "#oo##", "#o###", "#####", "#####", "#####", "#####", ".###."],
+          9: [".###.", "#oo##", "#o###", "#####", "#####", "#####", "#####", "#####", ".###."],
+          10: ["..##..", ".####.", "#oo###", "#oo###", "######", "######", "######", "######", ".####.", "..##.."],
+          12: ["..###..", ".#####.", "#oo####", "#oo####", "#######", "#######", "#######", "#######", "#######", "#######", ".#####.", "..###.."]
+        },
+        // ^ ^ arcs (happy / laughing)
+        happy: {
+          3: [".#.", "#.#"],
+          5: [".#.", "#.#", "#.#"],
+          6: [".##.", "#..#", "#..#"],
+          8: [".###.", "#...#", "#...#"],
+          10: ["..##..", ".####.", "##..##", "#....#"],
+          12: ["..###..", ".#####.", "##...##", "#.....#", "#.....#"]
+        },
+        // wide-open: a little ring with a pin-prick pupil
+        wide: {
+          3: [".#.", "#o#", ".#."],
+          5: [".##.", "#oo#", "#o##", ".##."],
+          6: [".###.", "#ooo#", "#o#o#", "#ooo#", ".###."],
+          8: ["..###..", ".#ooo#.", "#ooooo#", "#oo#oo#", "#ooooo#", ".#ooo#.", "..###.."],
+          10: ["..####..", ".#oooo#.", "#oooooo#", "#oo##oo#", "#oo##oo#", "#oooooo#", ".#oooo#.", "..####.."]
+        },
+        dot: { 2: ["#"], 5: ["##", "##"], 8: [".##.", "####", "####", ".##."] },
+        heart: {
+          3: ["+.+", "+++", ".+."],
+          5: ["++.++", "+o+++", "+++++", ".+++.", "..+.."],
+          8: [".++.++.", "+o+++++", "+++++++", "+++++++", ".+++++.", "..+++..", "...+..."]
+        },
+        star: {
+          3: [".+.", "+++", ".+."],
+          5: ["..+..", ".+++.", "+++++", ".+++.", ".+.+."],
+          8: ["...+...", "..+++..", "+++++++", ".+++*+.", "..+*+..", ".++.++.", ".+...+."]
+        },
+        swirl: { 5: ["#####", "#....", "#.###", "#...#", "#####"] }
+      };
+      EYE_COL = { "#": INK, o: "#ffffff", "-": "#7fd8ff" };
+      STYLE_COL = { heart: ["#ff3a7a", "#ff9ac0"], star: ["#ffcc2a", "#fff4b0"], anime: ["#2bb878", "#9cf0b8"] };
+      artFor = (set, h) => {
+        let best = null;
+        for (const k in set) if (+k <= h || best === null) best = +k;
+        return set[best].map((r) => r.split(""));
+      };
       MOOD_FACE = { happy: { mouth: "open" }, sad: { mouth: "frown", lid: 0.35, eyes: "teary" }, surprised: { mouth: "o", wide: 1 }, angry: { mouth: "grit", lid: 0.25 }, love: { eyes: "heart", mouth: "grin" }, excited: { eyes: "star", mouth: "open" } };
       EYESTATE = /* @__PURE__ */ new Map();
       TRAILS = /* @__PURE__ */ new Map();
@@ -42521,8 +42923,8 @@ kmlmk..
     }
     return rows;
   }
-  function ellipsoid(mb, c, r, paint7, def2, seg = 10, rings = 7, basis = null) {
-    sheetMesh(mb, ellRows(c, r, seg, rings, basis), paint7, def2);
+  function ellipsoid(mb, c, r, paint7, def3, seg = 10, rings = 7, basis = null) {
+    sheetMesh(mb, ellRows(c, r, seg, rings, basis), paint7, def3);
   }
   function tubeRows(pts, r, M6 = 6, closed = false) {
     const n2 = pts.length, rows = [];
@@ -42574,8 +42976,8 @@ kmlmk..
     const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy), w = fz * fz * (3 - 2 * fz);
     const L4 = (a, b, k) => a + (b - a) * k;
     return L4(
-      L4(L4(h35(X, Y, Z), h35(X + 1, Y, Z), u), L4(h35(X, Y + 1, Z), h35(X + 1, Y + 1, Z), u), v),
-      L4(L4(h35(X, Y, Z + 1), h35(X + 1, Y, Z + 1), u), L4(h35(X, Y + 1, Z + 1), h35(X + 1, Y + 1, Z + 1), u), v),
+      L4(L4(h36(X, Y, Z), h36(X + 1, Y, Z), u), L4(h36(X, Y + 1, Z), h36(X + 1, Y + 1, Z), u), v),
+      L4(L4(h36(X, Y, Z + 1), h36(X + 1, Y, Z + 1), u), L4(h36(X, Y + 1, Z + 1), h36(X + 1, Y + 1, Z + 1), u), v),
       w
     );
   }
@@ -42584,9 +42986,9 @@ kmlmk..
     let best = 9;
     for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
       const cu = iu + a, cv = iv + b;
-      const jx = h35(cu, cv, side + seed), jy = h35(cv + 7.1, cu - 3.3, side + seed + 2);
+      const jx = h36(cu, cv, side + seed), jy = h36(cv + 7.1, cu - 3.3, side + seed + 2);
       const dx = (cu + 0.15 + jx * 0.7 - u) * cell, dy = (cv + 0.15 + jy * 0.7 - v) * cell;
-      const d = Math.hypot(dx, dy) / (r * (0.7 + 0.6 * h35(cu + 1.7, cv + 9.2, side + seed + 5)));
+      const d = Math.hypot(dx, dy) / (r * (0.7 + 0.6 * h36(cu + 1.7, cv + 9.2, side + seed + 5)));
       if (d < best) best = d;
     }
     return best;
@@ -42612,7 +43014,7 @@ kmlmk..
       const hx2 = Math.abs(x - HATCH.x), hy = Math.abs(p[1] - HATCH.y);
       if (hx2 < HATCH.w && hy < HATCH.h) c = hx2 > HATCH.w - 0.04 || hy > HATCH.h - 0.04 ? C2.seam : C2.hatch;
     }
-    return lit(c, 1 + (h35(Math.round(x * 23), Math.round(p[1] * 23), Math.round(p[2] * 23)) - 0.5) * 0.05);
+    return lit(c, 1 + (h36(Math.round(x * 23), Math.round(p[1] * 23), Math.round(p[2] * 23)) - 0.5) * 0.05);
   }
   function paintJaw(p) {
     const top = cr(JAW, p[0], 1), bot = cr(JAW, p[0], 2);
@@ -42620,13 +43022,13 @@ kmlmk..
     if (yn > 0.9 && Math.abs(p[2]) < cr(JAW, p[0], 3) * 0.82) return C2.mouth;
     let c = mixC(C2.belly, C2.side, sm2((yn - 0.35) / 0.6) * 0.6);
     if (yn > 0.4 && spotD(p[0], p[1], p[2] >= 0 ? 1 : -1, 0.1, 0.026, 7) < 1) c = mixC(c, C2.spot, 0.7);
-    return lit(c, 1 + (h35(Math.round(p[0] * 23), Math.round(p[1] * 23), Math.round(p[2] * 23)) - 0.5) * 0.05);
+    return lit(c, 1 + (h36(Math.round(p[0] * 23), Math.round(p[1] * 23), Math.round(p[2] * 23)) - 0.5) * 0.05);
   }
   function paintFin(q, L4) {
     const t = clamp012(q[0] / L4);
     let c = t > 0.8 ? C2.finEdge : mixC(C2.fin, C2.finD, 0.3 * t);
     if (t < 0.8 && t > 0.15 && Math.abs((q[2] * 26 % 1 + 1) % 1 - 0.5) < 0.14) c = C2.finD;
-    if (t < 0.78 && t > 0.2 && h35(Math.round(q[0] * 18), Math.round(q[2] * 18), 3) > 0.84) c = C2.spot;
+    if (t < 0.78 && t > 0.2 && h36(Math.round(q[0] * 18), Math.round(q[2] * 18), 3) > 0.84) c = C2.spot;
     return c;
   }
   function finCol(u, ray, spotty) {
@@ -42718,8 +43120,8 @@ kmlmk..
     const tm0 = performance.now();
     GSTAT.frames++;
     const mb = new PaintMesh();
-    const def2 = makeDef(P7);
-    const dB = (p) => def2(p, "body"), dH = (p) => def2(p, "head"), dJ = (p) => def2(p, "jaw");
+    const def3 = makeDef(P7);
+    const dB = (p) => def3(p, "body"), dH = (p) => def3(p, "head"), dJ = (p) => def3(p, "jaw");
     const rows = [];
     for (let i = 0; i <= BODY_ROWS; i++) {
       const k = i / BODY_ROWS, x = X0 + (X1 - X0) * (0.5 - 0.5 * Math.cos(k * Math.PI));
@@ -42791,7 +43193,7 @@ kmlmk..
       const D2 = dorsalH(q[0] + 0), top = bodyAt(q[0])[0];
       const u = clamp012((q[1] - top) / Math.max(0.05, D2.h));
       if (D2.spine) return D2.ray < 0.3 ? u > 0.72 ? C2.finEdge : C2.finD : u > 0.92 ? C2.finEdge : mixC(C2.fin, C2.back, 0.3);
-      return finCol(u, D2.ray, h35(Math.round(q[0] * 14), Math.round(q[1] * 14), 1) > 0.8);
+      return finCol(u, D2.ray, h36(Math.round(q[0] * 14), Math.round(q[1] * 14), 1) > 0.8);
     }, dB, true);
     const ar = [];
     for (let i = 0; i <= 12; i++) {
@@ -42859,7 +43261,7 @@ kmlmk..
     const mesh = voxelizeMesh(raw, GROUPER_VOXEL, { jitter: 0.012, ao: 0.45 }) || raw;
     GSTAT.vox += performance.now() - tv;
     if (mesh !== raw) raw.dispose?.();
-    const nrmD = (p, n2, part2) => norm3(sub3(def2(add6(p, scl2(n2, 0.05)), part2), def2(p, part2)));
+    const nrmD = (p, n2, part2) => norm3(sub3(def3(add6(p, scl2(n2, 0.05)), part2), def3(p, part2)));
     const A2 = {
       eyes: [1, -1].map((sd) => {
         const c = add6(eyeC(sd), scl2(eyeN(sd), 0.03 * P7.eyePop));
@@ -43133,7 +43535,7 @@ kmlmk..
     g.bezierCurveTo(x + k * 0.55, y - k * 1, x + k * 1.25, y - k * 0.05, x, y + k * 0.85);
     g.fill();
   }
-  function drawEye(g, E, o) {
+  function drawEye2(g, E, o) {
     const { mood, blink, gx, gy, front } = o;
     const R7 = E.R, [cx, cy] = E.p, vis = E.vis ?? 1;
     const part2 = vis < 0.8, cr0 = part2 ? R7 * Math.sqrt(vis) * 0.95 : R7 * 0.97;
@@ -43276,7 +43678,7 @@ kmlmk..
     }
     for (const E of F3.eyes) {
       if ((E.vis ?? 1) < 0.1) continue;
-      drawEye(g, E, { mood, blink, gx: st.gx, gy: st.gy, front: front(E), t });
+      drawEye2(g, E, { mood, blink, gx: st.gx, gy: st.gy, front: front(E), t });
     }
     g.globalAlpha = a0;
     const talk = clamp012(o.talk || 0);
@@ -43654,7 +44056,7 @@ kmlmk..
       ctx3.fillRect(Math.round(from[0]), Math.round(from[1]) - s2, 1, s2 * 2 + 1);
     }
   }
-  var GROUPER_INFO, add6, sub3, scl2, dot3, cross4, norm3, rx, ry, rz, h35, rgb, mixC, lit, sm2, C2, LID, LID_D, BROW, LOOK, GROUPER_VOXEL, BODY, JAW, X0, X1, BODY_SEG, BODY_ROWS, HINGE, HP, PIV, MID_Y, EYE, EYE_R, EYE_N, TAIL0, C0, CELL_W, CELL_H, YAW0, TILT0, YAW_FRONT, TILT_FRONT, seamX, mouthY, PaintMesh, GRILLE, GRILLE_C, HATCH, paintPalate, paintLipU, paintLipL, SPINES, GSTAT, S10, CO, POINT_E, finDir, GROUPER_ANIMS, GROUPER_ALIAS, SHEETS, SIZES3, JAW_LV, jawOf, INK2, GROUPER_OUTLINE, JOBS, pumpT, FACESTATE, FPX, RIDE, FLAT, JIG, COMP, talkLevel, MOOD_EMOTE, GrouperGuide;
+  var GROUPER_INFO, add6, sub3, scl2, dot3, cross4, norm3, rx, ry, rz, h36, rgb, mixC, lit, sm2, C2, LID, LID_D, BROW, LOOK, GROUPER_VOXEL, BODY, JAW, X0, X1, BODY_SEG, BODY_ROWS, HINGE, HP, PIV, MID_Y, EYE, EYE_R, EYE_N, TAIL0, C0, CELL_W, CELL_H, YAW0, TILT0, YAW_FRONT, TILT_FRONT, seamX, mouthY, PaintMesh, GRILLE, GRILLE_C, HATCH, paintPalate, paintLipU, paintLipL, SPINES, GSTAT, S10, CO, POINT_E, finDir, GROUPER_ANIMS, GROUPER_ALIAS, SHEETS, SIZES3, JAW_LV, jawOf, INK2, GROUPER_OUTLINE, JOBS, pumpT, FACESTATE, FPX, RIDE, FLAT, JIG, COMP, talkLevel, MOOD_EMOTE, GrouperGuide;
   var init_grouper = __esm({
     "src/gfx/grouper.js"() {
       init_lowpoly();
@@ -43690,7 +44092,7 @@ kmlmk..
         const c = Math.cos(a), s = Math.sin(a);
         return [p[0] * c - p[1] * s, p[0] * s + p[1] * c, p[2]];
       };
-      h35 = (x, y, z) => {
+      h36 = (x, y, z) => {
         const n2 = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
         return n2 - Math.floor(n2);
       };
@@ -44420,7 +44822,7 @@ kmlmk..
     }
     shapeIn(m, cx - 13, 0, cz - 9, cx + 13, cy + 9, cz + 9, (x, y, z) => ((x - cx) / 11.5) ** 2 + ((y - cy) / 7.2) ** 2 + ((z - cz) / 8) ** 2 <= 1, (x, y, z) => y < cy - 3.5 ? belly : y > cy + 4 && z > cz - 2 ? shellL : shell);
     m.recolor((x, y, z, p) => (p === shell || p === shellL) && hash3(x >> 1, y >> 1, z >> 1, 3) < 0.07 ? spot : null);
-    const snap3 = fi % 4 < 2 ? 0 : 1;
+    const snap4 = fi % 4 < 2 ? 0 : 1;
     const raise = variant2 === 1;
     for (const s of [-1, 1]) {
       const up = raise && s < 0 ? 7 + fi % 2 * 1.5 : 0;
@@ -44428,7 +44830,7 @@ kmlmk..
       const hx2 = cx + s * 15, hy = cy + 3 + up, hz = cz + 9;
       m.line(ax, ay, az, hx2, hy - 2, hz - 1, claw2, 1.3);
       m.ellipsoid(hx2, hy, hz, 3.6, 3.2, 3.2, claw2);
-      const open = snap3 ? 1.6 : 0.4;
+      const open = snap4 ? 1.6 : 0.4;
       m.sub(() => shapeIn(m, hx2 - 1, hy - open * 0.6, hz + 1, hx2 + s * 6, hy + open * 0.6, hz + 6, (x, y, z) => (x - hx2) * s > -0.5, 1));
       m.ellipsoid(hx2 + s * 1.2, hy + 1.6, hz + 2.2, 1.6, 1.2, 1.4, clawL);
     }
@@ -46295,8 +46697,8 @@ kmlmk..
           const t = this.t, W11 = this.W, H8 = this.H;
           const tod = todWeights(env);
           this.tod = tod;
-          const snap3 = this.fresh;
-          const k = snap3 ? 1 : 1 - Math.exp(-dt * 0.6);
+          const snap4 = this.fresh;
+          const k = snap4 ? 1 : 1 - Math.exp(-dt * 0.6);
           const w = env.weather, wx = this.wx;
           wx.bubbles += ((w === "bubbles" ? 1 : 0) - wx.bubbles) * k;
           wx.rain += ((w === "glossyrain" ? 1 : 0) - wx.rain) * k;
@@ -46305,7 +46707,7 @@ kmlmk..
           wx.clear = clamp012(1 - wx.rain * 0.55);
           const c = env.cursor;
           const tx = c && c.x > -50 ? clamp((c.x / W11 - 0.5) * -2, -1, 1) : 0, ty = c && c.y > -50 ? clamp((c.y / H8 - 0.5) * -2, -1, 1) : 0;
-          const kp = snap3 ? 1 : 1 - Math.exp(-dt * 2.5);
+          const kp = snap4 ? 1 : 1 - Math.exp(-dt * 2.5);
           this.par.x += (tx - this.par.x) * kp;
           this.par.y += (ty - this.par.y) * kp;
           this.fresh = false;
@@ -47794,8 +48196,8 @@ kmlmk..
           const t = this.t, W11 = this.W, H8 = this.H;
           const tod = todWeights(env);
           this.tod = tod;
-          const snap3 = this.fresh;
-          const k = snap3 ? 1 : 1 - Math.exp(-dt * 0.6);
+          const snap4 = this.fresh;
+          const k = snap4 ? 1 : 1 - Math.exp(-dt * 0.6);
           const w = env.weather;
           const wx = this.wx;
           wx.cloud += ((w === "cloudy" ? 1 : w === "rain" ? 0.6 : w === "storm" ? 0.4 : 0) - wx.cloud) * k;
@@ -47804,7 +48206,7 @@ kmlmk..
           wx.clear = clamp012(1 - wx.cloud * 0.6 - wx.rain * 0.75 - wx.storm * 0.2);
           const c = env.cursor;
           const tx = c && c.x > -50 ? clamp((c.x / W11 - 0.5) * -2, -1, 1) : 0, ty = c && c.y > -50 ? clamp((c.y / H8 - 0.5) * -2, -1, 1) : 0;
-          const kp = snap3 ? 1 : 1 - Math.exp(-dt * 2.5);
+          const kp = snap4 ? 1 : 1 - Math.exp(-dt * 2.5);
           this.par.x += (tx - this.par.x) * kp;
           this.par.y += (ty - this.par.y) * kp;
           this.fresh = false;
@@ -49199,8 +49601,8 @@ kmlmk..
           const t = this.t, W11 = this.W, H8 = this.H;
           const tod = todWeights(env);
           this.tod = tod;
-          const snap3 = this.fresh;
-          const k = snap3 ? 1 : 1 - Math.exp(-dt * 0.6);
+          const snap4 = this.fresh;
+          const k = snap4 ? 1 : 1 - Math.exp(-dt * 0.6);
           const w = env.weather, wx = this.wx;
           wx.static += ((w === "static" ? 1 : 0) - wx.static) * k;
           wx.oil += ((w === "oil" ? 1 : 0) - wx.oil) * k;
@@ -49208,7 +49610,7 @@ kmlmk..
           wx.murk += ((w === "murky" ? 1 : 0.4) - wx.murk) * k;
           const c = env.cursor;
           const tx = c && c.x > -50 ? clamp((c.x / W11 - 0.5) * -2, -1, 1) : 0, ty = c && c.y > -50 ? clamp((c.y / H8 - 0.5) * -2, -1, 1) : 0;
-          const kp = snap3 ? 1 : 1 - Math.exp(-dt * 2.5);
+          const kp = snap4 ? 1 : 1 - Math.exp(-dt * 2.5);
           this.par.x += (tx - this.par.x) * kp;
           this.par.y += (ty - this.par.y) * kp;
           this.fresh = false;
@@ -50198,15 +50600,15 @@ kmlmk..
           dt = Math.max(0, Math.min(dt, 0.1));
           this.t += dt;
           const W11 = this.W, H8 = this.H;
-          const snap3 = this.fresh;
-          const k = snap3 ? 1 : 1 - Math.exp(-dt * 0.6);
+          const snap4 = this.fresh;
+          const k = snap4 ? 1 : 1 - Math.exp(-dt * 0.6);
           const w = env.weather, wx = this.wx;
           wx.snow += ((w === "snow" ? 1 : 0) - wx.snow) * k;
           wx.current += ((w === "current" ? 1 : 0) - wx.current) * k;
           wx.glow += ((w === "glowtide" ? 1 : 0) - wx.glow) * k;
           const c = env.cursor;
           const tx = c && c.x > -50 ? clamp((c.x / W11 - 0.5) * -2, -1, 1) : 0, ty = c && c.y > -50 ? clamp((c.y / H8 - 0.5) * -2, -1, 1) : 0;
-          const kp = snap3 ? 1 : 1 - Math.exp(-dt * 2.5);
+          const kp = snap4 ? 1 : 1 - Math.exp(-dt * 2.5);
           this.par.x += (tx - this.par.x) * kp;
           this.par.y += (ty - this.par.y) * kp;
           this.fresh = false;
@@ -51664,8 +52066,8 @@ kmlmk..
           const t = this.t, W11 = this.W, H8 = this.H;
           const tod = todWeights(env);
           this.tod = tod;
-          const snap3 = this.fresh;
-          const k = snap3 ? 1 : 1 - Math.exp(-dt * 0.6);
+          const snap4 = this.fresh;
+          const k = snap4 ? 1 : 1 - Math.exp(-dt * 0.6);
           const w = env.weather, wx = this.wx;
           wx.snow += ((w === "snowfall" ? 1 : w === "blizzard" ? 0.6 : 0) - wx.snow) * k;
           wx.bliz += ((w === "blizzard" ? 1 : 0) - wx.bliz) * k;
@@ -51673,7 +52075,7 @@ kmlmk..
           wx.clear = clamp012(1 - wx.snow * 0.7 - wx.bliz * 0.6);
           const c = env.cursor;
           const tx = c && c.x > -50 ? (c.x / W11 - 0.5) * -2 : 0, ty = c && c.y > -50 ? (c.y / H8 - 0.5) * -2 : 0;
-          const kp = snap3 ? 1 : 1 - Math.exp(-dt * 2.5);
+          const kp = snap4 ? 1 : 1 - Math.exp(-dt * 2.5);
           this.par.x += (tx - this.par.x) * kp;
           this.par.y += (ty - this.par.y) * kp;
           this.fresh = false;
@@ -53023,15 +53425,15 @@ kmlmk..
           const t = this.t, W11 = this.W, H8 = this.H;
           const tod = todWeights(env);
           this.tod = tod;
-          const snap3 = this.fresh;
-          const k = snap3 ? 1 : 1 - Math.exp(-dt * 0.8);
+          const snap4 = this.fresh;
+          const k = snap4 ? 1 : 1 - Math.exp(-dt * 0.8);
           const w = env.weather, wx = this.wx;
           wx.storm += ((w === "neonstorm" ? 1 : 0) - wx.storm) * k;
           wx.rush += ((w === "rushhour" ? 1 : 0) - wx.rush) * k;
           wx.black += ((w === "blackout" ? 1 : 0) - wx.black) * k;
           const c = env.cursor;
           const tx = c && c.x > -50 ? (c.x / W11 - 0.5) * -2 : 0, ty = c && c.y > -50 ? (c.y / H8 - 0.5) * -2 : 0;
-          const kp = snap3 ? 1 : 1 - Math.exp(-dt * 2.5);
+          const kp = snap4 ? 1 : 1 - Math.exp(-dt * 2.5);
           this.par.x += (tx - this.par.x) * kp;
           this.par.y += (ty - this.par.y) * kp;
           this.fresh = false;
@@ -54241,15 +54643,15 @@ kmlmk..
           const t = this.t, W11 = this.W, H8 = this.H;
           const tod = todWeights(env);
           this.tod = tod;
-          const snap3 = this.fresh;
-          const k = snap3 ? 1 : 1 - Math.exp(-dt * 0.6);
+          const snap4 = this.fresh;
+          const k = snap4 ? 1 : 1 - Math.exp(-dt * 0.6);
           const w = env.weather, wx = this.wx;
           wx.erupt += ((w === "eruption" ? 1 : 0) - wx.erupt) * k;
           wx.sulfur += ((w === "sulfur" ? 1 : 0) - wx.sulfur) * k;
           wx.magma += ((w === "magma" ? 1 : 0) - wx.magma) * k;
           const c = env.cursor;
           const tx = c && c.x > -50 ? (c.x / W11 - 0.5) * -2 : 0, ty = c && c.y > -50 ? (c.y / H8 - 0.5) * -2 : 0;
-          const kp = snap3 ? 1 : 1 - Math.exp(-dt * 2.5);
+          const kp = snap4 ? 1 : 1 - Math.exp(-dt * 2.5);
           this.par.x += (tx - this.par.x) * kp;
           this.par.y += (ty - this.par.y) * kp;
           this.fresh = false;
@@ -55495,13 +55897,13 @@ kmlmk..
       const ep = Math.floor(ph);
       const k = Math.sin((ph - ep) * Math.PI);
       if (k < 0.2) continue;
-      const h1 = hash2(i, ep, 31), h2 = hash2(i, ep, 32), h310 = hash2(i, ep, 33);
+      const h1 = hash2(i, ep, 31), h2 = hash2(i, ep, 32), h311 = hash2(i, ep, 33);
       const onPath = i % 3 !== 0;
       const wx = onPath ? light.x + (h1 - 0.5) * (40 + h2 * 140) : h1 * W11;
       const v = onPath ? 0.15 + h2 * 0.85 : h2;
       const x = xs(wx), y = Math.round(Y02 + Math.sign(hS) * v * (H8 - 1));
-      const size = k > 0.8 && h310 > 0.55 ? 2 : k > 0.5 ? 1 : 0;
-      const spr4 = glintSprite(size, h310 > 0.7 ? pal3.glint : pal3.sheen);
+      const size = k > 0.8 && h311 > 0.55 ? 2 : k > 0.5 ? 1 : 0;
+      const spr4 = glintSprite(size, h311 > 0.7 ? pal3.glint : pal3.sheen);
       ctx3.globalAlpha = k * k0 * (0.55 + v * 0.45);
       ctx3.drawImage(spr4, x - size, y - size);
     }
@@ -58531,9 +58933,9 @@ kmlmk..
           return v ? (v.x0 + v.x1) / 2 : this.W / 2;
         }
         *floorSteps() {
-          const L4 = this.L, W11 = this.W, Hf = L4.floorH, def2 = L4.def;
+          const L4 = this.L, W11 = this.W, Hf = L4.floorH, def3 = L4.def;
           const D2 = new DepthScene(W11, Hf, { yFront: Hf - 36, yFar: Hf - 96, pad: 24, zFar: 1.9, fogStart: -0.25, fog: 0.92 });
-          const sed = def2.sediment;
+          const sed = def3.sediment;
           const seed = this.b.id.length * 31;
           yield;
           const floorH = (X, z) => {
@@ -58565,7 +58967,7 @@ kmlmk..
             glow: (X, z) => {
               const hs = hash2(Math.floor(X / 2), Math.floor(z * 50), 167);
               if (hs < 25e-4) {
-                const g = hex(def2.glow[Math.floor(hs * 4e3) % def2.glow.length]);
+                const g = hex(def3.glow[Math.floor(hs * 4e3) % def3.glow.length]);
                 return g;
               }
               return null;
@@ -58573,7 +58975,7 @@ kmlmk..
           });
           yield;
           const r = new RNG(seed + 5);
-          const ids = def2.floorProps || ["giant_skull", "ribcage", "tube_worms", "glow_mushroom"];
+          const ids = def3.floorProps || ["giant_skull", "ribcage", "tube_worms", "glow_mushroom"];
           const spots = [];
           for (let i = 0; i < 16; i++) spots.push([r.float(0.06, 0.94), r.pick([0.06, 0.16, 0.3, 0.46, 0.62, 0.8, 1, 1.2])]);
           let k = 0;
@@ -58622,7 +59024,7 @@ kmlmk..
         }
         // ------------------------------------------------------------------ plants
         buildPlants() {
-          const b = this.b, W11 = this.W, L4 = this.L, def2 = L4.def, id2 = b.id;
+          const b = this.b, W11 = this.W, L4 = this.L, def3 = L4.def, id2 = b.id;
           const r = new RNG(W11 * 13 + id2.length * 977);
           this.shelfFront = new PlantField(3);
           this.shelfBack = new PlantField(4);
@@ -58680,7 +59082,7 @@ kmlmk..
                 const col = r.pick(["#c86a8a", "#e0905a", "#9a6ac8", "#6a9ac8", "#d8b05a"]);
                 this.deepPlants.add({ kind: kind2, x, y, z: 0.4, s: 1, layer: "deepMid", rng: r, size: kind2 === "kelp" ? 0.8 : r.float(1.3, 1.9), n: kind2 === "kelp" ? r.int(6, 9) : void 0, cols: plantCols(col, wc, 0.2) });
               } else {
-                const col = r.pick(def2.glow);
+                const col = r.pick(def3.glow);
                 const crin = r.chance(0.35);
                 this.deepPlants.add({
                   kind: crin ? "whip" : "glow",
@@ -58699,7 +59101,7 @@ kmlmk..
           }
         }
         addPillarPlants(r) {
-          const L4 = this.L, def2 = L4.def;
+          const L4 = this.L, def3 = L4.def;
           for (const p of this.pillars) {
             for (const l of p.ledges) {
               const z = zoneAt(L4, l.y), wc = rgbHex2(waterAt(L4, l.y));
@@ -58710,7 +59112,7 @@ kmlmk..
                   const col = r.pick(["#c86a8a", "#e0905a", "#9a6ac8", "#d8b05a"]);
                   this.deepPlants.add({ kind: r.pick(["whip", "fan", "frond"]), x, y, z: 0.5, s: 1, layer: "deepMid", rng: r, size: r.float(1.2, 1.7), cols: plantCols(col, wc, 0.28) });
                 } else {
-                  const col = r.pick(def2.glow);
+                  const col = r.pick(def3.glow);
                   this.deepPlants.add({ kind: "glow", x, y, z: 0.5, s: 0.85, layer: "deepMid", rng: r, glow: col, head: { type: "bulb", ...headCols(col, col) }, cols: plantCols("#3a3a58", wc, 0.25) });
                 }
               }
@@ -59154,12 +59556,12 @@ kmlmk..
           for (let iy = iy0; iy <= iy1; iy++) {
             for (let ix = ix0; ix <= ix1; ix++) {
               for (let k = 0; k < n2; k++) {
-                const h1 = hash2(ix * 3 + k, iy, 501), h2 = hash2(ix, iy * 3 + k, 502), h310 = hash2(ix + k, iy + k, 503);
-                const y = iy * cs + (h2 * cs + t * speed * (2 + h310 * 5)) % cs;
+                const h1 = hash2(ix * 3 + k, iy, 501), h2 = hash2(ix, iy * 3 + k, 502), h311 = hash2(ix + k, iy + k, 503);
+                const y = iy * cs + (h2 * cs + t * speed * (2 + h311 * 5)) % cs;
                 if (y < H8 + 4) continue;
-                const x = ix * cs + h1 * cs + Math.sin(t * 0.4 + h310 * 9) * 3;
-                ctx3.globalAlpha = a * (0.4 + h310 * 0.6);
-                ctx3.fillRect(x, y, size * (h310 > 0.85 ? 1.5 : 1), size);
+                const x = ix * cs + h1 * cs + Math.sin(t * 0.4 + h311 * 9) * 3;
+                ctx3.globalAlpha = a * (0.4 + h311 * 0.6);
+                ctx3.fillRect(x, y, size * (h311 > 0.85 ? 1.5 : 1), size);
               }
             }
           }
@@ -63014,6 +63416,15 @@ kmlmk..
     L4.slots = L4.slots.filter((s) => s && LAB_BY_ID[s.id] && !L4.done[s.id]);
     if (!Array.isArray(L4.queue)) L4.queue = [];
     L4.queue = L4.queue.filter((q) => q && LAB_BY_ID[q.id] && !L4.done[q.id] && !L4.slots.some((s) => s.id === q.id));
+    if (!L4.lineV) {
+      L4.lineV = 1;
+      if ((state.stats?.caught || 0) > 0 && (state.unlockedBiomes || []).some((b) => b !== "oscean")) {
+        for (const id2 of ["line_len1", "line_len2"]) if (LAB_BY_ID[id2] && !L4.done[id2]) {
+          L4.done[id2] = Date.now();
+          (state.skills || (state.skills = {}))[id2] = true;
+        }
+      }
+    }
     L4.active = L4.slots[0] || null;
     return L4;
   }
@@ -63032,8 +63443,8 @@ kmlmk..
     return !!ensureLab(state).unlocks[kind2 + ":" + id2];
   }
   function nodeFor(kind2, id2) {
-    var _a4;
-    if (!Object.keys(UNLOCK_INDEX).length) for (const nd of LAB_NODES) for (const u of nd.unlock) UNLOCK_INDEX[_a4 = u.kind + ":" + u.id] || (UNLOCK_INDEX[_a4] = nd);
+    var _a6;
+    if (!Object.keys(UNLOCK_INDEX).length) for (const nd of LAB_NODES) for (const u of nd.unlock) UNLOCK_INDEX[_a6 = u.kind + ":" + u.id] || (UNLOCK_INDEX[_a6] = nd);
     return UNLOCK_INDEX[kind2 + ":" + id2] || null;
   }
   function applyUnlock(state, kind2, id2) {
@@ -63197,7 +63608,7 @@ kmlmk..
     const c = g.check;
     if (!c.gateOk) return c.gate;
     const parts = [];
-    if (!c.aero.ok) parts.push(`${(c.aero.need - c.aero.have).toLocaleString("en-US")} more Aero`);
+    if (!c.aero.ok) parts.push(`${(c.aero.need - c.aero.have).toLocaleString("en-US")} more Aero Bucks`);
     const mi = c.items.find((x) => !x.ok);
     if (mi) parts.push(`${mi.need - mi.have} more ${mi.id.replace(/_/g, " ")}`);
     const mf = c.fish.find((x) => !x.ok);
@@ -63213,13 +63624,13 @@ kmlmk..
     return take;
   }
   function payFor(game, nd) {
-    var _a4;
+    var _a6;
     const st = game.state;
     const aero = nd.cost.aero || 0;
     st.coins -= aero;
     const paid = { aero, items: { ...nd.cost.items }, fish: [] };
     st.inventory || (st.inventory = { items: {}, packages: [] });
-    (_a4 = st.inventory).items || (_a4.items = {});
+    (_a6 = st.inventory).items || (_a6.items = {});
     for (const [mid, q] of Object.entries(nd.cost.items || {})) {
       const inv2 = st.inventory.items;
       inv2[mid] -= q;
@@ -63288,11 +63699,11 @@ kmlmk..
     return true;
   }
   function refund(st, p0) {
-    var _a4;
+    var _a6;
     const p = p0 || {};
     st.coins += p.aero || 0;
     st.inventory || (st.inventory = { items: {}, packages: [] });
-    (_a4 = st.inventory).items || (_a4.items = {});
+    (_a6 = st.inventory).items || (_a6.items = {});
     for (const [mid, q] of Object.entries(p.items || {})) st.inventory.items[mid] = (st.inventory.items[mid] || 0) + q;
     for (const f of p.fish || []) st.fish.push({ ...f, inTank: false });
   }
@@ -63458,6 +63869,7 @@ kmlmk..
     if (f === "pct") return "+" + Math.round(v * 100) + "%";
     if (f === "sec") return "+" + v + "s";
     if (f === "flag") return "ON";
+    if (f === "zone") return "+" + v + (v === 1 ? " zone" : " zones");
     return "+" + v;
   }
   function fmtTime(s) {
@@ -63545,8 +63957,8 @@ kmlmk..
         shinyChance: ["star", "Shiny odds", "mul"],
         boxSlots: ["bait", "Bait slots", "add"],
         tankCap: ["tank", "Tank space", "add"],
-        coinMul: ["coin", "Aero income", "mul"],
-        collectRadius: ["coin", "Aero magnet", "add"],
+        coinMul: ["coin", "Aero Bucks income", "mul"],
+        collectRadius: ["coin", "Aero Bucks magnet", "add"],
         focus: ["clock", "Focus mode", "flag"],
         autoCollect: ["coin", "Auto-collect", "add"],
         feeder: ["food", "Auto-feeder", "flag"],
@@ -63555,7 +63967,7 @@ kmlmk..
         sonar: ["eye", "Sonar", "flag"],
         lantern: ["sun", "Lantern", "flag"],
         forecast: ["cloud", "Forecast", "flag"],
-        offlineMul: ["zzz", "Idle Aero", "pct"],
+        offlineMul: ["zzz", "Idle Aero Bucks", "pct"],
         rodLure: ["clock", "Rod lure", "mul"],
         rodLuck: ["star", "Rod luck", "mul"],
         rodControl: ["mouse_l", "Rod control", "mul"],
@@ -63566,7 +63978,9 @@ kmlmk..
         shockCooldown: ["storm", "Shock recharge", "cd"],
         labSlots: ["plus", "Lab slots", "add"],
         labSpeed: ["clock", "Lab speed", "mul"],
-        crateLuck: ["star", "Crate luck", "pct"]
+        crateLuck: ["star", "Crate luck", "pct"],
+        lineReach: ["line", "Line length", "zone"]
+        // [crate26]
       };
       AERO_T = [0, 15, 60, 220, 650, 1700, 4200, 1e4, 22e3, 48e3];
       TIME_T = [0, 5, 20, 60, 150, 360, 720, 1500, 2700, 4500];
@@ -63723,6 +64137,9 @@ kmlmk..
       n("hook1", "rods", 1, 0, "Sharper Hook", "hook", [ROOT_ID], { effect: { biteWindow: 1.2 }, desc: "Bites stay hookable longer.", cost: { aero: 2, items: { driftwood: 1 } }, time: 3 });
       n("rod_bubble", "rods", 2, 0, "Bubble Wand", "rod:bubble", ["hook1"], { unlock: [U("rod", "bubble")], desc: "A rod that blows bubbles. Faster bites." });
       n("line1", "rods", 2, 1, "Braided Line", "line", ["hook1"], { effect: { lineStrength: 0.15 }, desc: "Line takes more tension." });
+      n("line_len1", "rods", 1, 1, "Longer Line", "line", ["hook1"], { effect: { lineReach: 1 }, desc: "Spool on more line: reach the Twilight Zone." });
+      n("line_len2", "rods", 2, 1, "Deep Spool", "reel", ["line_len1"], { effect: { lineReach: 1.2 }, desc: "Reach the Midnight Zone and the top of the Abyss." });
+      n("line_len3", "rods", 4, 1, "Abyss Spool", "reel", ["line_len2"], { effect: { lineReach: 0.7 }, desc: "Line all the way to the abyss floor." });
       n("rod_glass", "rods", 3, 0, "Glass Rod", "rod:glass", ["rod_bubble"], { unlock: [U("rod", "glass")], desc: "Clear, glossy, bendy. Two shocks." });
       n("rod_bamboo", "rods", 3, -1, "Lucky Bamboo", "rod:bamboo", ["rod_bubble"], { unlock: [U("rod", "bamboo")], desc: "Big luck, small everything else." });
       n("hook_lucky", "rods", 3, 1, "Lucky Hook", "star", ["line1"], { effect: { rarityBoost: 1.08, calm: 1.1 }, desc: "Rare fish a little more often." });
@@ -63756,7 +64173,7 @@ kmlmk..
       n("shock5", "reel", 7, 1, "Storm Battery", "battery", ["shock4", "reel5"], { effect: { shockCharges: 2, shockCooldown: 0.75, rodResilience: 0.1 }, desc: "Practically a lightning storm." });
       n("boat_dinghy", "boats", 1, 0, "Dinghy", "boat:dinghy", [ROOT_ID], { unlock: [U("boat", "dinghy")], desc: "A real little boat. With oars!" });
       n("boat_locker", "boats", 2, 0, "Bait Locker", "box", ["boat_dinghy"], { effect: { boxSlots: 1 }, desc: "+1 bait slot." });
-      n("boat_magnet", "boats", 2, 1, "Deck Magnet", "magnet", ["boat_dinghy"], { effect: { collectRadius: 4 }, desc: "Grab Aero from further away." });
+      n("boat_magnet", "boats", 2, 1, "Deck Magnet", "magnet", ["boat_dinghy"], { effect: { collectRadius: 4 }, desc: "Grab Aero Bucks from further away." });
       n("boat_skiff", "boats", 3, 0, "Skiff", "boat:skiff", ["boat_locker"], { unlock: [U("boat", "skiff")], desc: "Fast, sleek, and very blue." });
       n("boat_winch", "boats", 3, -1, "Power Winch", "reel", ["boat_locker"], { effect: { reelSpeed: 6 }, desc: "Reel speed boost." });
       n("boat_hydrofoil", "boats", 4, 0, "Hydrofoil", "boat:hydrofoil", ["boat_skiff"], { unlock: [U("boat", "hydrofoil")], desc: "Flies over the waves." });
@@ -63784,24 +64201,24 @@ kmlmk..
       n("tank_bowl", "aquarium", 1, 0, "Bubble Tank", "tank:bowl", [ROOT_ID], { unlock: [U("tank", "bowl")], effect: { tankCap: 1 }, desc: "Grow your Nano Tank into a roomier Bubble Tank." });
       n("tank_small", "aquarium", 2, 0, "Aqua Tank", "tank:smalltank", ["tank_bowl"], { unlock: [U("tank", "smalltank")], effect: { tankCap: 2 }, desc: "Room for more fish." });
       n("tank_feeder", "aquarium", 2, 1, "Auto-Feeder", "food", ["tank_bowl"], { effect: { feeder: 1 }, desc: "Fish get fed while you work." });
-      n("tank_snail", "aquarium", 3, -1, "Snail Janitor", "snail", ["tank_small"], { effect: { autoCollect: 1 }, desc: "A snail collects Aero for you." });
-      n("tank_happy", "aquarium", 3, 1, "Happy Water", "heart", ["tank_feeder"], { effect: { coinMul: 1.2 }, desc: "Happy fish make more Aero." });
+      n("tank_snail", "aquarium", 3, -1, "Snail Janitor", "snail", ["tank_small"], { effect: { autoCollect: 1 }, desc: "A snail collects Aero Bucks for you." });
+      n("tank_happy", "aquarium", 3, 1, "Happy Water", "heart", ["tank_feeder"], { effect: { coinMul: 1.2 }, desc: "Happy fish make more Aero Bucks." });
       n("tank_big", "aquarium", 4, 0, "Big Tank", "tank:bigtank", ["tank_small"], { unlock: [U("tank", "bigtank")], effect: { tankCap: 3 }, desc: "A big glossy tank." });
       n("tank_romance", "aquarium", 4, 1, "Fish Romance", "heart", ["tank_happy"], { effect: { breeding: 1 }, desc: "Happy pairs lay eggs." });
       n("tank_crab", "aquarium", 5, -1, "Coin Crab", "crab", ["tank_snail", "tank_big"], { effect: { autoCollect: 1, collectRadius: 4 }, desc: "A greedy crab helps collect." });
       n("tank_nursery", "aquarium", 5, 1, "Warm Nursery", "egg", ["tank_romance"], { effect: { hatchSpeed: 1.5 }, desc: "Eggs hatch faster." });
       n("tank_reef", "aquarium", 6, 0, "Reef Tank", "tank:reeftank", ["tank_big"], { unlock: [U("tank", "reeftank")], effect: { tankCap: 3, coinMul: 1.1 }, desc: "Living coral, happy fish." });
       n("tank_mutation", "aquarium", 6, 2, "Mutation Lab", "dna", ["tank_nursery"], { effect: { mutationChance: 0.03 }, desc: "More mutations." });
-      n("tank_currents", "aquarium", 7, -1, "Treasure Currents", "coin", ["tank_reef"], { effect: { coinMul: 1.3, offlineMul: 0.1 }, desc: "More Aero, even while away." });
+      n("tank_currents", "aquarium", 7, -1, "Treasure Currents", "coin", ["tank_reef"], { effect: { coinMul: 1.3, offlineMul: 0.1 }, desc: "More Aero Bucks, even while away." });
       n("tank_sparkle", "aquarium", 7, 1, "Sparkle Genes", "star", ["tank_mutation", "tank_reef"], { effect: { shinyChance: 1.6 }, desc: "Shiny fish more often." });
       n("food_pellets", "aquarium", 2, 1, "Pellet Press", "food:pellets", ["tank_feeder"], { unlock: [U("food", "pellets")], desc: "Press Pop Pellets: hearty food that keeps fish full for longer." });
-      n("food_shrimp", "aquarium", 4, 1, "Brine Hatchery", "food:shrimp", ["tank_romance"], { unlock: [U("food", "shrimp")], desc: "Hatch Brine Shrimp: lively fish make more Aero and fall in love easier." });
+      n("food_shrimp", "aquarium", 4, 1, "Brine Hatchery", "food:shrimp", ["tank_romance"], { unlock: [U("food", "shrimp")], desc: "Hatch Brine Shrimp: lively fish make more Aero Bucks and fall in love easier." });
       n("tank_wall", "aquarium", 8, 0, "Mega Tank", "tank:wallaquarium", ["tank_currents"], { unlock: [U("tank", "wallaquarium")], effect: { tankCap: 6, coinMul: 1.15 }, desc: "A whole wall of ocean." });
       n("luck1", "luck", 1, 0, "Four-Leaf Kelp", "clover", [ROOT_ID], { effect: { rarityBoost: 1.05 }, desc: "A little luck for every cast." });
-      n("offline1", "luck", 2, -1, "Night Shift", "moon", ["luck1"], { effect: { offlineMul: 0.1 }, desc: "More Aero while you're away." });
+      n("offline1", "luck", 2, -1, "Night Shift", "moon", ["luck1"], { effect: { offlineMul: 0.1 }, desc: "More Aero Bucks while you're away." });
       n("lab_slot2", "luck", 2, 0, "Second Bench", "beaker", ["luck1"], { effect: { labSlots: 1 }, desc: "Research two things at once.", cost: { aero: 300, items: { driftwood: 5, sea_glass: 2 } }, time: 45 });
       n("isp2", "luck", 2, 1, "Pro Shelf", "box", ["luck1"], { unlock: [U("feature", "isp2")], desc: "Dot stocks better bait at the Bait Shop." });
-      n("autocollect", "luck", 3, -1, "Auto-Collect", "magnet", ["offline1"], { unlock: [U("feature", "autocollect")], effect: { autoCollect: 1, collectRadius: 6 }, desc: "Aero drops collect themselves." });
+      n("autocollect", "luck", 3, -1, "Auto-Collect", "magnet", ["offline1"], { unlock: [U("feature", "autocollect")], effect: { autoCollect: 1, collectRadius: 6 }, desc: "Aero Buck drops collect themselves." });
       n("luck2", "luck", 3, 0, "Lucky Charm", "horseshoe", ["lab_slot2"], { effect: { rarityBoost: 1.06, crateLuck: 0.1 }, desc: "Luckier fish and crates." });
       n("isp3", "luck", 3, 1, "Ultra Shelf", "box", ["isp2"], { unlock: [U("feature", "isp3")], desc: "Ultra-grade bait on the shelf." });
       n("offline2", "luck", 4, -1, "Dream Engine", "moon", ["autocollect"], { effect: { offlineMul: 0.2, coinMul: 1.1 }, desc: "Sleep is profitable." });
@@ -63837,7 +64254,7 @@ kmlmk..
       n("craft_coral", "crafting", 1, 0, "Coral Garden", "bp:coral_garden", [ROOT_ID], { unlock: [U("recipe", "bp_coral_garden")], desc: "Craft a garden that grows materials." });
       n("craft_decor1", "crafting", 2, -1, "Cute Decor", "decor", ["craft_coral"], { unlock: DU("craft_decor1"), desc: "Craft rocks, corals and treasure." });
       n("craft_shell", "crafting", 2, 1, "Shell Shack", "bp:shell_shack", ["craft_coral"], { unlock: [U("recipe", "bp_shell_shack")], desc: "A crab trading post." });
-      n("craft_bubble", "crafting", 3, 0, "Bubble Tower", "bp:bubble_tower", ["craft_coral"], { unlock: [U("recipe", "bp_bubble_tower")], desc: "Blows Aero bubbles." });
+      n("craft_bubble", "crafting", 3, 0, "Bubble Tower", "bp:bubble_tower", ["craft_coral"], { unlock: [U("recipe", "bp_bubble_tower")], desc: "Blows Aero Buck bubbles." });
       n("craft_eng1", "crafting", 3, -2, "Reinforced Rafters", "gear", ["craft_decor1"], { unlock: [U("feature", "eng1")], desc: "Buildings upgrade to level 2." });
       n("craft_workshop", "crafting", 4, 1, "Bait Workshop", "bp:bait_workshop", ["craft_bubble", "craft_shell"], { unlock: [U("recipe", "bp_bait_workshop")], desc: "Sometimes saves your bait." });
       n("craft_hatchery", "crafting", 4, 0, "Fish Hatchery", "bp:hatchery", ["craft_bubble"], { unlock: [U("recipe", "bp_hatchery")], desc: "Lays fish eggs over time." });
@@ -63846,11 +64263,11 @@ kmlmk..
       n("craft_eng2", "crafting", 5, -2, "Titanium Trusses", "gear", ["craft_eng1", "craft_decor2"], { unlock: [U("feature", "eng2")], desc: "Buildings upgrade to level 3." });
       n("craft_lighthouse", "crafting", 6, 0, "Lighthouse", "bp:lighthouse", ["craft_arcade"], { unlock: [U("recipe", "bp_lighthouse")], desc: "Lights the dark, draws night fish." });
       n("craft_decor3", "crafting", 6, -1, "Grand Decor", "decor", ["craft_decor2"], { unlock: DU("craft_decor3"), desc: "Ships, statues, ruins, crystals." });
-      n("craft_vault", "crafting", 7, -1, "Treasure Vault", "bp:vault", ["craft_lighthouse", "craft_eng2"], { unlock: [U("recipe", "bp_vault")], desc: "Aero earns interest." });
+      n("craft_vault", "crafting", 7, -1, "Treasure Vault", "bp:vault", ["craft_lighthouse", "craft_eng2"], { unlock: [U("recipe", "bp_vault")], desc: "Aero Bucks earn interest." });
       n("craft_totem", "crafting", 8, 0, "Totem of Luck", "bp:totem", ["craft_vault"], { unlock: [U("recipe", "bp_totem")], desc: "Rare and shiny odds up." });
       LAB_ROWS = [];
       row = (id2, branch, label3, from, side, nodes) => LAB_ROWS.push({ id: id2, branch, label: label3, from, side, nodes });
-      row("tackle", "rods", "Tackle", "hook1", "above", ["line1", "rod_bamboo", "hook_lucky", "rod_kelp", "rod_tune", "rod_coral", "rod_aurora", "line3", "rod_prism"]);
+      row("tackle", "rods", "Tackle", "hook1", "above", ["line_len1", "line1", "line_len2", "rod_bamboo", "hook_lucky", "rod_kelp", "line_len3", "rod_tune", "rod_coral", "rod_aurora", "line3", "rod_prism"]);
       row("rods", "rods", "Rods", null, "below", ["hook1", "rod_bubble", "rod_glass", "rod_chrome", "rod_dolphin", "rod_aero", "rod_trident", "rod_leviathan", "rod_aerolite"]);
       row("reel", "reel", "Reel & Shock", null, "below", ["reel1", "reel2", "trace1", "reel3", "timing1", "reel4", "dodge1", "autohook1", "focus1", "reel5"]);
       row("shock", "reel", "Shock", "reel1", "below", ["shock1", "shock2", "shock3", "rod_volt", "shock4", "shock5"]);
@@ -64045,12 +64462,12 @@ kmlmk..
     return d.eng2 || u["feature:eng2"] ? 3 : d.eng1 || u["feature:eng1"] ? 2 : 1;
   }
   function upgradeCost(b) {
-    const def2 = BUILDINGS[b.id];
-    return def2?.upgrades?.[levelOf(b) - 1] || null;
+    const def3 = BUILDINGS[b.id];
+    return def3?.upgrades?.[levelOf(b) - 1] || null;
   }
   function bonusOf(b, key) {
-    const def2 = BUILDINGS[b.id];
-    const arr = def2?.bonus?.[key];
+    const def3 = BUILDINGS[b.id];
+    const arr = def3?.bonus?.[key];
     if (!arr) return 0;
     return arr[levelOf(b) - 1] ?? arr[arr.length - 1];
   }
@@ -64065,8 +64482,8 @@ kmlmk..
     return (state?.buildings || []).find((b) => b.id === id2) || null;
   }
   function produceInfo(b, now10 = Date.now()) {
-    const def2 = BUILDINGS[b.id];
-    const P7 = def2?.produce;
+    const def3 = BUILDINGS[b.id];
+    const P7 = def3?.produce;
     if (!P7) return null;
     const lv = levelOf(b);
     const cap2 = P7.cap[lv - 1] ?? P7.cap[P7.cap.length - 1];
@@ -64102,8 +64519,8 @@ kmlmk..
     const b = findBuilding(state, "vault");
     const v = state.vault || (state.vault = { coins: 0, last: now10, earned: 0 });
     if (!b) return { built: false, coins: v.coins, rate: 0, cap: 0 };
-    const lv = levelOf(b), def2 = BUILDINGS.vault.vault;
-    const rate = def2.rate[lv - 1], cap2 = def2.cap[lv - 1];
+    const lv = levelOf(b), def3 = BUILDINGS.vault.vault;
+    const rate = def3.rate[lv - 1], cap2 = def3.cap[lv - 1];
     return { built: true, coins: v.coins, rate, cap: cap2, earned: v.earned || 0, last: v.last };
   }
   function vaultAccrue(state, now10 = Date.now()) {
@@ -64503,7 +64920,7 @@ kmlmk..
   function itemModelOf(id2) {
     return MODELS4[id2] ? modelOf2(id2).m : null;
   }
-  var SPIN, h36, MODELS4, PKG, ART_IDS, PACKAGE_ART, winStart, spent3, BUDGET, built, cache13, pkgCache;
+  var SPIN, h37, MODELS4, PKG, ART_IDS, PACKAGE_ART, winStart, spent3, BUDGET, built, cache13, pkgCache;
   var init_itemart = __esm({
     "src/build/itemart.js"() {
       init_hires();
@@ -64514,14 +64931,14 @@ kmlmk..
       init_lowpoly();
       init_canvas();
       SPIN = 16;
-      h36 = (x, y, z, s = 0) => hash3(x, y, z, s);
+      h37 = (x, y, z, s = 0) => hash3(x, y, z, s);
       MODELS4 = {
         driftwood() {
           const m = new VoxelModel(22, 9, 12);
           const wood = [m.color("#a89078", { jitter: 0.12, smooth: 0.6 }), m.color("#8a7460", { jitter: 0.12, smooth: 0.6 }), m.color("#c8b49a", { jitter: 0.08, smooth: 0.6 })];
           const knot = m.color("#5a4636", { jitter: 0.05 });
           const pts = [[1.5, 3.5, 6, 2.6], [6, 4, 5.5, 3.2], [11, 4.2, 6.5, 3.3], [16, 3.8, 6, 2.8], [20.5, 4.6, 5, 2]];
-          m.tube(pts, (x, y, z) => h36(x >> 1, y, z, 3) < 0.25 ? wood[1] : (y + (x >> 2)) % 4 === 0 ? wood[2] : wood[0]);
+          m.tube(pts, (x, y, z) => h37(x >> 1, y, z, 3) < 0.25 ? wood[1] : (y + (x >> 2)) % 4 === 0 ? wood[2] : wood[0]);
           m.line(13, 6, 6, 15, 8, 4, wood[0], 1);
           m.set(8, 7, 7, knot);
           m.set(9, 7, 7, knot);
@@ -64575,7 +64992,7 @@ kmlmk..
           const pieces = [[5, 2.2, 6, 4, 2.2, 3.2, 0], [11, 1.8, 8, 3, 1.8, 2.6, 1], [7, 1.5, 11, 2.4, 1.5, 2, 2]];
           for (const [x, y, z, rx2, ry2, rz2, k] of pieces) {
             const a = m.color(cols[k][0], { smooth: 0.9, spec: 1, specPow: 6, emissive: 0.15 }), b = m.color(cols[k][1], { smooth: 0.9, spec: 1, emissive: 0.2 });
-            m.ellipsoid(x, y, z, rx2, ry2, rz2, (xx, yy, zz) => yy > y && h36(xx, yy, zz, k) < 0.3 ? b : a);
+            m.ellipsoid(x, y, z, rx2, ry2, rz2, (xx, yy, zz) => yy > y && h37(xx, yy, zz, k) < 0.3 ? b : a);
           }
           return { m, yaw: 26, pitch: 38 };
         },
@@ -64589,7 +65006,7 @@ kmlmk..
             m.line(x0, y0, z0, x1, y1, z1, c[0], 1.3);
             m.sphere(x1, y1, z1, 1.5, c[1]);
           }
-          m.recolor((x, y, z, p) => p === c[0] && h36(x, y, z, 2) < 0.15 ? c[2] : null);
+          m.recolor((x, y, z, p) => p === c[0] && h37(x, y, z, 2) < 0.15 ? c[2] : null);
           return { m, yaw: 30 };
         },
         pearl() {
@@ -64610,7 +65027,7 @@ kmlmk..
           shape3(m, 5, 2, 4, 14, 8, 11, (x, y, z) => Math.abs(y - 2 - (x - 5) * 0.55 - 0.5) < 0.9 && z > 4.5 && z < 10.5, steel[1]);
           m.cylinder(10, 3, 8, 9, 1.4, steel[2], "z");
           m.box(9, 2, 3, 11, 4, 4, steel[1]);
-          m.recolor((x, y, z, p) => (p === steel[0] || p === steel[1]) && h36(x >> 1, y, z >> 1, 7) < 0.3 ? h36(x, y, z, 1) < 0.5 ? rust[0] : rust[1] : null);
+          m.recolor((x, y, z, p) => (p === steel[0] || p === steel[1]) && h37(x >> 1, y, z >> 1, 7) < 0.3 ? h37(x, y, z, 1) < 0.5 ? rust[0] : rust[1] : null);
           for (const [x, z] of [[3, 3], [3, 10], [10, 3]]) m.set(x, 2, z, rivet);
           return { m, yaw: 34, pitch: 34 };
         },
@@ -64658,7 +65075,7 @@ kmlmk..
           const m = new VoxelModel(14, 14, 12);
           const st = [m.color("#6a6898", { jitter: 0.12, smooth: 0.3 }), m.color("#55537e", { jitter: 0.12 }), m.color("#8482b4", { jitter: 0.1 })];
           const rune2 = m.color("#5ff4ff", { emissive: 1 });
-          m.box(1, 0, 1, 12, 11, 10, (x, y, z) => h36(x >> 1, y >> 1, z >> 1, 5) < 0.3 ? st[1] : st[0]);
+          m.box(1, 0, 1, 12, 11, 10, (x, y, z) => h37(x >> 1, y >> 1, z >> 1, 5) < 0.3 ? st[1] : st[0]);
           m.sub(() => {
             m.box(0, 9, 0, 3, 13, 3);
             m.box(10, 0, 8, 13, 3, 11);
@@ -64680,7 +65097,7 @@ kmlmk..
           const shard2 = (x, z, h, r, lx, lz) => {
             for (let y = 0; y < h; y++) {
               const t = y / h, rr4 = r * (t < 0.75 ? 1 : (1 - t) * 4);
-              m.cylinder(x + lx * y, z + lz * y, y + 1, y + 1, Math.max(0.5, rr4), (xx, yy, zz) => xx - x - lx * y < -0.3 ? cr2[1] : h36(xx, yy, zz, 9) < 0.2 ? cr2[2] : cr2[0]);
+              m.cylinder(x + lx * y, z + lz * y, y + 1, y + 1, Math.max(0.5, rr4), (xx, yy, zz) => xx - x - lx * y < -0.3 ? cr2[1] : h37(xx, yy, zz, 9) < 0.2 ? cr2[2] : cr2[0]);
             }
           };
           shard2(8, 7, 17, 2.4, 0, 0);
@@ -64824,7 +65241,7 @@ kmlmk..
           const rivet = m.color("#ffe8a8", { spec: 1 });
           const rust = m.color("#a4552f", { jitter: 0.15 });
           const lock = m.color("#e0a844", { spec: 1 });
-          m.box(1, 0, 1, 14, 9, 12, (x, y, z) => h36(x >> 1, y, z >> 1, 4) < 0.12 ? rust : ir[0]);
+          m.box(1, 0, 1, 14, 9, 12, (x, y, z) => h37(x >> 1, y, z >> 1, 4) < 0.12 ? rust : ir[0]);
           m.box(0, 10, 0, 15, 12, 13, ir[2]);
           m.box(1, 13, 1, 14, 13, 12, ir[1]);
           for (const y of [2, 7]) m.paint(() => m.box(0, y, 0, 15, y, 13, band));
@@ -64882,7 +65299,7 @@ kmlmk..
           m.sphere(8, 8, 8, 7.2, (x, y, z) => {
             const a = Math.atan2(z - 8, x - 8) + (y - 8) * 0.35;
             const s = Math.sin(a * 3) * Math.cos((y - 8) * 0.5);
-            return s > 0.75 ? swirl[(Math.floor(y / 4) + 3) % 2] : h36(x, y, z, 2) < 0.04 ? swirl[2] : s < -0.6 ? deep : glass2;
+            return s > 0.75 ? swirl[(Math.floor(y / 4) + 3) % 2] : h37(x, y, z, 2) < 0.04 ? swirl[2] : s < -0.6 ? deep : glass2;
           });
           for (let k = 0; k < 4; k++) {
             const a = k * Math.PI / 2 + 0.4;
@@ -64938,7 +65355,7 @@ kmlmk..
     return inv2;
   }
   function addItem(state, id2, qty = 1) {
-    var _a4;
+    var _a6;
     if (!id2 || qty <= 0) return;
     const it2 = ITEMS[id2];
     if (it2?.kind === "bait") {
@@ -64959,7 +65376,7 @@ kmlmk..
     if (it2?.kind === "cosmetic" && !ownsWardrobe(state, id2)) {
       if (typeof grantCosmetic === "function") grantCosmetic(state, it2.wardrobe);
       else (state.cosmetics || (state.cosmetics = {}))[it2.wardrobe] = true;
-      ((_a4 = inventory2(state)).fresh || (_a4.fresh = {}))[id2] = Date.now();
+      ((_a6 = inventory2(state)).fresh || (_a6.fresh = {}))[id2] = Date.now();
       if (--qty <= 0) return;
     }
     const inv2 = inventory2(state);
@@ -65251,7 +65668,7 @@ kmlmk..
       };
       TIER_ORDER = ["crate", "iron", "golden", "orb"];
       for (const t of TIER_ORDER) add7("pkg_" + t, { name: TIERS2[t].name, kind: "package", rarity: TIERS2[t].rarity, tier: t, art: "pkg_" + t, desc: TIERS2[t].desc, lore: "Open it from your inventory.", value: 0 });
-      add7("coins", { name: "Aero", kind: "coins", rarity: "common", art: "coins", desc: "Aero, the bubbly currency.", value: 1 });
+      add7("coins", { name: "Aero Bucks", kind: "coins", rarity: "common", art: "coins", desc: "Aero Bucks: water-droplet money. Every fish is worth a few.", value: 1 });
       packageLuck = 0;
       CRATE_DEEP = { oscean: 0, shallows: 0, fjord: 0.04, junkyard: 0.06, metropolis: 0.09, volcano: 0.12, abyss: 0.16 };
     }
@@ -65279,7 +65696,7 @@ kmlmk..
     return { ok: aero.ok && items.every((x) => x.ok), aero, items };
   }
   function craft(game, id2, n2 = 1) {
-    var _a4;
+    var _a6;
     const st = game.state, r = RECIPE_BY_ID[id2];
     if (!r) return { ok: false, reason: "Unknown recipe." };
     if (!recipeUnlocked(st, id2)) return { ok: false, reason: "Research it in the Lab first." };
@@ -65288,9 +65705,9 @@ kmlmk..
       return { ok: true, out: [] };
     }
     const c = craftCheck(st, r, n2);
-    if (!c.ok) return { ok: false, reason: c.aero.ok ? "Missing materials." : "Not enough Aero." };
+    if (!c.ok) return { ok: false, reason: c.aero.ok ? "Missing materials." : "Not enough Aero Bucks." };
     st.coins -= c.aero.need;
-    const inv2 = (_a4 = st.inventory || (st.inventory = { items: {}, packages: [] })).items || (_a4.items = {});
+    const inv2 = (_a6 = st.inventory || (st.inventory = { items: {}, packages: [] })).items || (_a6.items = {});
     for (const x of c.items) {
       inv2[x.id] = (inv2[x.id] || 0) - x.need;
       if (inv2[x.id] <= 0) delete inv2[x.id];
@@ -65456,14 +65873,14 @@ kmlmk..
         shrimp: {
           name: "Brine Shrimp",
           short: "Shrimp",
-          perk: "Lively: +10% Aero/min and easier romance",
+          perk: "Lively: +10% AB/min and easier romance",
           how: { lab: "food_shrimp" },
           meal: { min: 10, happy: 0.02, aero: 1.1, court: true }
         },
         krill: {
           name: "Golden Krill",
           short: "Krill",
-          perk: "Golden: +15% Aero/min, eggs mutate 2x as often",
+          perk: "Golden: +15% AB/min, eggs mutate 2x as often",
           how: { quest: "s5_krill" },
           meal: { min: 12, fill: 1.2, happy: 0.03, aero: 1.15, mutate: 2, shiny: 1.5 }
         }
@@ -65482,7 +65899,7 @@ kmlmk..
           S11("s1_googly", "seal", "Judgy Fish", "That Side-Eye Fish keeps judging my lips. They're hand-painted! Catch it so we can talk it out like grown-up fish.", [{ t: "catch", n: 1, species: "googly" }], { aero: 3, items: { shell: 2 } }),
           S11("s1_crab", "fizz", "Double Trouble", "Double-Click Crabs! Click once: it waves. Click twice: it opens a new window. Bring me two specimens!", [{ t: "catch", n: 2, species: "clickcrab" }], { aero: 4, items: { kelp_fibre: 2 } }),
           S11("s1_feed", "seal", "Dinner Bell", "Fish get the munchies too! Sprinkle some food in the tank. Three snacks, then tummy rubs!", [{ t: "feed", n: 3 }], { aero: 3, items: { shell: 2 } }),
-          S11("s1_collect", "seal", "Pop Pop Pop", "Your fish are blowing Aero bubbles! Pop ten of them. Best. Sound. Ever.", [{ t: "collect", n: 10 }], { aero: 3, items: { driftwood: 2 } }),
+          S11("s1_collect", "seal", "Pop Pop Pop", "Your fish are blowing Aero Buck bubbles! Pop ten of them. Best. Sound. Ever.", [{ t: "collect", n: 10 }], { aero: 3, items: { driftwood: 2 } }),
           S11("s1_weather", "seal", "Funny Weather", "When the sky goes all bubbly or glossy, sneaky fish come out to play! Catch one in wild weather.", [{ t: "catch", n: 1, weather: "any" }], { aero: 4, bait: { worm: 1 } }),
           S11("s1_twilight", "fizz", "Peek Below", "Under the sunlit water lies the Twilight Zone. Bring me two fish from down there. Mind the dark. It is very... dark.", [{ t: "catch", n: 2, zone: "twilight" }], { aero: 6, items: { fish_scale: 3 } }),
           S11("s1_zap", "fizz", "Zap Happy", "Release the charge in the PERFECT window. Five perfect zaps and I'll write you a glowing reference. It literally glows.", [{ t: "zap", n: 5 }], { aero: 4, items: { kelp_fibre: 2 } }),
@@ -65564,7 +65981,7 @@ kmlmk..
           S11("s5_golden", "dot", "Golden Investment", "BEEP. Golden Bait detected. Use it to catch a Rare fish. Return on investment: guaranteed. Probably.", [{ t: "catch", n: 1, rarity: "rare", bait: "golden" }], { aero: 65, bait: { golden: 1 } }, { after: "c5_epic" }),
           S11("s5_babies", "seal", "Baby Boom", "More eggs, more babies, more tiny fins! Hatch three eggs. I've already knitted three tiny hats.", [{ t: "hatch", n: 3 }], { aero: 65, items: { fish_egg: 1 } }, { after: "s4_egg" }),
           // [food24] Golden Krill: the premium tank food (eggs from krill-fed parents mutate more often)
-          S11("s5_krill", "fizz", "Golden Krill", "Golden Krill! They glitter like Aero and do FASCINATING things to fish genes. Hatch two eggs and bring me one mutated fish, and I'll share my secret culture. For science!", [{ t: "hatch", n: 2 }, { t: "catch", n: 1, mutant: true }], { aero: 60, items: { pearl: 1 }, unlock: [{ kind: "food", id: "krill" }] }, { after: "s4_egg" }),
+          S11("s5_krill", "fizz", "Golden Krill", "Golden Krill! They glitter like Aero Bucks and do FASCINATING things to fish genes. Hatch two eggs and bring me one mutated fish, and I'll share my secret culture. For science!", [{ t: "hatch", n: 2 }, { t: "catch", n: 1, mutant: true }], { aero: 60, items: { pearl: 1 }, unlock: [{ kind: "food", id: "krill" }] }, { after: "s4_egg" }),
           S11("s5_dex", "fizz", "City Directory", "Discover six species of the Sunken Metropolis. Most of them have business cards.", [{ t: "species", n: 6, biome: "metropolis" }], { aero: 65, items: { circuit_board: 1 } }),
           S11("s5_party", "seal", "Party Boat", "Fishing with friends gives everyone luck! Catch three fish while another player shares your ocean. Optional and extra fun!", [{ t: "catch", n: 3, party: true }], { aero: 40, items: { pearl: 1 } }, { online: true })
         ],
@@ -65606,7 +66023,7 @@ kmlmk..
       MILESTONE_LINES = [
         { id: "catch", name: "Fish Caught", icon: "hook" },
         { id: "dex", name: "FishDex", icon: "book" },
-        { id: "aero", name: "Aero Earned", icon: "coin" },
+        { id: "aero", name: "Aero Bucks Earned", icon: "coin" },
         { id: "lab", name: "Research", icon: "beaker" },
         { id: "boss", name: "Bosses", icon: "trophy" },
         { id: "zap", name: "Perfect Zaps", icon: "bolt" },
@@ -65640,11 +66057,11 @@ kmlmk..
         M3("dex", 3, "species", 50, "fizz", "Field Guide", "Fifty species! I'm submitting your notes to the Journal of Extremely Silly Fish.", { aero: 800, items: { rare_specimen: 1 } }),
         M3("dex", 4, "species", 75, "bloat", "Living Library", "Seventy-five! Hrrumph. In my day the FishDex was a napkin with three doodles on it.", { aero: 2500, items: { abyss_crystal: 1 } }),
         M3("dex", 5, "species", 100, "fizz", "Completionist", "One hundred species! The FishDex is purring. I didn't know books could purr.", { aero: 6e3, cosmetics: ["face_star"] }),
-        M3("aero", 1, "aero", 500, "dot", "Pocket Change", "BEEP. Lifetime Aero: 500. Wallet status: jingly. BOOP.", { aero: 20, bait: { worm: 2 } }),
-        M3("aero", 2, "aero", 5e3, "dot", "Savings Account", "BEEP BEEP. 5,000 Aero earned. Recommended action: one celebratory spin. Spinning... done.", { aero: 120, bait: { golden: 1 } }),
-        M3("aero", 3, "aero", 25e3, "dot", "Big Bubble Bucks", "BOOP! 25,000 Aero. My calculator needs a bigger screen.", { aero: 500, items: { pkg_iron: 1 } }),
-        M3("aero", 4, "aero", 1e5, "dot", "Aero Mogul", "ALERT: 100,000 Aero. Please do not buy the ocean. It is not for sale. Yet.", { aero: 2e3, items: { pkg_golden: 1 } }),
-        M3("aero", 5, "aero", 5e5, "dot", "Bubble Baron", "500,000 Aero. Processing... processing... I need to sit down. I do not have legs.", { aero: 8e3, cosmetics: ["gloves_gold"] }),
+        M3("aero", 1, "aero", 500, "dot", "Pocket Change", "BEEP. Lifetime Aero Bucks: 500. Wallet status: jingly. BOOP.", { aero: 20, bait: { worm: 2 } }),
+        M3("aero", 2, "aero", 5e3, "dot", "Savings Account", "BEEP BEEP. 5,000 Aero Bucks earned. Recommended action: one celebratory spin. Spinning... done.", { aero: 120, bait: { golden: 1 } }),
+        M3("aero", 3, "aero", 25e3, "dot", "Big Bubble Bucks", "BOOP! 25,000 Aero Bucks. My calculator needs a bigger screen.", { aero: 500, items: { pkg_iron: 1 } }),
+        M3("aero", 4, "aero", 1e5, "dot", "Aero Mogul", "ALERT: 100,000 Aero Bucks. Please do not buy the ocean. It is not for sale. Yet.", { aero: 2e3, items: { pkg_golden: 1 } }),
+        M3("aero", 5, "aero", 5e5, "dot", "Bubble Baron", "500,000 Aero Bucks. Processing... processing... I need to sit down. I do not have legs.", { aero: 8e3, cosmetics: ["gloves_gold"] }),
         M3("lab", 1, "research", 5, "fizz", "Beaker Buddy", "Five experiments and zero explosions! A personal record for this Lab.", { aero: 20, items: { kelp_fibre: 3 } }),
         M3("lab", 2, "research", 15, "fizz", "Test Tube Tycoon", "Fifteen projects! My bubbling flasks are bubbling with pride.", { aero: 120, items: { gear: 1 } }),
         M3("lab", 3, "research", 30, "fizz", "Mad Scientist", "Thirty! You've got that wild look in your eye. I recognise it from my mirror.", { aero: 600, items: { circuit_board: 2 } }),
@@ -65818,7 +66235,7 @@ kmlmk..
           title: "Pop Patrol",
           k: 0.7,
           minCh: 0,
-          text: "Aero bubbles are piling up in the tank. Pop them before they float off!",
+          text: "Aero Buck bubbles are piling up in the tank. Pop them before they float off!",
           make: (c) => [{ t: "collect", n: 8 + c.ch * 2 }]
         },
         {
@@ -65921,7 +66338,7 @@ kmlmk..
           title: "Profit Report",
           k: 1,
           minCh: 1,
-          text: "BEEP. Quarterly report due. Earn Aero to make the graph go up. Up is good.",
+          text: "BEEP. Quarterly report due. Earn Aero Bucks to make the graph go up. Up is good.",
           make: (c) => [{ t: "aero", n: DAILY_AERO[c.ch] * 6 }]
         },
         {
@@ -65934,6 +66351,61 @@ kmlmk..
           make: () => [{ t: "catch", n: 1, weather: "any", rarity: "uncommon" }]
         }
       ];
+    }
+  });
+
+  // src/game/gems.js
+  function bindGemsGame(game) {
+    boundGame = game || null;
+  }
+  function bal(state) {
+    if (!state) return 0;
+    const n2 = Number(state.gems);
+    if (!Number.isFinite(n2) || n2 < 0) state.gems = 0;
+    return state.gems;
+  }
+  function gems(state) {
+    return Math.floor(bal(state));
+  }
+  function changed(state, delta, reason) {
+    const g = boundGame;
+    if (!g || g.state !== state) return;
+    try {
+      g.emit?.("gemsChanged", { gems: state.gems, delta, reason: reason || "" });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  function addGems(state, n2, reason) {
+    n2 = Math.max(0, Math.round(Number(n2) || 0));
+    bal(state);
+    if (!state || !n2) return gems(state);
+    state.gems += n2;
+    state.gemsEarned = (state.gemsEarned || 0) + n2;
+    changed(state, n2, reason);
+    return gems(state);
+  }
+  function ensureGems(state) {
+    if (!state) return 0;
+    const had = typeof state.gems === "number" && Number.isFinite(state.gems);
+    if (!had) state.gems = 0;
+    if (state.gemGift) return 0;
+    state.gemGift = true;
+    const veteran = (state.totalCoins || 0) > 0 || (state.stats?.caught || 0) > 0 || !!state.tutorialDone;
+    if (!had && veteran) {
+      state.gems += GEM_WELCOME;
+      state.gemsEarned = (state.gemsEarned || 0) + GEM_WELCOME;
+      return GEM_WELCOME;
+    }
+    return 0;
+  }
+  var GEM_NAME, GEM_ONE, GEM_WELCOME, boundGame;
+  var init_gems = __esm({
+    "src/game/gems.js"() {
+      GEM_NAME = "Byte Gems";
+      GEM_ONE = "Byte Gem";
+      GEM_WELCOME = 30;
+      boundGame = null;
     }
   });
 
@@ -66014,7 +66486,7 @@ kmlmk..
       case "depth":
         return `Reach the ${ZONE_NAMES2[o.zone] || o.zone}`;
       case "aero":
-        return `Earn ${o.n.toLocaleString("en-US")} Aero`;
+        return `Earn ${o.n.toLocaleString("en-US")} Aero Bucks`;
       case "tutorial":
         return "Finish Bubbles' fishing lesson";
       case "open":
@@ -66047,7 +66519,7 @@ kmlmk..
       case "evolve":
         return "Raise a tank fish until it evolves";
       case "collect":
-        return `Pop ${o.n} Aero bubbles in your tank`;
+        return `Pop ${o.n} Aero Buck bubbles in your tank`;
       case "tankFish":
         return `Have ${o.n} fish swimming in your tank`;
       case "gearLv": {
@@ -66158,7 +66630,8 @@ kmlmk..
   }
   function rewardList(rw = {}) {
     const out = [];
-    if (rw.aero) out.push({ key: "aero", label: rw.aero.toLocaleString("en-US") + " Aero", n: rw.aero });
+    if (rw.aero) out.push({ key: "aero", label: rw.aero.toLocaleString("en-US") + " Aero Bucks", n: rw.aero });
+    if (rw.gems) out.push({ key: "gem", label: rw.gems + " " + (rw.gems === 1 ? GEM_ONE : GEM_NAME), n: rw.gems, gem: true });
     for (const id2 of rw.lab || []) {
       const nd = LAB_BY_ID[id2];
       const biome = nd?.unlock?.find((u) => u.kind === "biome")?.id;
@@ -66198,6 +66671,7 @@ kmlmk..
         st.totalCoins = (st.totalCoins || 0) + aero;
       }
     }
+    if (rw.gems) addGems(st, rw.gems, reason);
     for (const [id2, n2] of Object.entries(rw.items || {})) {
       try {
         addItem(st, id2, n2);
@@ -66234,7 +66708,7 @@ kmlmk..
     const s = String(typeof z === "object" ? z.id ?? z.name ?? z.zone ?? "" : z).toLowerCase();
     return ZONES.find((k) => s.includes(k)) || (s.includes("abyss") ? "abyss" : null);
   }
-  var ZONES, CHEST_RANK, CHEST_NAMES, ZONE_NAMES2, RAR, cap, Q, CHAPTERS, CHAPTER_BY_ID, QUEST_BY_ID, MILESTONE_BY_LINE, _a3, STORY_QUESTS, ACTIVE_MAX, ORDERS_PER_DAY, NPC_NAMES, isClaimable, speciesName, WEATHER_NAMES, TIME_NAMES, CRAFT_CATS2, TOTAL_LABELS, TOTAL_ICONS, fmt, an, plural, WEATHER_ICON, dayKey, nextMidnight, hashStr2, round5, PKG_BY_CH, QuestBook;
+  var ZONES, CHEST_RANK, CHEST_NAMES, ZONE_NAMES2, RAR, cap, Q, CHAPTERS, GEM_REWARDS, _a3, _b, _c, _a4, CHAPTER_BY_ID, QUEST_BY_ID, MILESTONE_BY_LINE, _a5, STORY_QUESTS, ACTIVE_MAX, ORDERS_PER_DAY, NPC_NAMES, isClaimable, speciesName, WEATHER_NAMES, TIME_NAMES, CRAFT_CATS2, TOTAL_LABELS, TOTAL_ICONS, fmt, an, plural, WEATHER_ICON, dayKey, nextMidnight, hashStr2, round5, PKG_BY_CH, QuestBook;
   var init_quests = __esm({
     "src/game/quests.js"() {
       init_foods();
@@ -66249,6 +66723,7 @@ kmlmk..
       init_questdata();
       init_tanks();
       init_rng();
+      init_gems();
       ZONES = ["sunlit", "twilight", "midnight", "abyss"];
       CHEST_RANK = ["crate", "iron", "golden", "orb"];
       CHEST_NAMES = { crate: "Driftwood Crate", iron: "Iron Crate", golden: "Golden Chest", orb: "Mystery Orb" };
@@ -66264,7 +66739,7 @@ kmlmk..
           giver: "seal",
           intro: [
             { npc: "seal", text: "Welcome to the (OS)cean! I'm Bubbles. Let's turn you into a real angler!" },
-            { npc: "fizz", text: "And I'm Professor Fizz! Bring me Aero and I'll invent you wonderful things!" }
+            { npc: "fizz", text: "And I'm Professor Fizz! Bring me Aero Bucks and I'll invent you wonderful things!" }
           ],
           outro: { npc: "marina", text: "Ahoy! Marina, pier keeper. I charted the Sunny Shallows for you - fund the trip in The Lab!" },
           reward: { aero: 250, chart: "shallows", cosmetics: ["hat_leafcrown"], unlock: [{ kind: "recipe", id: "ws_rod_clover" }] },
@@ -66272,7 +66747,7 @@ kmlmk..
           quests: [
             Q("c1_lesson", "seal", "Fishing 101", "Hook, reel, shock! I'll show you everything.", [{ t: "tutorial" }], { aero: 10, bait: { crumbs: 5 } }),
             Q("c1_catch", "seal", "First Splash", "Three fish. You can do it!", [{ t: "catch", n: 3 }], { aero: 15, items: { driftwood: 2 } }),
-            Q("c1_keep", "seal", "Home Sweet Tank", "Keep a fish! It makes Aero while you fish.", [{ t: "keep", n: 1 }], { aero: 10, items: { shell: 2 } }),
+            Q("c1_keep", "seal", "Home Sweet Tank", "Keep a fish! It makes Aero Bucks while you fish.", [{ t: "keep", n: 1 }], { aero: 10, items: { shell: 2 } }),
             Q("c1_chest", "seal", "Crack It Open!", "There's a crate in your Satchel. Tap the glowing knots to crack it!", [{ t: "chest", n: 1 }], { aero: 10, items: { fish_scale: 3 } }),
             // [phase8:prog]
             Q("c1_lab", "fizz", "Lab Coat On", "Plan a tile in The Lab, then press Confirm!", [{ t: "research", n: 1 }], { items: { driftwood: 3, kelp_fibre: 2 } }),
@@ -66291,7 +66766,7 @@ kmlmk..
             { npc: "marina", text: "The Shallows are warm, bright and bursting with fish. Hop in the dinghy!" },
             { npc: "seal", text: "The Bait Shop is open! Better bait, better fish!" }
           ],
-          outro: { npc: "bloat", text: "Hrrumph! Captain Bloat. Up north, the Frosty Fjord hides a tale or two... Fizz has the chart. Bring Aero!" },
+          outro: { npc: "bloat", text: "Hrrumph! Captain Bloat. Up north, the Frosty Fjord hides a tale or two... Fizz has the chart. Bring Aero Bucks!" },
           reward: { aero: 800, chart: "fjord", cosmetics: ["top_sailor"], items: { sea_glass: 2 }, unlock: [{ kind: "recipe", id: "ws_rod_frost" }] },
           // [phase8:prog]
           quests: [
@@ -66364,7 +66839,7 @@ kmlmk..
             // [phase8:prog]
             Q("c4_magnet", "fizz", "Magnetic Personality", "Craft the Magnet Rod. Boxes will come to YOU.", [{ t: "craftRod", id: "magnet" }], { aero: 120, items: { spring_coil: 2 } }),
             // [phase8:prog]
-            Q("c4_aero", "fizz", "Cha-Ching", "Earn 3,000 Aero.", [{ t: "aero", n: 3e3 }], { items: { circuit_board: 1 } }),
+            Q("c4_aero", "fizz", "Cha-Ching", "Earn 3,000 Aero Bucks.", [{ t: "aero", n: 3e3 }], { items: { circuit_board: 1 } }),
             Q("c4_shock", "fizz", "Shock Therapy", "Ten PERFECT zaps (my Spark Joy study) unlock the Capacitor. Then research it in the Shock row!", [{ t: "research", id: "shock2" }], { aero: 100 }),
             Q("c4_chrome", "fizz", "Chrome Dome", "Help Marina with her Rust Bucket job, then research the Chrome Caster. Fast, shiny and strong.", [{ t: "research", id: "rod_chrome" }], { aero: 100, items: { gear: 2, pearl: 1 } }),
             // [balance] main-track goal
@@ -66415,7 +66890,7 @@ kmlmk..
             Q("c6_sail", "bloat", "Hot Water", "Fund the Lava Rift expedition in The Lab, then brave the heat.", [{ t: "research", id: "sea_volcano" }, { t: "visit", biome: "volcano" }], { aero: 150 }),
             Q("c6_catch", "bloat", "Fire and Fins", "Catch 12 Lava Rift fish.", [{ t: "catch", n: 12, biome: "volcano" }], { items: { ancient_stone: 2 } }),
             Q("c6_deep", "seal", "Into the Abyss", "Reach the Abyssal Zone. Deep breath!", [{ t: "depth", zone: "abyss", alt: { t: "catch", n: 2, rarity: "rare" } }], { aero: 300, bait: { blackhole: 1 } }),
-            Q("c6_aero", "seal", "Big Spender", "Earn 15,000 Aero.", [{ t: "aero", n: 15e3 }], { items: { circuit_board: 2, pearl: 1 } }),
+            Q("c6_aero", "seal", "Big Spender", "Earn 15,000 Aero Bucks.", [{ t: "aero", n: 15e3 }], { items: { circuit_board: 2, pearl: 1 } }),
             Q("c6_dex", "fizz", "Encyclopedia", "Discover 35 species.", [{ t: "species", n: 35 }], { aero: 400 }),
             Q("c6_turbo", "bloat", "Need for Speed", "Craft the Turbo Reel Rod. Vroom!", [{ t: "craftRod", id: "turbo" }], { aero: 400, items: { lava_glass: 1 } }),
             // [phase8:prog]
@@ -66469,6 +66944,13 @@ kmlmk..
         const k = OCEAN_VALUE[c.ocean] || 1;
         for (const q of [...c.quests, ...c.side]) if (q.reward?.aero && k !== 1) q.reward.aero = Math.round(q.reward.aero * k / 5) * 5;
       }
+      GEM_REWARDS = { main: 2, boss: 10, side: 3, order: 1, orderBonus: 5, chapter: (n2) => 10 + n2 * 5, mile: (tier) => Math.min(15, tier * 3) };
+      for (const c of CHAPTERS) {
+        (_a3 = c.reward || (c.reward = {})).gems ?? (_a3.gems = GEM_REWARDS.chapter(c.n));
+        for (const q of c.quests) (_b = q.reward || (q.reward = {})).gems ?? (_b.gems = q.objectives.some((o) => o.t === "boss") ? GEM_REWARDS.boss : GEM_REWARDS.main);
+        for (const q of c.side) (_c = q.reward || (q.reward = {})).gems ?? (_c.gems = GEM_REWARDS.side);
+      }
+      for (const q of MILESTONES) (_a4 = q.reward || (q.reward = {})).gems ?? (_a4.gems = GEM_REWARDS.mile(q.tier || 1));
       CHAPTER_BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));
       QUEST_BY_ID = {};
       for (const c of CHAPTERS) for (const q of [...c.quests, ...c.side]) {
@@ -66486,7 +66968,7 @@ kmlmk..
         if (q) (q.reward || (q.reward = {})).opens = [...QUEST_GATED[qid]];
       }
       MILESTONE_BY_LINE = {};
-      for (const q of MILESTONES) (MILESTONE_BY_LINE[_a3 = q.line] || (MILESTONE_BY_LINE[_a3] = [])).push(q);
+      for (const q of MILESTONES) (MILESTONE_BY_LINE[_a5 = q.line] || (MILESTONE_BY_LINE[_a5] = [])).push(q);
       for (const l in MILESTONE_BY_LINE) MILESTONE_BY_LINE[l].sort((a, b) => a.tier - b.tier);
       STORY_QUESTS = CHAPTERS.flatMap((c) => [...c.quests, ...c.side]);
       ACTIVE_MAX = 3;
@@ -66532,7 +67014,7 @@ kmlmk..
       TOTAL_LABELS = {
         caught: (n2) => `Catch ${fmt(n2)} fish in total`,
         species: (n2) => `Discover ${n2} species`,
-        aero: (n2) => `Earn ${fmt(n2)} Aero in total`,
+        aero: (n2) => `Earn ${fmt(n2)} Aero Bucks in total`,
         research: (n2) => `Finish ${n2} research projects`,
         bosses: (n2) => n2 > 1 ? `Beat ${n2} different bosses` : "Beat a boss",
         zaps: (n2) => `Land ${fmt(n2)} PERFECT zaps`,
@@ -66871,10 +67353,10 @@ kmlmk..
           for (const q of this.tracked()) {
             this.start(q);
             q.objectives.forEach((o0, i) => {
-              var _a4, _b;
+              var _a6, _b2;
               const o = this.realObj(o0);
               if (pred(o)) {
-                const p = (_a4 = this.S.prog)[_b = q.id] || (_a4[_b] = q.objectives.map(() => 0));
+                const p = (_a6 = this.S.prog)[_b2 = q.id] || (_a6[_b2] = q.objectives.map(() => 0));
                 p[i] = (p[i] || 0) + by;
                 any = true;
               }
@@ -66918,15 +67400,15 @@ kmlmk..
           }
           if (o.time && !c.time[o.time]) return false;
           if (o.bait) {
-            const b = c.bait, def2 = b?.def || {};
+            const b = c.bait, def3 = b?.def || {};
             if (!b) return false;
             if (o.bait === "any") {
               if (b.id === "crumbs") return false;
             } else if (o.bait === "custom") {
-              if (!def2.custom) return false;
+              if (!def3.custom) return false;
             } else if (o.bait === "app") {
-              if (!def2.app || def2.custom) return false;
-            } else if (b.id !== o.bait && def2.recipe?.base !== o.bait) return false;
+              if (!def3.app || def3.custom) return false;
+            } else if (b.id !== o.bait && def3.recipe?.base !== o.bait) return false;
           }
           if (o.trophy && !(c.rec.giant || (c.rec.sizeT ?? 0) >= 0.75)) return false;
           if (o.giant && !c.rec.giant) return false;
@@ -67203,7 +67685,7 @@ kmlmk..
           const base = DAILY_AERO[c.ch];
           const objectives = t.make(c, r);
           const mats = ORDER_MATS[c.ch].filter((m) => !objectives.some((o) => o.t === "have" && o.id === m));
-          const reward = { aero: round5(base * k), items: { [r.pick(mats)]: c.ch >= 3 ? 2 : 1 } };
+          const reward = { aero: round5(base * k), items: { [r.pick(mats)]: c.ch >= 3 ? 2 : 1 }, gems: GEM_REWARDS.order };
           return { id: `o_${this.S.daily.day}_${slot}_${t.id}`, kind: "order", pool: t.id, giver: t.giver, title: t.title, text: t.text, objectives, reward };
         }
         refreshDaily(force = false) {
@@ -67233,7 +67715,8 @@ kmlmk..
             title: "Board Cleared!",
             text: "BEEP BOOP! All three orders filled. Bonus protocol engaged: one shiny chest, freshly dusted.",
             objectives: [{ t: "ordersToday", n: ORDERS_PER_DAY }],
-            reward: { aero: round5(DAILY_AERO[ch] * 1.5), items: { [PKG_BY_CH[ch]]: 1 } }
+            reward: { aero: round5(DAILY_AERO[ch] * 1.5), items: { [PKG_BY_CH[ch]]: 1 }, gems: GEM_REWARDS.orderBonus }
+            // [cur26] gems
           });
           for (const q of D2.list) QUEST_BY_ID[q.id] = q;
           this.game.emit?.("ordersRefreshed", { day: key });
@@ -67437,7 +67920,7 @@ kmlmk..
     else if (owned) reason = "Already yours";
     else if (queued) reason = "Crafting...";
     else if (!slot) reason = "Queue full";
-    else if (!aero.ok) reason = "Not enough Aero";
+    else if (!aero.ok) reason = "Not enough Aero Bucks";
     else if (!items.every((x) => x.ok)) reason = "Missing materials";
     return { ok: !reason, aero, items, owned, queued, slot, reason };
   }
@@ -67472,7 +67955,7 @@ kmlmk..
     return { ok: true, queued: false, out };
   }
   function finish6(game, r) {
-    var _a4, _b;
+    var _a6, _b2;
     const st = game.state, o = r.out || {};
     const W11 = ensureWorkshop(st);
     let out = [];
@@ -67496,13 +67979,13 @@ kmlmk..
       case "boatpart": {
         (st.cosmetics || (st.cosmetics = {}))[`boatpart:${o.slot}:${o.id}`] = true;
         st.boat || (st.boat = { tier: 0, parts: {} });
-        ((_a4 = st.boat).parts || (_a4.parts = {}))[o.slot] = o.id;
+        ((_a6 = st.boat).parts || (_a6.parts = {}))[o.slot] = o.id;
         game.emit?.("boatUpgraded", { part: o.slot, id: o.id });
         out = [{ boatpart: o.id }];
         break;
       }
       case "gear": {
-        (_b = st.tank || (st.tank = {})).gear || (_b.gear = {});
+        (_b2 = st.tank || (st.tank = {})).gear || (_b2.gear = {});
         st.tank.gear[o.id] = Math.max(gearLevel(st, o.id), o.lv);
         try {
           game.aquarium?.view?.rebuild?.();
@@ -70079,7 +70562,7 @@ kmlmk..
             for (let f = 0; f < ROTOR_FRAMES; f++) rotorSprite(bk.scale, bk.yaw, f);
           });
           this.warmLog = [];
-          const run34 = () => {
+          const run35 = () => {
             const f = steps.shift();
             if (!f) return;
             const t02 = performance.now();
@@ -70090,9 +70573,9 @@ kmlmk..
               return;
             }
             this.warmLog.push([Math.round(t02), Math.round(performance.now() - t02)]);
-            setTimeout(() => idle(run34), 100);
+            setTimeout(() => idle(run35), 100);
           };
-          idle(run34);
+          idle(run35);
         }
         open(data) {
           const g = this.game;
@@ -71023,9 +71506,9 @@ kmlmk..
     if (peek) return null;
     let s = null;
     try {
-      const def2 = islandModel(kind2, seed);
-      if (def2) {
-        const r = renderVoxels(def2.m, { scale: 1, yaw: def2.yaw, pitch: def2.pitch });
+      const def3 = islandModel(kind2, seed);
+      if (def3) {
+        const r = renderVoxels(def3.m, { scale: 1, yaw: def3.yaw, pitch: def3.pitch });
         s = { canvas: r.canvas, glow: r.glow, ox: r.ox, oy: r.oy, w: r.w, h: r.h };
       }
     } catch (e) {
@@ -71751,7 +72234,7 @@ kmlmk..
         }
         // destination variant: hand the trip to the destination scene, cross-fading the sea away on top
         handToDest(s) {
-          var _a4;
+          var _a6;
           const g = this.game, o = g.ocean, cam = g.camera;
           if (this.layer) {
             const c = makeCanvas(this.layer.width, this.layer.height);
@@ -71772,7 +72255,7 @@ kmlmk..
             g.audio?.setAmbience(o.biome.ambient || o.biome.id, { weather: o.weather, night: o.env.night });
           } catch {
           }
-          const V2 = (_a4 = g.state).voyage || (_a4.voyage = { trips: 0, seen: {} });
+          const V2 = (_a6 = g.state).voyage || (_a6.voyage = { trips: 0, seen: {} });
           V2.trips = (V2.trips || 0) + 1;
           (V2.seen || (V2.seen = {}))[s.to] = 1;
           this.s = null;
@@ -75582,6 +76065,201 @@ kmlmk..
     }
   });
 
+  // src/ui/gemui.js
+  function fromArt(rows, pal3) {
+    const h = rows.length, w = rows[0].length;
+    const c = makeCanvas(w, h);
+    const g = c.getContext("2d");
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const col = pal3[rows[y][x]];
+      if (!col) continue;
+      g.fillStyle = col;
+      g.fillRect(x, y, 1, 1);
+    }
+    return c;
+  }
+  function dropSprite() {
+    return dropC || (dropC = fromArt(DROP_ART, DROP_PAL));
+  }
+  function gemSprite() {
+    return gemC || (gemC = fromArt(GEM_ART, GEM_PAL));
+  }
+  function agentIcon(name) {
+    let c = null;
+    try {
+      c = getUiIcon(name);
+    } catch {
+      c = null;
+    }
+    if (!c || !c.width) return null;
+    let e = blank.get(c);
+    if (e === void 0) {
+      e = true;
+      try {
+        const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+        for (let i = 3; i < d.length; i += 4) if (d[i]) {
+          e = false;
+          break;
+        }
+      } catch {
+        e = false;
+      }
+      blank.set(c, e);
+    }
+    return e ? null : c;
+  }
+  function blit2(ctx3, src, cx, cy, w, h) {
+    const s = ctx3.imageSmoothingEnabled;
+    ctx3.imageSmoothingEnabled = false;
+    ctx3.drawImage(src, cx - w / 2, cy - h / 2, w, h);
+    ctx3.imageSmoothingEnabled = s;
+  }
+  function drawDrop(ctx3, cx, cy, p, o = {}) {
+    const a = agentIcon("aerobuck");
+    const sq = o.squash || 0;
+    const sx = 1 + sq * 0.18, sy = 1 - sq * 0.16;
+    if (a) {
+      const H8 = 14 * p, W11 = a.width / a.height * H8;
+      blit2(ctx3, a, snap2(cx), snap2(cy + H8 * (1 - sy) / 2), snap2(W11 * sx), snap2(H8 * sy));
+      return;
+    }
+    const s = dropSprite();
+    const w = s.width * p * sx, h = s.height * p * sy;
+    blit2(ctx3, s, snap2(cx), snap2(cy + (s.height * p - h) / 2), snap2(w), snap2(h));
+  }
+  function drawGem(ctx3, cx, cy, p, o = {}) {
+    const a = agentIcon("gem");
+    const s = a || gemSprite();
+    const H8 = a ? 12 * p : s.height * p, W11 = s.width / s.height * H8;
+    const x0 = snap2(cx - W11 / 2), y0 = snap2(cy - H8 / 2);
+    blit2(ctx3, s, snap2(cx), snap2(cy), snap2(W11), snap2(H8));
+    if (!a && o.glint != null && o.glint >= 0 && o.glint <= 1) {
+      const cols = s.width, rows = s.height, d0 = Math.round(-rows + o.glint * (cols + rows));
+      ctx3.fillStyle = "rgba(255,255,255,0.85)";
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        if (!GEM_INNER[y][x]) continue;
+        const d = x - (rows - 1 - y) * 0.5 - d0;
+        if (d >= 0 && d < 2) ctx3.fillRect(x0 + x * p, y0 + y * p, p, p);
+      }
+    }
+    if (o.sparkle > 0) pxSparkle(ctx3, x0 + W11 - p * 1.5, y0 + p, p, o.sparkle, "#ffffff");
+  }
+  function pxSparkle(ctx3, x, y, p, k, col = "#ffffff") {
+    if (k <= 0) return;
+    const L4 = Math.max(1, Math.round(k * 2.4));
+    ctx3.fillStyle = col;
+    ctx3.fillRect(snap2(x - p / 2), snap2(y - p / 2 - L4 * p), p, L4 * p * 2 + p);
+    ctx3.fillRect(snap2(x - p / 2 - L4 * p), snap2(y - p / 2), L4 * p * 2 + p, p);
+  }
+  function drawDropSplash(ctx3, cx, cy, p, k, seed = 0) {
+    if (k <= 0) return;
+    const u = 1 - k;
+    const cols = ["#ffffff", "#8ae6ff", "#38aaf2"];
+    for (let i = 0; i < 6; i++) {
+      const side = i % 2 ? 1 : -1, sp = 0.6 + (i * 37 + seed) % 5 * 0.12;
+      const vx2 = side * (3 + (i >> 1) * 3.2) * sp, vy2 = -(9 + i % 3 * 3) * sp;
+      const x = cx + vx2 * u * p * 1.4, y = cy - p * 4 + (vy2 * u + 26 * u * u) * p;
+      ctx3.fillStyle = cols[i % 3];
+      const s = i < 2 ? p * 1.5 : p;
+      ctx3.fillRect(snap2(x - s / 2), snap2(y - s / 2), s, s);
+      if (i < 2 && u < 0.6) {
+        ctx3.fillStyle = "#ffffff";
+        ctx3.fillRect(snap2(x - s / 2), snap2(y - s / 2 - p), p, p);
+      }
+    }
+    if (u < 0.35) {
+      const f = u < 0.18 ? 0 : 1;
+      ctx3.fillStyle = "#8ae6ff";
+      const by = cy + p * 6.5;
+      for (const dx of [-5, -3, 3, 5]) {
+        const hgt = (Math.abs(dx) === 5 ? 1 : 2) + (f ? -1 : 0);
+        if (hgt > 0) ctx3.fillRect(snap2(cx + dx * p - p / 2), snap2(by - hgt * p), p, hgt * p);
+      }
+    }
+  }
+  function drawGemShards(ctx3, cx, cy, p, k) {
+    if (k <= 0) return;
+    const u = 1 - k;
+    pxSparkle(ctx3, cx + p * 6, cy - p * 5, p, Math.sin(Math.min(1, u * 2.2) * Math.PI), "#ffffff");
+    pxSparkle(ctx3, cx - p * 6, cy + p * 2, p, Math.sin(Math.min(1, Math.max(0, u * 2.2 - 0.4)) * Math.PI) * 0.7, "#e8c8ff");
+    const cols = ["#d4a4ff", "#7ff4ff", "#ffffff", "#9a56f0"];
+    for (let i = 0; i < 4; i++) {
+      const a = -Math.PI / 2 + (i - 1.5) * 0.7, d = (4 + u * 10) * p;
+      const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d * 0.8 + u * u * 6 * p;
+      ctx3.fillStyle = cols[i];
+      ctx3.fillRect(snap2(x), snap2(y), p, p);
+      if (i % 2 === 0 && u < 0.5) {
+        ctx3.fillStyle = "#ffffff";
+        ctx3.fillRect(snap2(x), snap2(y - p), p, p);
+      }
+    }
+  }
+  function currencyIcon(kind2, px3 = 12) {
+    const key = kind2 + px3;
+    let c = iconCache.get(key);
+    if (c) return c;
+    const a = agentIcon(kind2 === "gem" ? "gem" : "aerobuck");
+    const s = a || (kind2 === "gem" ? gemSprite() : dropSprite());
+    const k = Math.max(1, Math.round(px3 / s.height));
+    c = makeCanvas(s.width * k, s.height * k);
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.drawImage(s, 0, 0, c.width, c.height);
+    iconCache.set(key, c);
+    return c;
+  }
+  var DROP_ART, DROP_PAL, GEM_ART, GEM_PAL, dropC, gemC, GEM_INNER, blank, snap2, iconCache;
+  var init_gemui = __esm({
+    "src/ui/gemui.js"() {
+      init_canvas();
+      init_font();
+      init_uiicons();
+      init_gems();
+      DROP_ART = [
+        ".....o.....",
+        "....oWo....",
+        "....oLo....",
+        "...oLCLo...",
+        "...oWCCo...",
+        "..oLWCCCo..",
+        "..oWLCCCo..",
+        ".oCWCCCCDo.",
+        ".oCLCCCCDo.",
+        ".oCCCCCDDo.",
+        ".oCCCCDDSo.",
+        "..oCDDDSo..",
+        "...oDSSo...",
+        "....ooo...."
+      ];
+      DROP_PAL = { o: "#12305e", W: "#ffffff", L: "#8ae6ff", C: "#38aaf2", D: "#2172c8", S: "#3a4fb0" };
+      GEM_ART = [
+        "...ooooooo...",
+        "..oWWLFMMMo..",
+        ".oWLLFMMCMDo.",
+        "oLLLFMMMMMDDo",
+        "oFFFFFFFFFFFo",
+        ".oLLMFMMMDDo.",
+        "..oLMFMMDDo..",
+        "...oLFMDDo...",
+        "....oFMDo....",
+        ".....oDo.....",
+        "......o......"
+      ];
+      GEM_PAL = { o: "#2a0e52", W: "#ffffff", L: "#d4a4ff", M: "#9a56f0", D: "#5c2aa8", F: "#7438cc", C: "#7ff4ff" };
+      dropC = null;
+      gemC = null;
+      GEM_INNER = GEM_ART.map((r) => [...r].map((ch) => ch !== "." && ch !== "o"));
+      blank = /* @__PURE__ */ new WeakMap();
+      snap2 = (v) => Math.round(v * 2) / 2;
+      iconCache = /* @__PURE__ */ new Map();
+      try {
+        registerInlineIcon("abdrop", currencyIcon("drop", 9), 1);
+        registerInlineIcon("bytegem", currencyIcon("gem", 8), 1);
+      } catch {
+      }
+    }
+  });
+
   // src/ui/ui.js
   function panelRect(game, w, h) {
     const W11 = game.screen.W, H8 = game.screen.H;
@@ -75606,6 +76284,8 @@ kmlmk..
       init_bigicons();
       init_icons3d();
       init_pop3d();
+      init_gemui();
+      init_gems();
       GHOST_IDS = /* @__PURE__ */ new Set(["journal", "inventory", "wardrobe", "settings", "bait", "baitshop", "multiplayer", "workshop", "quests", "lab", "fishmgr"]);
       UI = class {
         constructor(game) {
@@ -75620,6 +76300,15 @@ kmlmk..
           this.time = 0;
           this.coinShown = 0;
           this.coinBump = 0;
+          this.gemShown = 0;
+          this.gemBump = 0;
+          this.gemTick = 0;
+          this.wallet = null;
+          game.on?.("gemsChanged", (d) => {
+            if (d?.delta > 0) {
+              this.gemWait = 0.35;
+            }
+          });
           this.dockHover = -1;
           this.flyers = [];
           this.anim = 0;
@@ -75698,6 +76387,24 @@ kmlmk..
           const diff = g.state.coins - this.coinShown;
           this.coinShown += Math.abs(diff) < 1 ? diff : diff * Math.min(1, dt * 8);
           this.coinBump = Math.max(0, this.coinBump - dt * 3);
+          if (!this.gemInit) {
+            this.gemInit = true;
+            this.gemShown = gems(g.state);
+          }
+          this.gemBump = Math.max(0, this.gemBump - dt * 2.2);
+          this.gemWait = Math.max(0, (this.gemWait || 0) - dt);
+          const gt = gems(g.state);
+          if (gt < this.gemShown) this.gemShown = gt;
+          else if (gt > this.gemShown && this.gemWait <= 0) {
+            this.gemTick -= dt;
+            if (this.gemTick <= 0) {
+              const left = gt - this.gemShown, step = Math.max(1, Math.ceil(left / 12));
+              this.gemShown = Math.min(gt, this.gemShown + step);
+              this.gemTick = left > 6 ? 0.05 : 0.11;
+              this.gemBump = 1;
+              g.audio?.play?.("ui_hover", { vol: 0.3, pitch: 1.6 + Math.min(0.6, this.gemShown % 8 * 0.07) });
+            }
+          }
           for (const f of this.flyers) f.t += dt;
           this.flyers = this.flyers.filter((f) => {
             if (f.t >= f.dur) {
@@ -75900,15 +76607,20 @@ kmlmk..
           this.flyers.push({ x0: x, y0: y, x1: c.x, y1: c.y, t: 0, dur: 0.5 + Math.random() * 0.25, value });
         }
         coinTarget() {
+          if (this.wallet?.drop) return { x: this.wallet.drop.x, y: this.wallet.drop.y };
           const r = this.coinRect || { x: this.game.screen.W - 90, y: 6, w: 80, h: 20 };
           return { x: r.x + Math.round(r.h * 0.52), y: r.y + Math.round(r.h / 2) };
+        }
+        gemTarget() {
+          if (this.wallet?.gem) return { x: this.wallet.gem.x, y: this.wallet.gem.y };
+          return { x: this.game.screen.W - 30, y: 20 };
         }
         // ---------------------------------------------------------------- frame
         drawHud(ctx3, dt) {
           const g = this.game;
           this.tip = null;
           this.dtLast = Math.max(0, Math.min(0.1, dt || 1 / 60));
-          if (!g.tutorial?.intro) this.drawAeroPill(ctx3);
+          if (!g.tutorial?.intro) this.drawWallet(ctx3);
           for (const f of this.flyers) {
             const k = ease.inCubic(clamp012(f.t / f.dur));
             const x = lerp(f.x0, f.x1, k), y = lerp(f.y0, f.y1, k) - Math.sin(k * Math.PI) * 30;
@@ -75916,7 +76628,126 @@ kmlmk..
             if (k > 0.2 && (f.t * 20 | 0) % 3 === 0) drawSparkle(ctx3, x - 3, y + 2, 1, 0.6);
           }
         }
-        // The Aero counter: a glossy frosted pill top-right with a spinning 3D Aero drop and the amount (scales with the UI size).
+        // [cur26] The wallet: a hand-drawn 2D PIXEL-ART plaque top right (stepped corners, ink outline, a broken highlight
+        // line, rivets, little ripple marks) with two inset wells: the Aero Bucks droplet + count (blue half) and the Byte
+        // Gems crystal + count (violet half). Pixel-font numbers tick up; a gain splashes the droplet (pixel droplets arc out)
+        // or makes the gem glint (a diagonal shine sweep + twinkles); a pixel drip forms under the droplet now and then.
+        // 1 art px = p logical px (half-px steps are single device px on the 2x UI layer).
+        drawWallet(ctx3) {
+          const g = this.game, W11 = g.screen.W, t = this.time;
+          const mode = uiScaleMode();
+          const p = mode === "huge" ? 2.5 : mode === "normal" ? 1.5 : 2;
+          const font = mode === "big" ? "normal" : "big", sc = mode === "normal" ? 1 : 2;
+          const cap2 = capH(font) * sc;
+          const rm = !!g.state?.settings?.reducedMotion;
+          const fmt2 = (n2) => n2 >= 1e6 ? (n2 / 1e6).toFixed(n2 >= 1e7 ? 1 : 2) + "M" : fmtAero(n2);
+          const aTxt = fmt2(Math.floor(this.coinShown)), gTxt = String(Math.floor(this.gemShown));
+          const aw = Math.max(measureText(aTxt, font, sc), measureText("0000", font, sc)), gw = Math.max(measureText(gTxt, font, sc), measureText("00", font, sc));
+          const u = (n2) => Math.round(n2 * p * 2) / 2;
+          const PH2 = u(18), wellH = u(12);
+          const dropW = u(11), gemW = u(13);
+          const segA = u(3) + dropW + u(3) + aw + u(6), segG = u(3) + gemW + u(3) + gw + u(6);
+          const PW = u(3) + segA + u(3) + segG + u(3);
+          const m = Math.round(6 * uiK());
+          const hov = !this.blocking && this.hover({ x: W11 - PW - m - 2, y: m, w: PW, h: PH2 + u(2) });
+          this.pillHov = (this.pillHov || 0) + ((hov ? 1 : 0) - (this.pillHov || 0)) * Math.min(1, (this.dtLast || 1 / 60) * 14);
+          const lift = hov ? u(1) : 0;
+          const x = Math.round(W11 - PW - m - 2), y = Math.round(m) - lift + (this.coinBump > 0.5 ? u(0.5) : 0);
+          this.coinRect = { x, y, w: PW, h: PH2 };
+          const xA = x + u(3), xG = xA + segA + u(3);
+          const ink = hov ? "#123a66" : "#0d2340";
+          ctx3.fillStyle = "rgba(4,22,44,0.32)";
+          ctx3.fillRect(x + u(2), y + PH2, PW - u(3), u(1) + lift);
+          ctx3.fillStyle = ink;
+          ctx3.fillRect(x + u(2), y, PW - u(4), PH2);
+          ctx3.fillRect(x + u(1), y + u(1), PW - u(2), PH2 - u(2));
+          ctx3.fillRect(x, y + u(2), PW, PH2 - u(4));
+          const half = (x0, w, c) => {
+            ctx3.fillStyle = c.base;
+            ctx3.fillRect(x0, y + u(1), w, PH2 - u(2));
+            ctx3.fillStyle = c.top;
+            ctx3.fillRect(x0, y + u(1), w, u(5));
+            ctx3.fillStyle = c.bot;
+            ctx3.fillRect(x0, y + PH2 - u(4), w, u(3));
+            ctx3.fillStyle = c.rip;
+            for (let i = 0, rx2 = x0 + u(4); rx2 < x0 + w - u(4); i++, rx2 += u(7 + i % 3 * 2)) {
+              ctx3.fillRect(rx2, y + u(3), u(2), u(1));
+              ctx3.fillRect(rx2 + u(2), y + u(2), u(1), u(1));
+            }
+          };
+          const blue = { base: "#21608f", top: "#2e7db2", bot: "#174a74", rip: "#4f9fcf", hi: "#8fdcf6", well: "#0b2642", wt: "#06182c", wb: "#2b6d9c" };
+          const vio = { base: "#46338a", top: "#5a45aa", bot: "#33246a", rip: "#7a62c8", hi: "#c6aaf6", well: "#1d1344", wt: "#120a2e", wb: "#5b3ea6" };
+          half(x + u(1), xG - u(1.5) - (x + u(1)), blue);
+          half(xG - u(1.5), x + PW - u(1) - (xG - u(1.5)), vio);
+          ctx3.fillStyle = blue.hi;
+          ctx3.fillRect(x + u(3), y + u(1), Math.round((xG - x - u(8)) * 0.62), u(1));
+          ctx3.fillRect(x + u(2), y + u(2), u(1), u(1));
+          ctx3.fillRect(x + u(5) + Math.round((xG - x - u(8)) * 0.62), y + u(1), u(3), u(1));
+          ctx3.fillStyle = vio.hi;
+          ctx3.fillRect(xG + u(1), y + u(1), Math.round((x + PW - xG - u(4)) * 0.55), u(1));
+          ctx3.fillStyle = ink;
+          ctx3.fillRect(xG - u(2), y + u(1), u(1), PH2 - u(2));
+          ctx3.fillStyle = "#3c8cc0";
+          ctx3.fillRect(xG - u(3), y + u(3), u(1), PH2 - u(7));
+          ctx3.fillStyle = "#7a62c8";
+          ctx3.fillRect(xG - u(1), y + u(3), u(1), PH2 - u(7));
+          for (const [rx2, c] of [[x + u(1.5), "#a8e6ff"], [x + PW - u(3.5), "#dcc8ff"]]) {
+            ctx3.fillStyle = c;
+            ctx3.fillRect(rx2, y + u(8), u(2), u(2));
+            ctx3.fillStyle = ink;
+            ctx3.fillRect(rx2 + u(1), y + u(9), u(1), u(1));
+          }
+          const well = (wx, ww, c) => {
+            const wy2 = y + Math.round((PH2 - wellH) / 2);
+            ctx3.fillStyle = c.well;
+            ctx3.fillRect(wx + u(1), wy2, ww - u(2), wellH);
+            ctx3.fillRect(wx, wy2 + u(1), ww, wellH - u(2));
+            ctx3.fillStyle = c.wt;
+            ctx3.fillRect(wx + u(1), wy2, ww - u(2), u(1));
+            ctx3.fillStyle = c.wb;
+            ctx3.fillRect(wx + u(1), wy2 + wellH - u(1), ww - u(2), u(1));
+            return wy2;
+          };
+          const aWx = xA + u(3) + dropW + u(2), gWx = xG + u(3) + gemW + u(2);
+          const wy = well(aWx, aw + u(6), blue);
+          well(gWx, gw + u(6), vio);
+          const ty = Math.round(wy + (wellH - cap2) / 2);
+          drawText(ctx3, aTxt, aWx + u(3) + aw, ty, { font, scale: sc, align: "right", color: this.coinBump > 0.4 ? "#ffffff" : "#dff8ff", shadow: "#03101e" });
+          drawText(ctx3, gTxt, gWx + u(3) + gw, ty, { font, scale: sc, align: "right", color: this.gemBump > 0.4 ? "#ffffff" : "#f0e4ff", shadow: "#0c0620" });
+          const dcx = xA + u(3) + dropW / 2, dcy = y + PH2 / 2;
+          const idle2 = rm ? 0 : Math.max(0, Math.sin(t * 1.3)) ** 12 * 0.5;
+          drawDrop(ctx3, dcx, dcy, p, { squash: Math.max(this.coinBump > 0 ? Math.sin(this.coinBump * Math.PI) : 0, idle2) });
+          if (!rm && t * 0.37 % 1 < 0.05) pxSparkle(ctx3, dcx - u(1.5), dcy - u(3), p * 0.5, 1, "#ffffff");
+          if (this.coinBump > 0) drawDropSplash(ctx3, dcx, dcy, p * 0.75, this.coinBump);
+          if (!rm) {
+            const dt0 = (t + 1.7) % 7.5;
+            const dxp = Math.round(dcx - u(0.5));
+            if (dt0 < 1.2) {
+              const hh = dt0 < 0.6 ? 1 : 2;
+              ctx3.fillStyle = "#4fb4ec";
+              ctx3.fillRect(dxp, y + PH2, u(1), u(hh));
+            } else if (dt0 < 2) {
+              const k = (dt0 - 1.2) / 0.8;
+              ctx3.globalAlpha *= 1 - k;
+              ctx3.fillStyle = "#8ae6ff";
+              ctx3.fillRect(dxp, Math.round(y + PH2 + u(2) + k * k * u(14)), u(1), u(2));
+              ctx3.globalAlpha /= Math.max(1e-3, 1 - k);
+            }
+          }
+          const gcx = xG + u(3) + gemW / 2, gcy = y + PH2 / 2;
+          const sweep = this.gemBump > 0 ? 1 - this.gemBump : rm ? -1 : t * 0.32 % 1.6 - 0.3;
+          drawGem(ctx3, gcx, gcy - u(0.5) - (this.gemBump > 0 ? Math.sin(this.gemBump * Math.PI) * u(1) : 0), p, { glint: sweep, sparkle: this.gemBump > 0 ? this.gemBump : 0 });
+          if (this.gemBump > 0) drawGemShards(ctx3, gcx, gcy, p * 0.75, this.gemBump);
+          this.wallet = { drop: { x: Math.round(dcx), y: Math.round(dcy) }, gem: { x: Math.round(gcx), y: Math.round(gcy) }, a: { x, y, w: xG - x - u(1.5), h: PH2 }, g: { x: xG - u(1.5), y, w: x + PW - xG + u(1.5), h: PH2 } };
+          if (hov) {
+            const onGem = this.inp.x >= xG - u(1.5);
+            this.tip = onGem ? `{bytegem} ${GEM_NAME}: ${gems(g.state)}
+Earned from quests, orders and milestones.
+Skip timers or buy cosmetics with them.` : `{abdrop} ${CURRENCY}: ${fmtAero(g.state.coins || 0)}
+Water-droplet money from fish and your tank.`;
+          }
+        }
+        // (pre-[cur26]) The Aero counter: a glossy frosted pill top-right with a spinning 3D Aero drop and the amount (scales with the UI size).
         drawAeroPill(ctx3) {
           const W11 = this.game.screen.W;
           const k = uiK(), mode = uiScaleMode();
@@ -76090,7 +76921,7 @@ kmlmk..
     }
     if (o.flowers) {
       m.box(x0 - 1, y0 - 4, z + 1, x1 + 1, y0 - 3, z + 3, o.flowers[0]);
-      for (let x = x0; x <= x1; x++) if (h37(x, y0, z, 4) < 0.7) m.set(x, y0 - 2, z + 2, o.flowers[1 + x * 7 % (o.flowers.length - 1)]);
+      for (let x = x0; x <= x1; x++) if (h38(x, y0, z, 4) < 0.7) m.set(x, y0 - 2, z + 2, o.flowers[1 + x * 7 % (o.flowers.length - 1)]);
     }
   }
   function winX(m, z0, y0, z1, y1, x, glass2, frame2) {
@@ -76112,7 +76943,7 @@ kmlmk..
       if (x === x0 || x === x1 || d < 0.6 && y - y0 < 1) return trim;
       if ((y - y0) % 2 === 0) return cols[2];
       if ((x + row3 % 2 * 2) % 4 === 0) return cols[1];
-      return h37(x >> 1, y, z, 3) < 0.12 ? cols[3] : cols[0];
+      return h38(x >> 1, y, z, 3) < 0.12 ? cols[3] : cols[0];
     });
     m.box(x0, y0 + rise, zc - 1, x1, y0 + rise + 1, zc, trim);
   }
@@ -76120,17 +76951,17 @@ kmlmk..
     return (x, y, z) => {
       const k = horiz ? y : x;
       if (k % 4 === 0) return cols[1];
-      return h37(horiz ? x >> 2 : x, horiz ? y >> 2 : y >> 2, z, 7) < 0.12 ? cols[2] : cols[0];
+      return h38(horiz ? x >> 2 : x, horiz ? y >> 2 : y >> 2, z, 7) < 0.12 ? cols[2] : cols[0];
     };
   }
   function stoneBase(m, x0, z0, x1, z1, h, cols) {
     m.box(x0, 0, z0, x1, h, z1, (x, y, z) => {
       const brick = (x + y % 2 * 3) % 6 === 0 || y % 3 === 0;
-      return brick ? cols[1] : h37(x >> 1, y, z >> 1, 2) < 0.2 ? cols[2] : cols[0];
+      return brick ? cols[1] : h38(x >> 1, y, z >> 1, 2) < 0.2 ? cols[2] : cols[0];
     });
   }
   function sandPad(m, cx, cz, rx2, rz2, cols) {
-    shape5(m, cx - rx2, 0, cz - rz2, cx + rx2, 1, cz + rz2, (x, y, z) => ((x - cx) / rx2) ** 2 + ((z - cz) / rz2) ** 2 < 1 - y * 0.35, (x, y, z) => h37(x, y, z, 11) < 0.3 ? cols[1] : cols[0]);
+    shape5(m, cx - rx2, 0, cz - rz2, cx + rx2, 1, cz + rz2, (x, y, z) => ((x - cx) / rx2) ** 2 + ((z - cz) / rz2) ** 2 < 1 - y * 0.35, (x, y, z) => h38(x, y, z, 11) < 0.3 ? cols[1] : cols[0]);
   }
   function kelp2(m, x, z, h, cols, seed = 0) {
     for (let y = 0; y < h; y++) m.set(Math.round(x + Math.sin(y * 0.45 + seed) * 1.2), y, z, cols[(y + seed) % 5 === 0 ? 1 : 0]);
@@ -76144,7 +76975,7 @@ kmlmk..
       br(ex, ey, ez, ang + 0.7, l * 0.7, d + 1);
       br(ex, ey, ez, ang - 0.7, l * 0.65, d + 1);
     };
-    br(x, y, z, Math.PI / 2 + (h37(seed, 1, 2) - 0.5), len, 0);
+    br(x, y, z, Math.PI / 2 + (h38(seed, 1, 2) - 0.5), len, 0);
   }
   function canRender2(budget5 = 9) {
     const now10 = performance.now();
@@ -76230,14 +77061,14 @@ kmlmk..
     scalesOf.get(sk).add(scale);
     return s;
   }
-  var h37, pal, SAND3, STONE, KELP, MODELS6, MODEL_IDS, WORLD_SCALE, BUILD_YAW, BUILD_PITCH, winStart2, spent4, built3, cache14, scalesOf;
+  var h38, pal, SAND3, STONE, KELP, MODELS6, MODEL_IDS, WORLD_SCALE, BUILD_YAW, BUILD_PITCH, winStart2, spent4, built3, cache14, scalesOf;
   var init_buildingmodels = __esm({
     "src/build/buildingmodels.js"() {
       init_voxel();
       init_props();
       init_math();
       init_canvas();
-      h37 = (x, y, z, s = 0) => hash3(x, y, z, s);
+      h38 = (x, y, z, s = 0) => hash3(x, y, z, s);
       pal = (m, hexes, o = {}) => hexes.map((h) => m.color(h, o));
       SAND3 = ["#e8cf96", "#d8ba80"];
       STONE = ["#9a8f9e", "#7a7088", "#b0a6b2"];
@@ -76336,7 +77167,7 @@ kmlmk..
           m.box(51, 3, 8, 54, 32, 38, planks(wood, false));
           for (const x of [8, 31, 54]) m.box(x - 1, 3, 37, x + 1, 34, 39, wood[1]);
           m.box(7, 32, 36, 55, 34, 40, wood[1]);
-          shape5(m, 4, 34, 4, 58, 44, 46, (x, y, z) => Math.abs(y - (44 - (z - 4) * 0.22)) < 0.9, (x, y, z) => h37(x >> 2, 1, z >> 2, 5) < 0.15 ? tin[3] : x % 3 === 0 ? tin[1] : x % 3 === 1 ? tin[2] : tin[0]);
+          shape5(m, 4, 34, 4, 58, 44, 46, (x, y, z) => Math.abs(y - (44 - (z - 4) * 0.22)) < 0.9, (x, y, z) => h38(x >> 2, 1, z >> 2, 5) < 0.15 ? tin[3] : x % 3 === 0 ? tin[1] : x % 3 === 1 ? tin[2] : tin[0]);
           m.box(14, 3, 26, 46, 13, 34, bench2[1]);
           m.box(13, 14, 25, 47, 15, 35, bench2[0]);
           m.box(15, 3, 27, 16, 12, 28, wood[1]);
@@ -76394,7 +77225,7 @@ kmlmk..
           }, (x, y, z) => {
             const a = Math.atan2(z - 28, x - 30);
             if (Math.abs(Math.sin(a * 4)) < 0.12 || (y - 8) % 7 === 0) return rib[0];
-            return h37(x, y, z, 2) < 0.05 ? domeB : dome;
+            return h38(x, y, z, 2) < 0.05 ? domeB : dome;
           });
           m.sub(() => shape5(m, 8, 10, 30, 52, 26, 50, (x, y, z) => z - 28 > 9 && Math.abs(x - 30) < 10 && m.get(Math.floor(x), Math.floor(y), Math.floor(z)) === dome, 0));
           m.cylinder(30, 28, 33, 36, 3, rib[0]);
@@ -76429,8 +77260,8 @@ kmlmk..
           const door = pal(m, ["#5a3a22", "#3a2416"]);
           const moss2 = pal(m, ["#5aa85a", "#3a7a46"], { jitter: 0.1 });
           const cx = 24, cz = 24;
-          for (const [x, y, z, r] of [[24, 4, 24, 18], [14, 3, 30, 10], [34, 2, 32, 9], [20, 7, 16, 11]]) shape5(m, x - r, 0, z - r, x + r, y + r * 0.6, z + r, (xx, yy, zz) => Math.hypot(xx - x, (yy - y) * 1.5, zz - z) < r + (h37(xx >> 1, yy >> 1, zz >> 1, 4) - 0.5) * 3, (xx, yy, zz) => h37(xx >> 1, yy, zz >> 1, 1) < 0.25 ? rock[1] : rock[0]);
-          m.recolor((x, y, z, p) => (p === rock[0] || p === rock[1]) && !m.get(x, y + 1, z) && h37(x, y, z, 6) < 0.4 ? moss2[h37(x, y, z, 2) < 0.5 ? 0 : 1] : null);
+          for (const [x, y, z, r] of [[24, 4, 24, 18], [14, 3, 30, 10], [34, 2, 32, 9], [20, 7, 16, 11]]) shape5(m, x - r, 0, z - r, x + r, y + r * 0.6, z + r, (xx, yy, zz) => Math.hypot(xx - x, (yy - y) * 1.5, zz - z) < r + (h38(xx >> 1, yy >> 1, zz >> 1, 4) - 0.5) * 3, (xx, yy, zz) => h38(xx >> 1, yy, zz >> 1, 1) < 0.25 ? rock[1] : rock[0]);
+          m.recolor((x, y, z, p) => (p === rock[0] || p === rock[1]) && !m.get(x, y + 1, z) && h38(x, y, z, 6) < 0.4 ? moss2[h38(x, y, z, 2) < 0.5 ? 0 : 1] : null);
           for (let y = 12; y < 98; y++) {
             const r = 9.5 - (y - 12) * 0.035;
             m.cylinder(cx, cz, y, y, r, Math.floor((y - 12) / 14) % 2 ? red : white);
@@ -76469,7 +77300,7 @@ kmlmk..
           stoneBase(m, 6, 6, 54, 42, 3, st);
           shape5(m, 8, 4, 8, 52, 40, 40, (x, y, z) => y < 30 || Math.hypot((y - 30) * 1.6, z - 24) < 17, (x, y, z) => {
             if (x % 9 === 3 || (y - 4) % 9 === 0) return iron2[1];
-            return h37(x >> 2, y >> 2, z, 5) < 0.12 ? iron2[3] : iron2[0];
+            return h38(x >> 2, y >> 2, z, 5) < 0.12 ? iron2[3] : iron2[0];
           });
           for (let x = 8; x <= 52; x += 3) for (const y of [4, 13, 22, 31]) {
             if (m.get(x, y, 40)) m.set(x, y, 41, rivet);
@@ -76492,7 +77323,7 @@ kmlmk..
           m.set(dx, dy, dz + 4, gold[2]);
           m.box(9, 33, 37, 12, 36, 40, lamp);
           m.box(48, 33, 37, 51, 36, 40, lamp);
-          for (let i = 0; i < 26; i++) m.sphere(50 + h37(i, 1, 1) * 9, 1 + h37(i, 2, 1) * 4, 40 + h37(i, 3, 1) * 8, 1.6, i % 3 ? coin2[0] : gold[0]);
+          for (let i = 0; i < 26; i++) m.sphere(50 + h38(i, 1, 1) * 9, 1 + h38(i, 2, 1) * 4, 40 + h38(i, 3, 1) * 8, 1.6, i % 3 ? coin2[0] : gold[0]);
           m.set(54, 6, 44, coin2[1]);
           shape5(m, 2, 0, 38, 16, 8, 50, (x, y, z) => Math.hypot((x - 9) / 6.5, (z - 44) / 5.5) < 1 && y < 1 + (1 - Math.hypot((x - 9) / 6.5, (z - 44) / 5.5)) * 7, (x, y, z) => y === 3 ? clam[2] : Math.floor(Math.atan2(z - 44, x - 9) * 4) & 1 ? clam[0] : clam[1]);
           m.sub(() => m.box(3, 3, 49, 15, 3, 50));
@@ -76512,7 +77343,7 @@ kmlmk..
           sandPad(m, 40, 28, 40, 26, sand);
           const beds = [[8, 32, 72, 48, 5], [12, 18, 62, 32, 10], [20, 6, 54, 18, 15]];
           for (const [x0, z0, x1, z1, h] of beds) {
-            m.box(x0, 0, z0, x1, h, z1, (x, y, z) => (x + y % 2 * 2) % 5 === 0 || y === h ? st[1] : h37(x >> 1, y, z >> 1, 4) < 0.2 ? st[2] : st[0]);
+            m.box(x0, 0, z0, x1, h, z1, (x, y, z) => (x + y % 2 * 2) % 5 === 0 || y === h ? st[1] : h38(x >> 1, y, z >> 1, 4) < 0.2 ? st[2] : st[0]);
             m.box(x0 + 1, h, z0 + 1, x1 - 1, h, z1 - 1, soil[0]);
           }
           let k = 0;
@@ -76551,7 +77382,7 @@ kmlmk..
           for (const [x, z] of [[10, 10], [48, 10], [10, 38], [48, 38]]) m.box(x, 0, z, x + 1, 10, z + 1, post);
           m.box(7, 10, 7, 52, 11, 42, (x) => x % 3 === 0 ? wood[1] : wood[0]);
           m.box(10, 12, 10, 48, 34, 38, planks(wood));
-          m.recolor((x, y, z, p) => (p === wood[0] || p === wood[1]) && m.exposed(x, y, z) && y > 13 && y < 33 && h37(x, y, z, 21) < 0.06 ? shell[Math.floor(h37(x, y, z, 3) * 4)] : null);
+          m.recolor((x, y, z, p) => (p === wood[0] || p === wood[1]) && m.exposed(x, y, z) && y > 13 && y < 33 && h38(x, y, z, 21) < 0.06 ? shell[Math.floor(h38(x, y, z, 3) * 4)] : null);
           m.sub(() => m.box(16, 18, 38, 40, 28, 38));
           m.box(16, 18, 36, 40, 28, 36, wood[2]);
           m.box(18, 22, 37, 22, 27, 37, glass2);
@@ -76560,8 +77391,8 @@ kmlmk..
           shape5(m, 5, 34, 5, 53, 54, 44, (x, y, z) => {
             const hw = 23 * (1 - (y - 34) / 20);
             return Math.abs(z - 24.5) <= hw && x > 5 + (y - 34) * 0.3 && x < 53 - (y - 34) * 0.3;
-          }, (x, y, z) => (y + x % 2) % 3 === 0 ? straw[1] : h37(x, y, z, 2) < 0.2 ? straw[2] : straw[0]);
-          for (let x = 5; x <= 53; x += 2) if (h37(x, 0, 1, 3) < 0.6) {
+          }, (x, y, z) => (y + x % 2) % 3 === 0 ? straw[1] : h38(x, y, z, 2) < 0.2 ? straw[2] : straw[0]);
+          for (let x = 5; x <= 53; x += 2) if (h38(x, 0, 1, 3) < 0.6) {
             m.set(x, 33, 44, straw[1]);
             m.set(x, 33, 5, straw[1]);
           }
@@ -76599,7 +77430,7 @@ kmlmk..
           const sand = pal(m, SAND3, { jitter: 0.08 });
           sandPad(m, 32, 26, 32, 24, sand);
           stoneBase(m, 6, 6, 58, 42, 2, st);
-          m.box(8, 3, 8, 56, 44, 40, (x, y, z) => y % 6 === 0 ? wall[1] : h37(x >> 2, y >> 2, z, 9) < 0.1 ? wall[2] : wall[0]);
+          m.box(8, 3, 8, 56, 44, 40, (x, y, z) => y % 6 === 0 ? wall[1] : h38(x >> 2, y >> 2, z, 9) < 0.1 ? wall[2] : wall[0]);
           m.box(6, 44, 36, 58, 56, 42, wall[1]);
           m.box(14, 56, 36, 50, 64, 42, wall[1]);
           m.box(24, 64, 36, 40, 68, 42, wall[1]);
@@ -76620,7 +77451,7 @@ kmlmk..
           m.box(14, 10, 33, 28, 13, 37, wall[1]);
           for (const x of [14, 28]) m.box(x, 14, 38, x, 37, 38, claw2[0]);
           m.box(14, 34, 38, 28, 37, 38, neonP);
-          for (let i = 0; i < 18; i++) m.sphere(16 + h37(i, 1, 0) * 11, 14.5 + h37(i, 2, 0) * 2.5 + (i > 11 ? 2 : 0), 34.5 + h37(i, 3, 0) * 3, 1.5, prize[i % 4]);
+          for (let i = 0; i < 18; i++) m.sphere(16 + h38(i, 1, 0) * 11, 14.5 + h38(i, 2, 0) * 2.5 + (i > 11 ? 2 : 0), 34.5 + h38(i, 3, 0) * 3, 1.5, prize[i % 4]);
           m.box(21, 28, 35, 21, 33, 35, claw2[1]);
           m.line(21, 28, 35, 19, 25, 35, claw2[0], 0.6);
           m.line(21, 28, 35, 23, 25, 35, claw2[0], 0.6);
@@ -76659,7 +77490,7 @@ kmlmk..
           const st = pal(m, STONE, { jitter: 0.12 });
           const leaf2 = pal(m, ["#5ad85a", "#3a9a3a"]);
           const cx = 20, cz = 16, fz = 27;
-          m.cylinder(cx, cz, 0, 4, 15, (x, y, z) => h37(x >> 1, y, z >> 1, 3) < 0.25 ? st[1] : st[0]);
+          m.cylinder(cx, cz, 0, 4, 15, (x, y, z) => h38(x >> 1, y, z >> 1, 3) < 0.25 ? st[1] : st[0]);
           m.cylinder(cx, cz, 5, 92, 10, (x, y, z) => wood[Math.floor((y + (x >> 2)) / 3) % 2]);
           const face3 = (y0, mood) => {
             m.box(cx - 10, y0 + 22, cz + 6, cx + 9, y0 + 25, fz, wood[2]);
@@ -76709,7 +77540,7 @@ kmlmk..
           const pearl = m.color("#fff6fa", { emissive: 0.4, spec: 1 });
           const st = pal(m, STONE, { jitter: 0.12 });
           const cx = 23, cz = 23;
-          shape5(m, 4, 0, 4, 42, 14, 42, (x, y2, z) => Math.hypot(x - cx, (y2 - 2) * 1.6, z - cz) < 17 + (h37(x >> 1, y2 >> 1, z >> 1, 8) - 0.5) * 4, (x, y2, z) => h37(x >> 1, y2 >> 1, z >> 1, 2) < 0.4 ? coral[0] : h37(x, y2, z, 3) < 0.15 ? coral[1] : st[0]);
+          shape5(m, 4, 0, 4, 42, 14, 42, (x, y2, z) => Math.hypot(x - cx, (y2 - 2) * 1.6, z - cz) < 17 + (h38(x >> 1, y2 >> 1, z >> 1, 8) - 0.5) * 4, (x, y2, z) => h38(x >> 1, y2 >> 1, z >> 1, 2) < 0.4 ? coral[0] : h38(x, y2, z, 3) < 0.15 ? coral[1] : st[0]);
           let y = 12;
           const rs2 = [11, 9.5, 8.5, 7.5, 6.5, 5.5];
           rs2.forEach((r, i) => {
@@ -76718,7 +77549,7 @@ kmlmk..
             shape5(m, cx + ox - r - 1, yc - r - 1, cz + oz - r - 1, cx + ox + r + 1, yc + r + 1, cz + oz + r + 1, (x, yy, z) => {
               const d = Math.hypot(x - cx - ox, yy - yc, z - cz - oz);
               return d < r && d > r - 1.3;
-            }, (x, yy, z) => h37(x, yy, z, i) < 0.04 ? glassB : glass2);
+            }, (x, yy, z) => h38(x, yy, z, i) < 0.04 ? glassB : glass2);
             shape5(m, cx + ox - r + 2, yc - r, cz + oz - r + 2, cx + ox + r - 2, yc - r * 0.2, cz + oz + r - 2, (x, yy, z) => Math.hypot(x - cx - ox, yy - yc, z - cz - oz) < r - 1.5, water);
             m.sphere(cx + ox, yc - r * 0.4, cz + oz, 1.6, pearl);
             m.cylinder(cx + ox, cz + oz, yc + r - 1, yc + r, r * 0.45, brass[0]);
@@ -76773,7 +77604,7 @@ kmlmk..
       PERK_NAMES = {
         rarity: "Rare fish odds",
         nightRarity: "Night rarity",
-        coinMul: "Aero income",
+        coinMul: "Aero Bucks income",
         baitRadius: "Bait pull radius",
         luck: "Crate luck",
         shiny: "Shiny odds",
@@ -77571,9 +78402,9 @@ kmlmk..
         const c3 = makeCanvas(size, size);
         ctxOf(c3).drawImage(f.canvas, Math.round(size / 2 - f.ox), Math.round(size / 2 - f.oy));
         if (f.canvas.hi) {
-          const h310 = makeCanvas(size * 2, size * 2);
-          ctxOf(h310).drawImage(f.canvas.hi, Math.round((size / 2 - f.ox) * 2), Math.round((size / 2 - f.oy) * 2));
-          Object.defineProperty(c3, "hi", { value: h310, configurable: true });
+          const h311 = makeCanvas(size * 2, size * 2);
+          ctxOf(h311).drawImage(f.canvas.hi, Math.round((size / 2 - f.ox) * 2), Math.round((size / 2 - f.oy) * 2));
+          Object.defineProperty(c3, "hi", { value: h311, configurable: true });
         }
         icons2.set(key, c3);
         return c3;
@@ -78175,8 +79006,8 @@ kmlmk..
             return { stats: stats2, desc, uses };
           }
           if (e.kind === "blueprint") {
-            const def2 = buildingDef(it2.builds);
-            const c = def2?.cost || {};
+            const def3 = buildingDef(it2.builds);
+            const c = def3?.cost || {};
             stats2.push(["aero", `${fmtAero(c.coins || 0)} + ${Object.values(c.items || {}).reduce((a, b) => a + b, 0)} mats`]);
             const bon = BUILDINGS[it2.builds]?.bonus || {};
             const ks = Object.keys(bon).filter((k) => k !== "light");
@@ -78213,8 +79044,8 @@ kmlmk..
           if (e.kind === "package") out.push({ label: "Open!", icon: "star", style: "green", run: () => ui.open(ui.panels?.crate ? "crate" : "package", { tier: ITEMS[e.id].tier }) });
           if (e.kind === "blueprint") {
             const it2 = ITEMS[e.id];
-            const def2 = buildingDef(it2.builds);
-            const done = def2?.unique && st.buildings?.some((b) => b.id === it2.builds);
+            const def3 = buildingDef(it2.builds);
+            const done = def3?.unique && st.buildings?.some((b) => b.id === it2.builds);
             out.push({ label: done ? "Built" : "Build", icon: "home", style: "green", disabled: done || g.state.view !== "ocean" && !g.setView, tip: "Place it in your tank", run: () => {
               ui.close(this.id);
               g.build?.startPlacing?.(e.id);
@@ -78245,9 +79076,9 @@ kmlmk..
           }
           if (e.kind === "decor") {
             out.push({ label: "To tank", icon: "tank", style: "green", tip: "Place it in your aquarium", run: () => {
-              var _a4;
+              var _a6;
               if (!removeItem(st, e.id, 1)) return;
-              if (!g.aquarium?.addDecor?.(e.id)) ((_a4 = st.tank).decor || (_a4.decor = [])).push({ id: e.id, x: 0.2 + Math.random() * 0.6, z: 0.5 });
+              if (!g.aquarium?.addDecor?.(e.id)) ((_a6 = st.tank).decor || (_a6.decor = [])).push({ id: e.id, x: 0.2 + Math.random() * 0.6, z: 0.5 });
               g.audio.play("ui_buy");
               g.toast?.(ITEMS[e.id].name, "tank");
               g.save?.();
@@ -78267,7 +79098,7 @@ kmlmk..
           }
           if (e.kind === "fish") {
             const rec = e.rec;
-            out.push({ label: rec.inTank ? "In tank" : "Release", icon: rec.inTank ? "tank" : "aero", disabled: rec.inTank, tip: "Release it for Aero", run: () => {
+            out.push({ label: rec.inTank ? "In tank" : "Release", icon: rec.inTank ? "tank" : "aero", disabled: rec.inTank, tip: "Release it for Aero Bucks", run: () => {
               const i = st.fish.indexOf(rec);
               if (i < 0) return;
               st.fish.splice(i, 1);
@@ -78806,9 +79637,9 @@ kmlmk..
           const sel = B2.sel;
           const it2 = ITEMS[sel];
           if (it2 && B2.mode === "place" && !B2.moving) {
-            const def2 = buildingDef(it2.builds);
-            drawText(ctx3, def2.name.toUpperCase(), px3, y + 9, { color: "#ffffff", outline: "#0a2a5a" });
-            drawText(ctx3, `x${countItem(st, sel)} blueprint${countItem(st, sel) > 1 ? "s" : ""}${def2.unique ? " - unique" : ""}`, px3 + measureText(def2.name.toUpperCase()) + 8, y + 10, { font: "small", color: "#9ad0ff" });
+            const def3 = buildingDef(it2.builds);
+            drawText(ctx3, def3.name.toUpperCase(), px3, y + 9, { color: "#ffffff", outline: "#0a2a5a" });
+            drawText(ctx3, `x${countItem(st, sel)} blueprint${countItem(st, sel) > 1 ? "s" : ""}${def3.unique ? " - unique" : ""}`, px3 + measureText(def3.name.toUpperCase()) + 8, y + 10, { font: "small", color: "#9ad0ff" });
             drawText(ctx3, "Click your tank to place it. Free!", px3, y + 23, { color: "#bfe2ff" });
           } else if (B2.moving) {
             drawText(ctx3, "MOVING " + (buildingDef(B2.byUid(B2.moving)?.id)?.name || "").toUpperCase(), px3, y + 9, { color: "#ffe27a", outline: "#0a2a5a" });
@@ -78841,11 +79672,11 @@ kmlmk..
         drawCard(ctx3, ui, e, r, t, B2) {
           const g = this.game, inp = g.input;
           const it2 = ITEMS[e.item];
-          const def2 = buildingDef(e.id);
+          const def3 = buildingDef(e.id);
           const on = B2.sel === e.item && B2.mode === "place" && !B2.moving;
           const hov = ui.hover(r);
           const usable = e.n > 0;
-          const rar = RARITY[def2?.rarity || "common"];
+          const rar = RARITY[def3?.rarity || "common"];
           ctx3.fillStyle = on ? rgba("#ffe27a", 0.16) : hov ? rgba("#ffffff", 0.08) : rgba("#06204a", 0.35);
           ctx3.fillRect(r.x, r.y, r.w, r.h);
           ctx3.fillStyle = on ? "#ffe27a" : usable ? "#e8f6ff" : rgba("#e8f6ff", 0.35);
@@ -78883,7 +79714,7 @@ kmlmk..
             }
             drawText(ctx3, "?", r.x + r.w / 2, r.y + 18, { align: "center", scale: 2, color: "#e8f6ff", outline: "#0a2a5a" });
           }
-          const name = e.known ? def2.name : "???";
+          const name = e.known ? def3.name : "???";
           const nm = wrapText(name, r.w - 4, "small");
           nm.slice(0, 2).forEach((l, i) => drawText(ctx3, l.toUpperCase(), r.x + r.w / 2, r.y + r.h - 18 + i * 7, { font: "small", align: "center", color: usable ? "#ffffff" : "#9ab8d8" }));
           if (e.n > 0) {
@@ -78895,7 +79726,7 @@ kmlmk..
           }
           if (e.built && !e.n) drawText(ctx3, "BUILT", r.x + r.w - 3, r.y + 3, { font: "small", align: "right", color: "#9affc8" });
           if (hov) {
-            ui.tip = e.known ? `${def2.name}: ${def2.desc}${usable ? "" : " (No blueprint left - craft another in the Lab.)"}` : "Undiscovered building. Research it in the Lab, then craft its blueprint!";
+            ui.tip = e.known ? `${def3.name}: ${def3.desc}${usable ? "" : " (No blueprint left - craft another in the Lab.)"}` : "Undiscovered building. Research it in the Lab, then craft its blueprint!";
             if (inp.pressed) {
               inp.pressed = false;
               if (usable) {
@@ -78969,12 +79800,12 @@ kmlmk..
           }
           this.t += dt;
           const t = this.t;
-          const def2 = buildingDef(b.id);
+          const def3 = buildingDef(b.id);
           const W11 = 560, H8 = 292;
           const r = { x: Math.round((g.screen.W - W11) / 2), y: Math.round((g.screen.H - H8) / 2) + 6, w: W11, h: H8 };
           this.rect = { x: r.x, y: r.y - 24, w: W11, h: H8 + 24 };
           drawWood(ctx3, r.x, r.y, W11, H8, { tone: "dark" });
-          const title3 = def2.name.toUpperCase();
+          const title3 = def3.name.toUpperCase();
           const tw = Math.max(170, measureText(title3) + 50);
           drawPlank(ctx3, r.x + W11 / 2 - tw / 2, r.y - 18, tw, 22, { rope: 8, label: title3 });
           if (ui.button(ctx3, r.x + W11 - 25, r.y + 7, 18, 18, "", { icon: "cross", style: "shell", tip: "Close (Esc)" })) {
@@ -78982,8 +79813,8 @@ kmlmk..
             return;
           }
           const pv = { x: r.x + 10, y: r.y + 10, w: 200, h: 182 };
-          this.drawDiorama(ctx3, b, def2, pv, t);
-          if (!def2.decor) {
+          this.drawDiorama(ctx3, b, def3, pv, t);
+          if (!def3.decor) {
             const lv = levelOf(b);
             for (let i = 0; i < MAX_LEVEL; i++) {
               const ic = getUiIcon(i < lv ? "star" : "star_empty");
@@ -78991,12 +79822,12 @@ kmlmk..
             }
             drawText(ctx3, `LEVEL ${lv}`, pv.x + 42, pv.y + 7, { font: "small", color: "#fff6e2", outline: "#1a0e06" });
           }
-          const rar = RARITY[def2.rarity] || RARITY.common;
+          const rar = RARITY[def3.rarity] || RARITY.common;
           drawText(ctx3, rar.name.toUpperCase(), pv.x + pv.w - 6, pv.y + 7, { font: "small", align: "right", color: rar.color, outline: "#1a0e06" });
           const ip = { x: r.x + 218, y: r.y + 10, w: W11 - 228, h: 182 };
           drawPaper(ctx3, ip.x, ip.y, ip.w, ip.h, { aged: true });
           let y = ip.y + 7;
-          const lines = wrapText(def2.desc, ip.w - 16);
+          const lines = wrapText(def3.desc, ip.w - 16);
           lines.forEach((l, i) => drawText(ctx3, l, ip.x + 8, y + i * 10, { color: "#3a2a22" }));
           y += lines.length * 10 + 4;
           const bonus = BUILDINGS[b.id]?.bonus || {};
@@ -79042,13 +79873,13 @@ kmlmk..
               ui.open("lab");
               return;
             }
-          } else if (def2.decor) {
+          } else if (def3.decor) {
             drawText(ctx3, "A lovely decoration. Your fish approve.", act.x + 2, act.y + 2, { color: "#3a2a22" });
           }
           const bb = { x: r.x + 10, y: r.y + H8 - 116, w: W11 - 20, h: 106 };
-          this.drawBottom(ctx3, ui, b, def2, { x: bb.x, y: r.y + 200, w: bb.w, h: H8 - 210 }, t);
+          this.drawBottom(ctx3, ui, b, def3, { x: bb.x, y: r.y + 200, w: bb.w, h: H8 - 210 }, t);
         }
-        drawDiorama(ctx3, b, def2, pv, t) {
+        drawDiorama(ctx3, b, def3, pv, t) {
           const g = this.game;
           ctx3.save();
           ctx3.beginPath();
@@ -79108,8 +79939,8 @@ kmlmk..
         drawProduction(ctx3, ui, b, a, t) {
           const g = this.game;
           const P7 = produceInfo(b);
-          const def2 = BUILDINGS[b.id];
-          const gives = def2.produce.coins ? "coin bubbles" : def2.produce.give.map((q) => ITEMS[q.id]?.name).join(", ");
+          const def3 = BUILDINGS[b.id];
+          const gives = def3.produce.coins ? "coin bubbles" : def3.produce.give.map((q) => ITEMS[q.id]?.name).join(", ");
           drawText(ctx3, `Makes ${gives}.`, a.x + 2, a.y + 1, { color: "#3a2a22" });
           drawText(ctx3, `Ready: ${P7.ready}/${P7.cap}`, a.x + 2, a.y + 13, { color: P7.ready ? "#2a6a3a" : "#6b4f43" });
           drawBar(ctx3, a.x + 70, a.y + 12, 120, 8, P7.progress, { color: "#6ad46a" });
@@ -79224,13 +80055,13 @@ kmlmk..
             ui.open("package", { uid: p.uid });
           }
         }
-        drawBottom(ctx3, ui, b, def2, r, t) {
+        drawBottom(ctx3, ui, b, def3, r, t) {
           const g = this.game, st = g.state;
           drawWood(ctx3, r.x, r.y, r.w, r.h, { tone: "light", nails: false, inset: true });
           const B2 = g.build;
           let x = r.x + 8;
           const y = r.y + 8;
-          if (!def2.decor) {
+          if (!def3.decor) {
             const lv = levelOf(b), cap2 = maxLevelFor(st);
             const cost = upgradeCost(b);
             if (lv >= MAX_LEVEL) drawText(ctx3, "Fully upgraded!", x, y + 4, { color: "#fff6e2", shadow: "#1a0e06" });
@@ -79360,7 +80191,7 @@ kmlmk..
       const a = Math.atan2(y, x), r = Math.hypot(x, y);
       const R0 = 4.3 * (1 + 0.2 * Math.sin(3 * a + v * 1.7) + 0.13 * Math.sin(5 * a + v * 2.9));
       if (r > R0) return 0;
-      const h = h38(Math.round(x), Math.round(y), v);
+      const h = h39(Math.round(x), Math.round(y), v);
       if (h < 0.1) return P7.s;
       if (r > R0 - 1.1) return h < 0.55 ? P7.c : P7.a;
       return h < 0.33 ? P7.b : P7.a;
@@ -79376,7 +80207,7 @@ kmlmk..
       if (bitten && (x - 2.6) ** 2 + (y - 1.2) ** 2 + (z - 1) ** 2 < 5.5) return bitten && d > 2.2 * 2.2 ? 0 : P7.k;
       const lit2 = (-wx * 0.5 + wy * 0.7 + wz * 0.5) / R7;
       if (lit2 > 0.78 && d > (R7 - 1.2) ** 2) return P7.g;
-      const h = h38(Math.round(x), Math.round(y), Math.round(z));
+      const h = h39(Math.round(x), Math.round(y), Math.round(z));
       if (h < 0.13) return P7.c;
       if (lit2 < -0.45) return h > 0.8 ? P7.c : P7.d;
       if (lit2 > 0.4) return h > 0.7 ? P7.s : P7.b;
@@ -79409,7 +80240,7 @@ kmlmk..
         const r = (1.15 - u * 0.62) * scale;
         if (dy * dy + z * z <= r * r) {
           if (u < 0.16 && z > 0 && dy > -0.5) return P7.e;
-          if (z > 0 && h38(Math.round(x), Math.round(y), Math.round(z)) < 0.1) return P7.g;
+          if (z > 0 && h39(Math.round(x), Math.round(y), Math.round(z)) < 0.1) return P7.g;
           if (dy > r * 0.45) return P7.b;
           return Math.floor(u * 9) % 2 ? P7.c : P7.a;
         }
@@ -79556,7 +80387,7 @@ kmlmk..
     SHAKERS.set(tilt, c);
     return c;
   }
-  var FOODS, KICKS, FOOD_IDS, RENDER2, shadeHex2, h38, rotX, rotY, rotZ, mul2, KRILL_PAL, SPR4, budgetT, budgetN, ICONS2, SHAKERS, FoodSim;
+  var FOODS, KICKS, FOOD_IDS, RENDER2, shadeHex2, h39, rotX, rotY, rotZ, mul2, KRILL_PAL, SPR4, budgetT, budgetN, ICONS2, SHAKERS, FoodSim;
   var init_food = __esm({
     "src/aquarium/food.js"() {
       init_voxel();
@@ -79578,7 +80409,7 @@ kmlmk..
         const f = (v) => Math.max(0, Math.min(255, Math.round(k >= 0 ? v + (255 - v) * k : v * (1 + k))));
         return "#" + [n2 >> 16 & 255, n2 >> 8 & 255, n2 & 255].map((v) => f(v).toString(16).padStart(2, "0")).join("");
       };
-      h38 = (x, y, z) => {
+      h39 = (x, y, z) => {
         const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
         return s - Math.floor(s);
       };
@@ -80618,7 +81449,7 @@ kmlmk..
       let tip = "";
       if (c.kind === "aero") {
         drawAeroCoin(ctx3, tx + 9, ty + 10, 5, ui.time);
-        tip = "Aero";
+        tip = "Aero Bucks";
       } else if (c.kind === "item") {
         const ic = icon("mat:" + c.id, 14);
         if (ic) ctx3.drawImage(ic, Math.round(tx + 9 - ic.width / 2), Math.round(ty + 10 - ic.height / 2));
@@ -81047,11 +81878,11 @@ kmlmk..
         placeInTank(itemId, pl) {
           const g = this.game, st = this.state;
           const id2 = ITEMS[itemId]?.builds;
-          const def2 = buildingDef(id2);
-          if (!def2) return null;
-          if (def2.unique && st.buildings.some((b2) => b2.id === id2)) {
+          const def3 = buildingDef(id2);
+          if (!def3) return null;
+          if (def3.unique && st.buildings.some((b2) => b2.id === id2)) {
             g.audio?.play("ui_error");
-            g.toast?.(`You already have a ${def2.name}.`, "cross");
+            g.toast?.(`You already have a ${def3.name}.`, "cross");
             return null;
           }
           if (!removeItem(st, itemId, 1)) {
@@ -81061,7 +81892,7 @@ kmlmk..
           const now10 = Date.now();
           const b = { uid: uid(), id: id2, x: 0, z: 0.5, flip: !!pl.f, lvl: 1, built: now10, prod: now10, on: true, tank: { u: pl.u, l: Math.min(2, pl.l | 0), h: pl.h ?? 0.5, f: !!pl.f } };
           st.buildings.push(b);
-          this.anims.set(b.uid, { t: 0, dur: def2.decor ? 1.2 : 2.8, kind: "build" });
+          this.anims.set(b.uid, { t: 0, dur: def3.decor ? 1.2 : 2.8, kind: "build" });
           g.audio?.play("icon_drop", { vol: 0.7 });
           g.audio?.play("box_open", { vol: 0.4, pitch: 0.7 });
           g.emit?.("built", b);
@@ -81122,16 +81953,16 @@ kmlmk..
             }
           }
           if (newBuild) {
-            const def2 = buildingDef(id2);
-            if (def2?.unique && this.state.buildings.some((b) => b.id === id2)) return `You already have a ${def2.name}`;
+            const def3 = buildingDef(id2);
+            if (def3?.unique && this.state.buildings.some((b) => b.id === id2)) return `You already have a ${def3.name}`;
           }
           return null;
         }
         place(itemId, x, z) {
           const g = this.game, st = this.state;
           const id2 = ITEMS[itemId]?.builds;
-          const def2 = buildingDef(id2);
-          if (!def2) return false;
+          const def3 = buildingDef(id2);
+          if (!def3) return false;
           const reason = this.invalidReason(id2, x, z, null, true);
           if (reason) {
             g.audio?.play("ui_error");
@@ -81142,7 +81973,7 @@ kmlmk..
           const now10 = Date.now();
           const b = { uid: uid(), id: id2, x: Math.round(x), z: Math.round(z * 1e3) / 1e3, flip: this.flip, lvl: 1, built: now10, prod: now10, on: true };
           st.buildings.push(b);
-          this.anims.set(b.uid, { t: 0, dur: def2.decor ? 1.2 : 2.8, kind: "build" });
+          this.anims.set(b.uid, { t: 0, dur: def3.decor ? 1.2 : 2.8, kind: "build" });
           g.audio?.play("icon_drop", { vol: 0.7 });
           g.audio?.play("box_open", { vol: 0.4, pitch: 0.7 });
           g.camera?.shake?.(2);
@@ -81181,8 +82012,8 @@ kmlmk..
         // [phase10:tank]
         upgrade(b) {
           const g = this.game, st = this.state;
-          const def2 = BUILDINGS[b.id];
-          if (!def2) return false;
+          const def3 = BUILDINGS[b.id];
+          if (!def3) return false;
           if (levelOf(b) >= MAX_LEVEL) return false;
           if (levelOf(b) >= maxLevelFor(st)) {
             g.audio?.play("ui_error");
@@ -81192,7 +82023,7 @@ kmlmk..
           const cost = upgradeCost(b);
           if (!cost || !this.canPay(cost)) {
             g.audio?.play("ui_error");
-            g.toast?.("Not enough Aero or materials.", "coin");
+            g.toast?.("Not enough Aero Bucks or materials.", "coin");
             return false;
           }
           if (cost.coins && !g.spendCoins(cost.coins)) return false;
@@ -81245,7 +82076,7 @@ kmlmk..
         }
         // Hatches a fish egg into a baby fish of the current ocean (sent to the aquarium / holding bucket).
         hatchEgg() {
-          var _a4, _b;
+          var _a6, _b2;
           const g = this.game, st = this.state;
           if (!removeItem(st, "fish_egg", 1)) return null;
           const biome = g.ocean?.biome?.id || "shallows";
@@ -81253,7 +82084,7 @@ kmlmk..
           const sp = rng.weighted(pool.length ? pool : SPECIES.slice(0, 5), (s) => RARITY[s.rarity]?.weight ?? 1);
           const rec = rollIndividual(sp, { ...g.world?.rollMods || {}, sizeBonus: -0.3 });
           rec.hatched = Date.now();
-          const j = (_a4 = st.journal)[_b = sp.id] || (_a4[_b] = { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: Date.now(), variants: {} });
+          const j = (_a6 = st.journal)[_b2 = sp.id] || (_a6[_b2] = { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: Date.now(), variants: {} });
           j.seen = true;
           if (g.keepFish) g.keepFish(rec);
           else st.fish.push({ ...rec, inTank: false });
@@ -81426,7 +82257,7 @@ kmlmk..
             P7.pixelBurst("confetti", at[0], at[1], 26, {});
             P7.pixelBurst("sparkle", at[0], at[1], 14, { ramps: ["gold", "white"] });
           }
-          const def2 = buildingDef(b.id);
+          const def3 = buildingDef(b.id);
           if (L4) {
             const cx = L4.gx, cy = L4.gy - L4.h * 0.5;
             g.particles?.burst?.(cx, cy, 36, { colors: ["#fff6b0", "#ffd25a", "#9af0ff", "#ffffff"], speed: 110, g: 40, add: true, life: 1.1, layer: "fg" });
@@ -81437,7 +82268,7 @@ kmlmk..
           g.audio?.play(a.kind === "upgrade" ? "golden_shimmer" : "ui_unlock", { vol: 0.8 });
           g.audio?.play("sparkle", { vol: 0.6 });
           g.camera?.shake?.(3);
-          if (!def2?.decor) g.toast?.(a.kind === "upgrade" ? `${def2?.name} upgraded to level ${levelOf(b)}!` : `${def2?.name} built! Click it to use it.`, a.kind === "upgrade" ? "star" : "home");
+          if (!def3?.decor) g.toast?.(a.kind === "upgrade" ? `${def3?.name} upgraded to level ${levelOf(b)}!` : `${def3?.name} built! Click it to use it.`, a.kind === "upgrade" ? "star" : "home");
         }
         // [phase10:tank] hammer sparks while a building goes up in the tank
         tankBuildFx(b, a) {
@@ -81741,9 +82572,9 @@ kmlmk..
           const g = this.game;
           if (!this.active) {
             if (this.hover && g.input?.inside && !g.ui?.blocking) {
-              const def2 = buildingDef(this.hover.id);
+              const def3 = buildingDef(this.hover.id);
               const P7 = produceInfo(this.hover);
-              drawTooltip(ctx3, g.input.x, g.input.y, `${def2?.name || "Building"}${BUILDINGS[this.hover.id] ? ` (Lv ${levelOf(this.hover)})` : ""} - ${P7?.ready ? "click to collect!" : this.hover.id === "research_lab" ? "click to enter" : "click to open"}`, { maxW: 200 });
+              drawTooltip(ctx3, g.input.x, g.input.y, `${def3?.name || "Building"}${BUILDINGS[this.hover.id] ? ` (Lv ${levelOf(this.hover)})` : ""} - ${P7?.ready ? "click to collect!" : this.hover.id === "research_lab" ? "click to enter" : "click to open"}`, { maxW: 200 });
             }
             return;
           }
@@ -81869,8 +82700,8 @@ kmlmk..
           ctx3.fillRect(vx2 - 2, L4.dy, 5, 1);
           ctx3.fillRect(vx2 - 2, L4.gy - 1, 5, 1);
           drawText(ctx3, `${(L4.h / 8 / L4.s).toFixed(1)} M`, vx2 + 4, Math.round((L4.dy + L4.gy) / 2) - 3, { font: "small", color: "#e8f6ff", outline: "#0a3a7a" });
-          const def2 = buildingDef(gh.id);
-          const label3 = (def2?.name || "").toUpperCase();
+          const def3 = buildingDef(gh.id);
+          const label3 = (def3?.name || "").toUpperCase();
           const lx = Math.round(L4.gx), ly = Math.round(L4.dy - 16);
           ctx3.fillStyle = "#e8f6ff";
           ctx3.fillRect(lx, ly + 7, 1, 8);
@@ -82610,7 +83441,7 @@ kmlmk..
       SAY = {
         equip: ["Ooh!", "Fresh!", "So shiny!", "Bubbly!", "Love it!", "Yes!"],
         buy: ["Mine!", "Ka-ching!", "Sparkly!"],
-        broke: ["Need more Aero...", "Too pricey!"],
+        broke: ["Need more Aero Bucks...", "Too pricey!"],
         poke: ["Hehe!", "Boop!", "Pop?", "Hey!"],
         spin: ["Wheee!", "Dizzy..."],
         random: ["Surprise!", "Shuffle!"]
@@ -82817,14 +83648,14 @@ kmlmk..
           this.changed();
         }
         buyPart(slot, p) {
-          var _a4;
+          var _a6;
           const g = this.game, pr = PART_PRICE[p.rarity];
           if (pr == null || (g.state.coins | 0) < pr || !(g.spendCoins ? g.spendCoins(pr) : (g.state.coins -= pr, true))) {
             g.audio?.play?.("ui_error");
             this.say(pick2(SAY.broke));
             return;
           }
-          ((_a4 = g.state).cosmetics || (_a4.cosmetics = {}))[`boatpart:${slot}:${p.id}`] = true;
+          ((_a6 = g.state).cosmetics || (_a6.cosmetics = {}))[`boatpart:${slot}:${p.id}`] = true;
           g.audio?.play?.("ui_buy");
           this.equipPart(slot, p);
         }
@@ -84151,17 +84982,17 @@ kmlmk..
     const { col, put: put2 } = B2;
     const coin2 = [col("#ffd23a", { ...METAL3, emissive: 0.3 }), col("#f0b83c", { ...METAL3, emissive: 0.25 }), col("#ffe98a", { ...METAL3, emissive: 0.35 }), col("#d8961e", { ...METAL3, emissive: 0.15 })];
     const glint2 = col("#ffffff", { emissive: 1, jitter: 0 });
-    const gems = [col("#ff3a6a", { ...GLOSS, emissive: 0.6 }), col("#3ad8ff", { ...GLOSS, emissive: 0.6 }), col("#4ae87a", { ...GLOSS, emissive: 0.5 }), col("#f6f2ff", { ...GLOSS, emissive: 0.4 })];
+    const gems2 = [col("#ff3a6a", { ...GLOSS, emissive: 0.6 }), col("#3ad8ff", { ...GLOSS, emissive: 0.6 }), col("#4ae87a", { ...GLOSS, emissive: 0.5 }), col("#f6f2ff", { ...GLOSS, emissive: 0.4 })];
     const vel = col(velvet, { smooth: 0.6, jitter: 0.04 });
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, rx2 = (x1 - x0) / 2 + 1, rz2 = (z1 - z0) / 2 + 1;
     for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
       const d = ((x - cx) / rx2) ** 2 + ((z - cz) / rz2) ** 2;
-      const h = Math.floor(y0 + (yTop - y0) * Math.max(0, 1 - d * 0.85) + (h39(x, z, 1, 61) - 0.5) * 2.2);
-      for (let y = y0 - 3; y <= h; y++) put2(x, y, z, y <= y0 - 2 ? vel : coin2[Math.floor(h39(x, y, z, 62) * 4)], 1);
-      const r = h39(x, z, 2, 63);
+      const h = Math.floor(y0 + (yTop - y0) * Math.max(0, 1 - d * 0.85) + (h310(x, z, 1, 61) - 0.5) * 2.2);
+      for (let y = y0 - 3; y <= h; y++) put2(x, y, z, y <= y0 - 2 ? vel : coin2[Math.floor(h310(x, y, z, 62) * 4)], 1);
+      const r = h310(x, z, 2, 63);
       if (r < 0.05) put2(x, h, z, glint2, 1);
       else if (r > 0.975) {
-        const gm = gems[Math.floor(h39(x, z, 3, 64) * 4)];
+        const gm = gems2[Math.floor(h310(x, z, 3, 64) * 4)];
         put2(x, h + 1, z, gm, 1);
         put2(x, h, z, gm, 1);
       }
@@ -84183,13 +85014,13 @@ kmlmk..
     const pieceOf = (x, y, z) => y >= 31 ? 2 : x <= 4 ? 4 : x >= 37 ? 5 : z >= 30 ? 3 : 1;
     const plank = (u, y, s) => {
       const row3 = Math.floor(y / 6);
-      return wd[Math.floor(h39(row3, Math.floor(u / 9), s, 4) * 4) % 4];
+      return wd[Math.floor(h310(row3, Math.floor(u / 9), s, 4) * 4) % 4];
     };
     for (let y = 2; y <= 22; y++) for (let z = Z0 + 2; z <= Z1 - 2; z++) for (let x = X02 + 2; x <= X12 - 2; x++) {
       const dx = (x - 21) / 17, dz = (z - 16.5) / 13.5;
-      const bowl = 13 + Math.round((dx * dx + dz * dz) * 7 + (h39(x >> 1, 1, z >> 1, 8) - 0.5) * 3);
-      if (y <= Math.min(22, bowl)) put2(x, y, z, straw[Math.floor(h39(x, y, z, 7) * 3)], 1);
-      else if (y === Math.min(22, bowl) + 1 && h39(x, z, 5, 9) < 0.08) put2(x, y, z, straw[2], 1);
+      const bowl = 13 + Math.round((dx * dx + dz * dz) * 7 + (h310(x >> 1, 1, z >> 1, 8) - 0.5) * 3);
+      if (y <= Math.min(22, bowl)) put2(x, y, z, straw[Math.floor(h310(x, y, z, 7) * 3)], 1);
+      else if (y === Math.min(22, bowl) + 1 && h310(x, z, 5, 9) < 0.08) put2(x, y, z, straw[2], 1);
     }
     treasure(B2, 13, 29, 10, 23, 14, 19, "#e0b450", false);
     for (let y = 0; y <= YT; y++) for (let z = Z0; z <= Z1; z++) for (let x = X02; x <= X12; x++) {
@@ -84263,7 +85094,7 @@ kmlmk..
     }
     for (let z = 0; z < 34; z++) for (let x = 0; x < 42; x++) for (let y = 0; y <= 4; y++) {
       if (!get(x, y, z) || get(x, y, z) === nail) continue;
-      const r = h39(x, y, z, 11);
+      const r = h310(x, y, z, 11);
       if (r < 0.16 - y * 0.03) put2(x, y, z, r < 0.06 ? algaeL : algae, pid[B2.idx(x, y, z)]);
     }
     for (const [x, y, z] of [[0, 1, 9], [0, 2, 21], [12, 0, 33], [30, 2, 33], [0, 0, 15], [20, 1, 33]]) put2(x, y, z, barn, x === 0 ? 4 : 3);
@@ -84293,7 +85124,7 @@ kmlmk..
       const u = face3 === "x" ? z : x;
       const band = u <= 4 || u >= (face3 === "x" ? 29 : 39) || face3 !== "x" && (u === 13 || u === 14 || u === 29 || u === 30) || face3 === "x" && (u === 16 || u === 17) || y <= 2 || y >= YB - 1;
       if (band) return y === 2 || y === YB - 1 ? brL : (u + y) % 9 === 0 ? brD : br;
-      const r = h39(x, y, z, 5);
+      const r = h310(x, y, z, 5);
       if (y < 9 && r < 0.12 + (9 - y) * 0.02) return r < 0.06 ? rustD : rust;
       return y === 3 || u === 5 || u === (face3 === "x" ? 15 : 12) || u === (face3 === "x" ? 18 : 15) ? stL : r < 0.1 ? stD : panel;
     };
@@ -84353,7 +85184,7 @@ kmlmk..
       let c;
       if (trim(u, y, uMax)) c = y === YB - 1 || y === 2 ? gL : (u + y) % 6 === 0 ? gD : g;
       else if (!(ox || oz)) c = wdD;
-      else c = u % 4 === 0 ? wdD : wd[Math.floor(h39(Math.floor(u / 4), 0, x + z, 3) * 3)];
+      else c = u % 4 === 0 ? wdD : wd[Math.floor(h310(Math.floor(u / 4), 0, x + z, 3) * 3)];
       if (oz && z === Z1 && (x >= 11 && x <= 13 || x >= 32 && x <= 34)) c = y % 5 === 0 ? gL : g;
       put2(x, y, z, c, 1);
     }
@@ -84436,7 +85267,7 @@ kmlmk..
       let c = glass2;
       if (s > 0.8) c = sw[Math.floor((dy + 20) / 6) % 2];
       else if (s < -0.62) c = glassD;
-      else if (h39(x, y, z, 3) < 0.035) c = star;
+      else if (h310(x, y, z, 3) < 0.035) c = star;
       else if (dy > 4 && s > 0.45) c = glassL;
       put2(x, y, z, c, 7);
     }
@@ -84503,7 +85334,7 @@ kmlmk..
       if (hy >= 31) {
         const L4 = 2.5 + power * 2;
         for (let y = 31; y <= 35; y++) for (let z = Math.floor(hz - L4 - 2); z <= hz + L4 + 2; z++) for (let x = 0; x <= 2 + Math.round(power * 1.5); x++) {
-          const e = L4 + (h39(x, y, z, 40 + i) - 0.5) * 3;
+          const e = L4 + (h310(x, y, z, 40 + i) - 0.5) * 3;
           if (Math.abs(z - hz) < e && m.get(x, y, z)) {
             take(x, y, z);
             hole.add(y + "," + z);
@@ -84513,10 +85344,10 @@ kmlmk..
         const row3 = Math.floor(hy / 6), y0 = row3 * 6, y1 = row3 * 6 + 4;
         const L4 = 2.6 + power * 2.4;
         for (let y = y0; y <= y1; y++) {
-          const a = hz - L4 + (h39(y, 1, i, 41) - 0.5) * 3.5, b = hz + L4 + (h39(y, 2, i, 42) - 0.5) * 3.5;
+          const a = hz - L4 + (h310(y, 1, i, 41) - 0.5) * 3.5, b = hz + L4 + (h310(y, 2, i, 42) - 0.5) * 3.5;
           for (let z = Math.max(5, Math.floor(a)); z <= Math.min(28, Math.ceil(b)); z++) {
             for (let x = 0; x <= 2; x++) if (m.get(x, y, z)) take(x, y, z);
-            if ((power > 1.1 || h39(y, z, i, 43) < 0.45) && m.get(3, y, z) && Math.abs(z - hz) < L4 * 0.8) take(3, y, z);
+            if ((power > 1.1 || h310(y, z, i, 43) < 0.45) && m.get(3, y, z) && Math.abs(z - hz) < L4 * 0.8) take(3, y, z);
             hole.add(y + "," + z);
           }
         }
@@ -84526,17 +85357,17 @@ kmlmk..
           if (!near) continue;
           for (let x = 1; x <= 2; x++) {
             const c = m.get(x, y, z);
-            if (isWood(c) && pid[idx(x, y, z)] !== 1) m.data[idx(x, y, z)] = h39(x, y, z, 2) < 0.45 ? cm.splinterD : cm.splinter;
+            if (isWood(c) && pid[idx(x, y, z)] !== 1) m.data[idx(x, y, z)] = h310(x, y, z, 2) < 0.45 ? cm.splinterD : cm.splinter;
           }
         }
         for (const ry2 of [y0 - 2, y1 + 2]) {
-          if (ry2 < 2 || ry2 > 29 || h39(ry2, i, 3, 44) < 0.35) continue;
-          let z = hz + (h39(ry2, i, 45) - 0.5) * 6;
-          const n2 = 4 + Math.floor(h39(ry2, i, 46) * 5 + power * 2), dir = h39(ry2, i, 47) < 0.5 ? -1 : 1;
+          if (ry2 < 2 || ry2 > 29 || h310(ry2, i, 3, 44) < 0.35) continue;
+          let z = hz + (h310(ry2, i, 45) - 0.5) * 6;
+          const n2 = 4 + Math.floor(h310(ry2, i, 46) * 5 + power * 2), dir = h310(ry2, i, 47) < 0.5 ? -1 : 1;
           let y = ry2;
           for (let s2 = 0; s2 < n2; s2++) {
             z += dir;
-            if (h39(s2, ry2, i, 48) < 0.25) y += h39(s2, ry2, 49) < 0.5 ? -1 : 1;
+            if (h310(s2, ry2, i, 48) < 0.25) y += h310(s2, ry2, 49) < 0.5 ? -1 : 1;
             const zz = Math.round(z);
             if (zz < 5 || zz > 28) break;
             for (let x = 1; x <= 2; x++) {
@@ -84568,8 +85399,8 @@ kmlmk..
       const at = cm.seam[Math.max(lo, Math.min(hi, c0 + (i % 2 ? per : -per) * 0.5 | 0))];
       out.at = at;
       for (let k = 0; k < 3 + power * 2; k++) {
-        const s = cm.seam[Math.floor(lo + h39(i, k, 7) * (hi - lo))];
-        const x = s[0], y = s[1] - 1 - Math.floor(h39(i, k, 8) * 2), z = s[2];
+        const s = cm.seam[Math.floor(lo + h310(i, k, 7) * (hi - lo))];
+        const x = s[0], y = s[1] - 1 - Math.floor(h310(i, k, 8) * 2), z = s[2];
         const c = m.get(x, y, z);
         if (c && cm.flake.includes(c)) take(x, y, z);
       }
@@ -84583,15 +85414,15 @@ kmlmk..
           const c = m.get(x + ox, y + oy, z + oz);
           if (!c || pid[idx(x + ox, y + oy, z + oz)] !== 7) continue;
           if (ox || oy || oz) {
-            if (m.data[idx(x + ox, y + oy, z + oz)] !== cm.crackC && h39(x + ox, y + oy, z + oz, 77) < 0.3) m.data[idx(x + ox, y + oy, z + oz)] = cm.crackE;
+            if (m.data[idx(x + ox, y + oy, z + oz)] !== cm.crackC && h310(x + ox, y + oy, z + oz, 77) < 0.3) m.data[idx(x + ox, y + oy, z + oz)] = cm.crackE;
           } else m.data[idx(x, y, z)] = core ? cm.crackC : cm.crackE;
         }
       };
       const walk = (n0, steps, seed) => {
         let n2 = n0.slice();
-        let ang = h39(seed, 1, 2) * Math.PI * 2;
+        let ang = h310(seed, 1, 2) * Math.PI * 2;
         for (let k = 0; k < steps; k++) {
-          ang += (h39(seed, k, 5) - 0.5) * 1.2;
+          ang += (h310(seed, k, 5) - 0.5) * 1.2;
           const up = [0, 1, 0];
           const tA = norm32(cross32(n2, up)), tB = cross32(n2, tA);
           n2 = norm32([n2[0] + (tA[0] * Math.cos(ang) + tB[0] * Math.sin(ang)) * 0.09, n2[1] + (tA[1] * Math.cos(ang) + tB[1] * Math.sin(ang)) * 0.09, n2[2] + (tA[2] * Math.cos(ang) + tB[2] * Math.sin(ang)) * 0.09]);
@@ -84614,8 +85445,8 @@ kmlmk..
       const i = x + nx * (y + ny * z), c = m.data[i];
       if (!straw.has(c)) continue;
       const dx = (x - 21) / 19, dy = (y + 3) / 24, dz = (z - 16.5) / 14;
-      if (dx * dx + dy * dy + dz * dz > 1 - h39(x, y, z, 70) * 0.12) {
-        if (h39(x, y, z, 71) < 0.25) out.push({ x, y, z, col: m.palette[c].color });
+      if (dx * dx + dy * dy + dz * dz > 1 - h310(x, y, z, 70) * 0.12) {
+        if (h310(x, y, z, 71) < 0.25) out.push({ x, y, z, col: m.palette[c].color });
         m.data[i] = 0;
         pid[i] = 0;
       }
@@ -84641,7 +85472,7 @@ kmlmk..
     }
     return L4;
   }
-  var CHEST_YAW, CHEST_PITCH, RENDER3, WOOD4, METAL3, GLOSS, h39, MAKERS, hexOf, cross32, norm32, PADZ, PADY, ChestSprite;
+  var CHEST_YAW, CHEST_PITCH, RENDER3, WOOD4, METAL3, GLOSS, h310, MAKERS, hexOf, cross32, norm32, PADZ, PADY, ChestSprite;
   var init_chestvox = __esm({
     "src/gfx/chestvox.js"() {
       init_voxel();
@@ -84653,7 +85484,7 @@ kmlmk..
       WOOD4 = { smooth: 0.25, jitter: 0.07, spec: 0.15 };
       METAL3 = { spec: 1.2, specPow: 6, smooth: 0.5, jitter: 0.03 };
       GLOSS = { spec: 1.4, specPow: 10, smooth: 0.8, jitter: 0.02 };
-      h39 = (x, y, z, s = 0) => hash3(x, y, z, s);
+      h310 = (x, y, z, s = 0) => hash3(x, y, z, s);
       MAKERS = { crate, iron, golden: golden2, orb };
       hexOf = (cm, c) => cm.m.palette[c]?.color || "#ffffff";
       cross32 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -86562,7 +87393,7 @@ kmlmk..
           for (let i = 0; i < ri; i++) ctx3.drawImage(partSprite("star", i < ri ? mix(col, "#ffffff", 0.3) : "#8090a0", 1), Math.round(x + w / 2 - ri * 4 + i * 8 - 2), y + 5);
           const bob = Math.round(Math.sin(this.t * 3 + c.x) * 1.5);
           this.drawLootIcon(ctx3, c, x + w / 2, y + h - Math.round(28 * k) + bob, 1);
-          const name = c.id === "coins" ? `${fmtAero(c.qty)} Aero` : `${c.qty > 1 ? c.qty + "x " : ""}${ITEMS[c.id]?.name || c.id}`;
+          const name = c.id === "coins" ? `${fmtAero(c.qty)} Aero Bucks` : `${c.qty > 1 ? c.qty + "x " : ""}${ITEMS[c.id]?.name || c.id}`;
           let label3 = name;
           while (measureText(label3, "small") > w - 8 && label3.length > 4) label3 = label3.slice(0, -2);
           if (label3 !== name) label3 += ".";
@@ -87237,10 +88068,10 @@ kmlmk..
     }
   }
   function renderOne(id2, f, v, H8, key) {
-    const def2 = PROP_DEFS[id2];
-    const B2 = def2.build(f, v);
-    const vs = vsFor2(def2, H8);
-    const opt = optOf(def2);
+    const def3 = PROP_DEFS[id2];
+    const B2 = def3.build(f, v);
+    const vs = vsFor2(def3, H8);
+    const opt = optOf(def3);
     const lo = renderVoxels(B2.m, { ...opt, scale: vs });
     const c = makeCanvas(lo.canvas.width, lo.canvas.height);
     const g = ctxOf(c);
@@ -87271,13 +88102,13 @@ kmlmk..
     return SPR5.get(keyOf(id2, f % PROP_DEFS[id2].n, v, H8)) || null;
   }
   function propNow(id2, f = 0, v = 0, H8 = 720, o = {}) {
-    const def2 = PROP_DEFS[id2];
-    if (!def2) return null;
-    const key = keyOf(id2, f % def2.n, v, H8);
+    const def3 = PROP_DEFS[id2];
+    if (!def3) return null;
+    const key = keyOf(id2, f % def3.n, v, H8);
     let s = SPR5.get(key);
     if (!s) {
       try {
-        s = renderOne(id2, f % def2.n, v, H8, key);
+        s = renderOne(id2, f % def3.n, v, H8, key);
       } catch (e) {
         console.warn("cine prop", id2, e);
         s = null;
@@ -87290,9 +88121,9 @@ kmlmk..
   }
   function* prepProps(list, H8) {
     for (const [id2, v = 0] of list) {
-      const def2 = PROP_DEFS[id2];
-      if (!def2) continue;
-      for (let f = 0; f < def2.n; f++) {
+      const def3 = PROP_DEFS[id2];
+      if (!def3) continue;
+      for (let f = 0; f < def3.n; f++) {
         const key = keyOf(id2, f, v, H8);
         if (SPR5.has(key)) continue;
         const spr4 = propNow(id2, f, v, H8, { lazyHi: true });
@@ -87354,10 +88185,10 @@ kmlmk..
         jelly: { build: buildJelly, n: 4, vs: 2, yaw: 0, pitch: 16 }
       };
       SPR5 = /* @__PURE__ */ new Map();
-      vsFor2 = (def2, H8) => Math.max(1, Math.round(def2.vs * (H8 / 720) * 8) / 8);
+      vsFor2 = (def3, H8) => Math.max(1, Math.round(def3.vs * (H8 / 720) * 8) / 8);
       keyOf = (id2, f, v, H8) => `${id2}|${f}|${v}|${vsFor2(PROP_DEFS[id2], H8)}`;
       MODELS7 = /* @__PURE__ */ new Map();
-      optOf = (def2) => ({ yaw: def2.yaw, pitch: def2.pitch, ao: 1, edges: 0.75, sideEdges: 0.5, jitter: 0.06, glowRadius: 2 });
+      optOf = (def3) => ({ yaw: def3.yaw, pitch: def3.pitch, ao: 1, edges: 0.75, sideEdges: 0.5, jitter: 0.06, glowRadius: 2 });
     }
   });
 
@@ -93342,7 +94173,7 @@ void main() {
           while (scale > 1 && devH / scale < 420) scale--;
           while (!this.fixedScale && devW / scale > 1400) scale++;
           const W11 = Math.ceil(devW / scale), H8 = Math.ceil(devH / scale);
-          const changed = W11 !== this.W || H8 !== this.H;
+          const changed2 = W11 !== this.W || H8 !== this.H;
           this.W = W11;
           this.H = H8;
           this.scale = scale;
@@ -93352,7 +94183,7 @@ void main() {
           this.canvas.style.width = W11 * scale / dpr + "px";
           this.canvas.style.height = H8 * scale / dpr + "px";
           this.ctx.imageSmoothingEnabled = false;
-          if (changed) for (const f of this.listeners) f(W11, H8);
+          if (changed2) for (const f of this.listeners) f(W11, H8);
         }
         onResize(f) {
           this.listeners.push(f);
@@ -96042,24 +96873,24 @@ void main() {
     b.trophies || (b.trophies = {});
     return b;
   }
-  function bossUnlocked(game, def2) {
-    if (!def2) return false;
+  function bossUnlocked(game, def3) {
+    if (!def3) return false;
     const st = game.state || {};
-    if (game.debugBosses || bossRecord(st).won[def2.id]) return true;
+    if (game.debugBosses || bossRecord(st).won[def3.id]) return true;
     try {
       const book2 = game.quests?.book;
-      if (book2 && (book2.isDone?.(def2.quest) || book2.isActive?.(def2.quest))) return true;
+      if (book2 && (book2.isDone?.(def3.quest) || book2.isActive?.(def3.quest))) return true;
     } catch (e) {
     }
-    return !!st.quests?.chDone?.[def2.chapter];
+    return !!st.quests?.chDone?.[def3.chapter];
   }
   function lookLen(sp) {
     const l = sp.look || {};
     return Math.max(20, (l.body?.len || 40) * (sp.scale || 1));
   }
-  function drawBossAura(ctx3, F3, f, def2, k = 1, t = 0, rage = 0) {
+  function drawBossAura(ctx3, F3, f, def3, k = 1, t = 0, rage = 0) {
     if (!f || !f.c || f.alpha <= 0) return;
-    const col = rage > 0.5 ? "#ff5a4a" : def2.color;
+    const col = rage > 0.5 ? "#ff5a4a" : def3.color;
     const len = F3.fishLen(f);
     const r = Math.round(len * 0.62);
     const pulse = 0.5 + 0.5 * Math.sin(t * 3.2);
@@ -96089,7 +96920,7 @@ void main() {
         rng.chance(0.6) ? "sparkle" : "spark",
         f.x + rng.float(-len * 0.45, len * 0.45),
         f.y + rng.float(-len * 0.15, len * 0.15),
-        { ramp: rage > 0.5 ? "#ff6a3a" : def2.color, vy: -rng.float(12, 30), vx: rng.float(-6, 6), life: rng.float(0.6, 1.1), size: 0, blink: true }
+        { ramp: rage > 0.5 ? "#ff6a3a" : def3.color, vy: -rng.float(12, 30), vx: rng.float(-6, 6), life: rng.float(0.6, 1.1), size: 0, blink: true }
       );
     }
   }
@@ -96144,12 +96975,12 @@ void main() {
     ctx3.restore();
     if (rng.chance(0.3 * k)) F3.particles.pixel?.("sparkle", f.x + rng.float(-rx2, rx2), f.y + rng.float(-ry2, ry2), { ramp: "cyan", life: 0.4, size: 0 });
   }
-  function bossVictory(F3, fish, def2) {
+  function bossVictory(F3, fish, def3) {
     const g = F3.game, st = g.state || {};
     const rec = bossRecord(st);
-    const first = !rec.won[def2.id];
-    rec.won[def2.id] = (rec.won[def2.id] || 0) + 1;
-    const rw = first ? def2.reward : def2.repeat;
+    const first = !rec.won[def3.id];
+    rec.won[def3.id] = (rec.won[def3.id] || 0) + 1;
+    const rw = first ? def3.reward : def3.repeat;
     const items = [];
     try {
       if (rw.aero) {
@@ -96161,7 +96992,7 @@ void main() {
         items.push({ kind: "chest", id: rw.chest, label: "Chest" });
       }
       if (first) {
-        rec.trophies[def2.id] = Date.now();
+        rec.trophies[def3.id] = Date.now();
         items.push({ kind: "trophy", label: "Trophy" });
       }
       if (rw.recipe) {
@@ -96177,15 +97008,15 @@ void main() {
       console.error(e);
     }
     if (fish?.rec) {
-      fish.rec.boss = def2.id;
+      fish.rec.boss = def3.id;
       fish.rec.trophy = first;
     }
-    g.emit?.("bossDefeated", { id: def2.id, ocean: def2.ocean, first });
+    g.emit?.("bossDefeated", { id: def3.id, ocean: def3.ocean, first });
     try {
       g.save?.();
     } catch (e) {
     }
-    return new Victory(F3, def2, items, first);
+    return new Victory(F3, def3, items, first);
   }
   function drawRewardIcon(ctx3, it2, x, y, t) {
     if (it2.kind === "aero") {
@@ -96269,13 +97100,13 @@ void main() {
             this.approach(dt, f);
             return;
           }
-          const def2 = this.def();
-          if (!def2) return;
-          const unlocked2 = bossUnlocked(g, def2);
+          const def3 = this.def();
+          if (!def3) return;
+          const unlocked2 = bossUnlocked(g, def3);
           if (unlocked2 && g.school?.fishes) {
-            const adopt = g.school.fishes.find((x) => x.sp?.id === def2.id && !x.boss && !x.hero && !x.controlled);
+            const adopt = g.school.fishes.find((x) => x.sp?.id === def3.id && !x.boss && !x.hero && !x.controlled);
             if (adopt) {
-              this.makeBoss(adopt, def2);
+              this.makeBoss(adopt, def3);
               this.fish = adopt;
               return;
             }
@@ -96292,29 +97123,29 @@ void main() {
             F3.shake(3);
             F3.sfx("sonar", { vol: 0.8, pitch: 0.6 });
             F3.sfx("roar", { vol: 0.35, pitch: 0.5 });
-            F3.titles.banner("SOMETHING HUGE...", def2.color, "", { pal: "red" });
+            F3.titles.banner("SOMETHING HUGE...", def3.color, "", { pal: "red" });
           }
           if (this.rumbled && rng.chance(dt * 4)) F3.shake(1);
           if (this.wait > 3.4) {
             this.wait = 0;
             this.rumbled = false;
-            this.summon(def2.id);
+            this.summon(def3.id);
           }
         }
-        makeBoss(f, def2) {
-          f.boss = def2;
-          f.scale = def2.len / lookLen(f.sp);
+        makeBoss(f, def3) {
+          f.boss = def3;
+          f.scale = def3.len / lookLen(f.sp);
           f.life = 1e9;
           f.cooldown = 0;
           f.alpha = Math.max(f.alpha, 0.6);
-          f.rec.boss = def2.id;
+          f.rec.boss = def3.id;
           f.z = 0;
         }
         // Bring the ocean's boss (or `id`) in from the edge of the view, swimming for the hook.
         summon(id2 = null) {
           const F3 = this.F, g = this.game;
-          const def2 = id2 && id2 !== true && BOSS_BY_ID[id2] || this.def();
-          const sp = def2 && SPECIES_BY_ID[def2.id];
+          const def3 = id2 && id2 !== true && BOSS_BY_ID[id2] || this.def();
+          const sp = def3 && SPECIES_BY_ID[def3.id];
           if (!sp || !g.school?.spawn) return false;
           if (this.fish && g.school.fishes.includes(this.fish)) return true;
           const h = F3.hook;
@@ -96329,7 +97160,7 @@ void main() {
             return false;
           }
           if (!f) return false;
-          this.makeBoss(f, def2);
+          this.makeBoss(f, def3);
           f.x = clamp(x, 10, F3.world.W - 10);
           f.y = h.y + 6;
           f.alpha = 1;
@@ -96345,7 +97176,7 @@ void main() {
           F3.sfx("roar", { vol: 0.8, pitch: 0.7 });
           F3.sfx("splash_big", { vol: 0.5, pitch: 0.6 });
           F3.shake(6);
-          F3.cam?.flash?.(def2.color, 0.2);
+          F3.cam?.flash?.(def3.color, 0.2);
           return true;
         }
         // The boss surges toward the hook and takes the bait.
@@ -96398,18 +97229,18 @@ void main() {
       };
       PHASE_AT = [0.66, 0.33];
       BossFight = class {
-        constructor(B2, def2) {
+        constructor(B2, def3) {
           this.B = B2;
           this.F = B2.F;
-          this.def = def2;
+          this.def = def3;
           this.fish = B2.fish;
-          this.tier = def2.tier || 1;
+          this.tier = def3.tier || 1;
           this.t = 0;
           this.introDur = 3.8;
           this.stage = "intro";
           this.stageT = this.introDur;
           this.landed = /* @__PURE__ */ new Set();
-          this.palette = { face: [def2.glow, def2.color, shade(def2.color, -0.3)], bevelL: "#ffffff", bevelD: shade(def2.color, -0.35), side: shade(def2.color, -0.5), back: "#121a2e", outline: "#ffffff" };
+          this.palette = { face: [def3.glow, def3.color, shade(def3.color, -0.3)], bevelL: "#ffffff", bevelD: shade(def3.color, -0.35), side: shade(def3.color, -0.5), back: "#121a2e", outline: "#ffffff" };
           this.phase = 1;
           this.shield = null;
           this.shieldT = 7;
@@ -96424,7 +97255,7 @@ void main() {
           B2.shockCdMax *= 0.75;
           B2.progress = 0;
           B2.ghost = 0;
-          this.F.onBossIntro?.(def2);
+          this.F.onBossIntro?.(def3);
         }
         get hp() {
           return clamp012(1 - this.B.progress);
@@ -96623,7 +97454,7 @@ void main() {
         // The intro mini cutscene's titles: "BOSS" slams in, then the name drops in as big 3D voxel letters, the
         // subtitle sways in under it. (The camera pan, slow-mo, roar and shake come from Fishing.updateFight / onBossIntro.)
         drawIntroCard(ctx3, ct) {
-          const F3 = this.F, W11 = F3.W, H8 = F3.H, def2 = this.def;
+          const F3 = this.F, W11 = F3.W, H8 = F3.H, def3 = this.def;
           const out = clamp012((this.introDur - ct) * 3);
           if (out <= 0.01) return;
           ctx3.save();
@@ -96647,23 +97478,23 @@ void main() {
           }
           if (ct > 0.9) {
             const nt = ct - 0.9;
-            const sc = clamp(W11 / (def2.title.length * 34), 1.4, 2.6);
-            const landed = letters3D(ctx3, def2.title, W11 / 2, cy, nt, { pal: this.palette, scale: sc, stagger: 0.05, drop: 180 });
+            const sc = clamp(W11 / (def3.title.length * 34), 1.4, 2.6);
+            const landed = letters3D(ctx3, def3.title, W11 / 2, cy, nt, { pal: this.palette, scale: sc, stagger: 0.05, drop: 180 });
             for (const [lx, ly, i] of landed) {
               if (this.landed.has(i)) continue;
               this.landed.add(i);
-              F3.fx.pixelBurst?.("sparkle", lx, ly + 18, 3, { ramp: def2.color, layer: "fg", size: 0 });
+              F3.fx.pixelBurst?.("sparkle", lx, ly + 18, 3, { ramp: def3.color, layer: "fg", size: 0 });
               if (i % 2 === 0) F3.sfx("mash_pop", { pitch: 0.7 + i * 0.03, vol: 0.4 });
             }
           }
           if (ct > 1.7 && !this.growled) {
             this.growled = true;
             try {
-              F3.game?.audio?.babble?.(def2.sub || def2.title, "boss");
+              F3.game?.audio?.babble?.(def3.sub || def3.title, "boss");
             } catch {
             }
           }
-          if (ct > 1.7) word3D(ctx3, def2.sub, W11 / 2, cy + 52, { t: ct, pop: clamp012((ct - 1.7) * 4), scale: 0.75, pal: "white", wobble: 0.8 });
+          if (ct > 1.7) word3D(ctx3, def3.sub, W11 / 2, cy + 52, { t: ct, pop: clamp012((ct - 1.7) * 4), scale: 0.75, pal: "white", wobble: 0.8 });
           ctx3.restore();
         }
         drawPhaseCard(ctx3, pc) {
@@ -96677,9 +97508,9 @@ void main() {
       };
       PLATE = /* @__PURE__ */ new Map();
       Victory = class {
-        constructor(F3, def2, items, first) {
+        constructor(F3, def3, items, first) {
           this.F = F3;
-          this.def = def2;
+          this.def = def3;
           this.items = items;
           this.first = first;
           this.t = 0;
@@ -96715,7 +97546,7 @@ void main() {
           return [Math.round(F3.W / 2 - (n2 - 1) * gap / 2 + i * gap), Math.round(F3.H * 0.52)];
         }
         draw(ctx3) {
-          const F3 = this.F, W11 = F3.W, H8 = F3.H, t = this.t, def2 = this.def;
+          const F3 = this.F, W11 = F3.W, H8 = F3.H, t = this.t, def3 = this.def;
           const a = clamp012(t * 3) * clamp012((this.dur - t) * 2);
           if (a <= 0.01) return;
           ctx3.save();
@@ -96727,7 +97558,7 @@ void main() {
             F3.fx.pixelBurst?.("star", lx, ly + 24, 4, { ramp: "gold", layer: "fg", speed: [40, 110] });
             F3.sfx("mash_pop", { pitch: 1 + i * 0.07, vol: 0.5 });
           }
-          if (t > 1) word3D(ctx3, this.first ? "BOSS DEFEATED" : "DEFEATED AGAIN", W11 / 2, Math.round(H8 * 0.34), { t, pop: clamp012((t - 1) * 4), scale: 0.95, pal: def2.color === "#ffd23a" ? "sun" : "white" });
+          if (t > 1) word3D(ctx3, this.first ? "BOSS DEFEATED" : "DEFEATED AGAIN", W11 / 2, Math.round(H8 * 0.34), { t, pop: clamp012((t - 1) * 4), scale: 0.95, pal: def3.color === "#ffd23a" ? "sun" : "white" });
           if (this.items.length && this.items[0].popped) {
             const n2 = this.items.length, [x0, y0] = this.chipPos(0);
             const pw = Math.round((n2 - 1) * 100 + 96), ph = 96, pk4 = ease.outBack(clamp012((t - 1.5) * 4));
@@ -98652,27 +99483,27 @@ void main() {
           this.meterShake = 0.8;
         }
         // [phase9:fishing] boss callbacks (boss.js BossFight)
-        onBossIntro(def2) {
+        onBossIntro(def3) {
           this.sfx("roar", { vol: 1, pitch: 0.7 });
           this.sfx("eruption_boom", { vol: 0.6 });
           this.cam?.slowmo?.(0.5, 1.2);
-          this.cam?.flash?.(def2.color, 0.35);
+          this.cam?.flash?.(def3.color, 0.35);
           this.shake(12);
           const f = this.fish;
           if (f) {
             this.particles.pixelSplash?.(f.x, f.y, 2);
-            this.particles.impact?.(f.x, f.y, 2, { ramp: def2.color });
+            this.particles.impact?.(f.x, f.y, 2, { ramp: def3.color });
           }
         }
         onBossFightStart() {
           this.sfx("notify", { pitch: 0.8 });
         }
-        onBossPhase(def2, n2) {
+        onBossPhase(def3, n2) {
           const f = this.fish;
           this.sfx("roar", { vol: 0.9, pitch: 0.6 + n2 * 0.08 });
           this.sfx("eruption_boom", { vol: 0.5 });
           this.shake(12);
-          this.cam?.flash?.(n2 >= 3 ? "#ff6a5a" : def2.color, 0.4);
+          this.cam?.flash?.(n2 >= 3 ? "#ff6a5a" : def3.color, 0.4);
           if (f) {
             this.particles.impact?.(f.x, f.y, 2, { ramp: n2 >= 3 ? "red" : "gold" });
             this.particles.pixelBurst?.("shard", f.x, f.y, 12, { ramp: n2 >= 3 ? "red" : "gold" });
@@ -98685,7 +99516,7 @@ void main() {
             this.shake(5);
           }
         }
-        onBossCrit(def2, weak) {
+        onBossCrit(def3, weak) {
           this.sfx("catch_rare", { vol: 0.6 });
           const f = this.fish;
           if (f) {
@@ -99622,7 +100453,7 @@ void main() {
           }
           if (!d.tutorial) {
             const relX = r.x + W11 - Math.round(46 * k);
-            if (this.orb(ctx3, ui, relX, oy, "#8be04a", "heart", `Release: +${relVal} Aero`, "release")) {
+            if (this.orb(ctx3, ui, relX, oy, "#8be04a", "heart", `Release: +${relVal} Aero Bucks`, "release")) {
               g.releaseFish(d.rec, relX, oy);
               this.done();
               return;
@@ -99850,7 +100681,7 @@ void main() {
     return { installed: [], tiers: {}, downloads: [], isp: 0, lastTick: Date.now(), stats: { downloaded: 0, completed: 0 } };
   }
   function ensureStoreState(state) {
-    var _a4;
+    var _a6;
     if (!state.apps || typeof state.apps !== "object") state.apps = defaultAppsState();
     const a = state.apps;
     a.installed || (a.installed = []);
@@ -99859,7 +100690,7 @@ void main() {
     a.stats || (a.stats = { downloaded: 0, completed: 0 });
     a.installed = a.installed.filter((id2) => CATALOG_BY_ID[id2]);
     state.boat || (state.boat = { tier: 0 });
-    (_a4 = state.boat).tier ?? (_a4.tier = 0);
+    (_a6 = state.boat).tier ?? (_a6.tier = 0);
     const s = state.shop && typeof state.shop === "object" ? state.shop : state.shop = {};
     if (!s.stock || typeof s.stock !== "object") s.stock = {};
     s.restockAt = Number.isFinite(s.restockAt) ? s.restockAt : 0;
@@ -99958,20 +100789,20 @@ void main() {
         offer(id2) {
           const state = this.game.state;
           if (BAITS[id2] && !BAITS[id2].app) {
-            const def3 = BAITS[id2];
+            const def4 = BAITS[id2];
             let locked2 = null;
             if (!specialAvailable(state, id2)) {
               const nd = labNode("bait", id2);
               locked2 = { reason: "lab", node: nd?.id || null, label: nd?.name || "The Lab" };
             }
-            const base = def3.price || 0;
+            const base = def4.price || 0;
             return {
               id: id2,
               kind: "special",
               bait: id2,
-              def: def3,
-              name: def3.name,
-              qty: def3.pack,
+              def: def4,
+              name: def4.name,
+              qty: def4.pack,
               base,
               price: this.priceFor(base, id2),
               stock: this.stockOf(id2),
@@ -99988,7 +100819,7 @@ void main() {
           if (!fam) return null;
           const grade = Math.max(0, Math.min(MAX_TIER, Number(gs) | 0));
           const L4 = listing(line, grade);
-          const def2 = BAITS[L4.bait];
+          const def3 = BAITS[L4.bait];
           let locked = null;
           if (grade > this.level().grade) {
             const need = SHOP_LEVELS.find((lv) => lv.grade >= grade) || SHOP_LEVELS[SHOP_LEVELS.length - 1];
@@ -100000,8 +100831,8 @@ void main() {
             id: oid,
             kind: "line",
             bait: L4.bait,
-            def: def2,
-            name: def2?.name || L4.title,
+            def: def3,
+            name: def3?.name || L4.title,
             qty: L4.qty,
             base: L4.price,
             price: this.priceFor(L4.price, oid),
@@ -101509,7 +102340,7 @@ void main() {
             if (button(ui, ctx3, ox + 10 + i * 36, y, 32, 18, "x" + b, { tone: this.batch === b ? "green" : "glass", active: this.batch === b })) this.batch = b;
           });
           const chk = canCraft(st, rec, this.batch, DEPS);
-          if (splashButton(ui, ctx3, ox + ow - 92, y - 1, 84, 20, "Craft!", { tone: "orange", disabled: !chk.ok, sound: "ui_buy", tip: chk.ok ? `Make ${this.batch}` : chk.reason === "items" ? "Need more materials" : chk.reason === "aero" ? "Need more Aero" : null })) {
+          if (splashButton(ui, ctx3, ox + ow - 92, y - 1, 84, 20, "Craft!", { tone: "orange", disabled: !chk.ok, sound: "ui_buy", tip: chk.ok ? `Make ${this.batch}` : chk.reason === "items" ? "Need more materials" : chk.reason === "aero" ? "Need more Aero Bucks" : null })) {
             const res = craftCustom(st, rec, this.batch, DEPS);
             if (res.ok) {
               g.toast?.(`Crafted ${this.batch}x ${res.bait.name}!`, "sparkle");
@@ -102508,8 +103339,8 @@ void main() {
     const ph = f / n2 * TAU;
     const pts = [];
     for (let j = -1; j <= CY2; j++) for (let i = -1; i <= CX2; i++) {
-      const ii = (i % CX2 + CX2) % CX2, h1 = hash2(ii, j, 71), h2 = hash2(ii, j, 72), h310 = hash2(ii, j, 73);
-      pts.push([(i + 0.2 + h1 * 0.6) * cw + Math.cos(ph + h310 * TAU) * cw * 0.16, (j + 0.2 + h2 * 0.6) * ch + Math.sin(ph * (h310 > 0.5 ? 1 : -1) + h1 * TAU) * ch * 0.16]);
+      const ii = (i % CX2 + CX2) % CX2, h1 = hash2(ii, j, 71), h2 = hash2(ii, j, 72), h311 = hash2(ii, j, 73);
+      pts.push([(i + 0.2 + h1 * 0.6) * cw + Math.cos(ph + h311 * TAU) * cw * 0.16, (j + 0.2 + h2 * 0.6) * ch + Math.sin(ph * (h311 > 0.5 ? 1 : -1) + h1 * TAU) * ch * 0.16]);
     }
     const KX = TAU / W11;
     for (let y = 0; y < H8; y += 2) for (let x = 0; x < W11; x += 2) {
@@ -102687,7 +103518,7 @@ void main() {
     return out;
   }
   function* buildScene2(S13) {
-    var _a4, _b;
+    var _a6, _b2;
     const { w, h, top, U: U2 } = S13;
     const r = new RNG(77);
     const hazeDeep = waterAt2(0.36), hazeFar = waterAt2(0.42), hazeMid = waterAt2(0.5);
@@ -102749,7 +103580,7 @@ void main() {
       const nR = Math.round(clamp(LW / 220, 4, 7));
       for (let i = 0; i < nR; i++) {
         const s = yield* reefSteps(330 + i % 3, { w: 96, h: 56, d: 34, sizes: [7, 14] });
-        items.push([i % 2 ? s : S13[_a4 = "flip33" + i % 3] || (S13[_a4] = flipS(s)), LW * ((i + 0.5) / nR) + r.int(-24, 24), base + r.float(12, 20)]);
+        items.push([i % 2 ? s : S13[_a6 = "flip33" + i % 3] || (S13[_a6] = flipS(s)), LW * ((i + 0.5) / nR) + r.int(-24, 24), base + r.float(12, 20)]);
       }
       for (const [id2, xf, sc] of [["rock_big", 0.22, 0.5], ["rock_small", 0.58, 0.6], ["rock_big", 0.82, 0.45], ["coral_brain", 0.42, 0.5]]) {
         const s = yield* propSteps(id2, sc);
@@ -102797,7 +103628,7 @@ void main() {
       for (let i = 0; i < reefs.length; i++) {
         const [xf, seed, sz] = reefs[i];
         let s = yield* reefSteps(seed, { w: Math.round(120 * sz), h: Math.round(72 * sz), d: 44, rock: sz > 1 ? 0.55 : 0.42, sizes: [8, 18] });
-        if (i === 3 || i === 4) s = S13[_b = "flipm" + i] || (S13[_b] = flipS(s));
+        if (i === 3 || i === 4) s = S13[_b2 = "flipm" + i] || (S13[_b2] = flipS(s));
         items.push([s, LW * xf + (i % 4 ? r.int(-24, 24) : 0), base + r.float(16, 24), 1]);
       }
       const boat = yield* propSteps("sunken_boat", 0.9);
@@ -102956,7 +103787,7 @@ void main() {
       if (a <= 0) return;
       const [dx, dy] = OFF[name];
       if (a < 1) ctx3.globalAlpha = ga * a;
-      ctx3.drawImage(Lr.c, snap2(x0 + Lr.x + dx), snap2(y0 + Lr.y + dy));
+      ctx3.drawImage(Lr.c, snap3(x0 + Lr.x + dx), snap3(y0 + Lr.y + dy));
       ctx3.globalAlpha = ga;
     };
     ctx3.drawImage(S13.bg, x0, y0, w, h);
@@ -102973,7 +103804,7 @@ void main() {
     if (S13.caus && S13.L.floor) {
       const { frames, TW: TW2 } = S13.caus, n2 = frames.length, q = t * 4 % n2, i0 = Math.floor(q), k = q - i0;
       const [dx, dy] = OFF.floor;
-      const yy = snap2(y0 + S13.floorY + dy);
+      const yy = snap3(y0 + S13.floorY + dy);
       const po = ctx3.globalCompositeOperation;
       ctx3.globalCompositeOperation = "lighter";
       const fa = fade("floor");
@@ -102981,7 +103812,7 @@ void main() {
         const fi = j ? (i0 + 1) % n2 : i0, a = j ? k : 1 - k;
         if (a < 0.02) continue;
         ctx3.globalAlpha = ga * a * 0.28 * fa;
-        for (let x = dx % TW2 - TW2; x < w + TW2; x += TW2) ctx3.drawImage(frames[fi], snap2(x0 + x), yy);
+        for (let x = dx % TW2 - TW2; x < w + TW2; x += TW2) ctx3.drawImage(frames[fi], snap3(x0 + x), yy);
       }
       ctx3.globalCompositeOperation = po;
       ctx3.globalAlpha = ga;
@@ -103002,7 +103833,7 @@ void main() {
       const dx = OFF.far2[0];
       const yy = y0 + S13.top - (S13.top ? 4 : 2);
       ctx3.globalAlpha = ga * (kind2 === "boats" ? 1 : 0.8);
-      for (let x = -TW2 - sx + dx % TW2; x < w + TW2; x += TW2) ctx3.drawImage(fr, snap2(x0 + x), yy);
+      for (let x = -TW2 - sx + dx % TW2; x < w + TW2; x += TW2) ctx3.drawImage(fr, snap3(x0 + x), yy);
       ctx3.globalAlpha = ga;
     }
   }
@@ -103012,7 +103843,7 @@ void main() {
     for (const a of S13.anim) {
       if (a.layer !== layerName) continue;
       const n2 = a.frames.length, f = a.frames[(Math.floor(t / a.P * n2 + a.off) % n2 + n2) % n2];
-      ctx3.drawImage(f, snap2(x0 + a.x + dx - a.ox), snap2(y0 + a.y + dy - a.oy));
+      ctx3.drawImage(f, snap3(x0 + a.x + dx - a.ox), snap3(y0 + a.y + dy - a.oy));
     }
     ctx3.globalAlpha = ga;
   }
@@ -103027,7 +103858,7 @@ void main() {
     const st = t / 3.4 % 1, fi = Math.floor(st * 16) % 16;
     const y = S13.top + S13.U * (pass & 1 ? 0.34 : 0.44) + Math.sin(t * 0.13) * 10 - Math.sin(st * TAU) * 1.5;
     const f = (dir > 0 ? T5.R : T5.L)[fi];
-    ctx3.drawImage(f, snap2(x0 + x + dx - (dir > 0 ? T5.ox : f.width - T5.ox)), snap2(y0 + y + dy - T5.oy));
+    ctx3.drawImage(f, snap3(x0 + x + dx - (dir > 0 ? T5.ox : f.width - T5.ox)), snap3(y0 + y + dy - T5.oy));
   }
   function drawCrab(ctx3, S13, t, x0, y0, [dx, dy]) {
     const C6 = S13.crab;
@@ -103046,7 +103877,7 @@ void main() {
     k = k * k * (3 - 2 * k);
     const fr = C6.frames[walking ? 1 + (Math.floor(t * 8) & 1) : 0];
     const x = C6.x0 + (C6.x1 - C6.x0) * k;
-    ctx3.drawImage(fr.c, snap2(x0 + x + dx - fr.ox), snap2(y0 + C6.y + dy - fr.oy - (walking ? (Math.floor(t * 8) & 1) * 0.5 : 0)));
+    ctx3.drawImage(fr.c, snap3(x0 + x + dx - fr.ox), snap3(y0 + C6.y + dy - fr.oy - (walking ? (Math.floor(t * 8) & 1) * 0.5 : 0)));
   }
   function drawFish(ctx3, S13, t, x0, y0, depth, [dx, dy]) {
     for (const sc of S13.fish) {
@@ -103058,7 +103889,7 @@ void main() {
         const [ox, oy, ph] = sc.members[i];
         const fx = cx + ox + Math.sin(t * 0.7 + ph) * 4, fy = cy + oy + Math.sin(t * 1.1 + ph * 1.7) * 2.5;
         const f = sc.frames[Math.floor(t * 4.5 + ph * 3) & 1];
-        ctx3.drawImage(f, snap2(x0 + fx + dx), snap2(y0 + fy + dy));
+        ctx3.drawImage(f, snap3(x0 + fx + dx), snap3(y0 + fy + dy));
       }
     }
   }
@@ -103073,7 +103904,7 @@ void main() {
         if (yy < S13.top + 8) continue;
         const xx = B2.x + Math.sin(t * 2.2 + i * 1.7 + s) * (1 + q * 3);
         ctx3.globalAlpha = ga * (q < 0.1 ? q * 10 : q > 0.8 ? (1 - q) * 5 : 1) * (B2.small ? 0.6 : 0.85);
-        ctx3.drawImage(microBubble(B2.small ? 1 : Math.min(2, 1 + (i + s) % 3 * 0.5 + (q > 0.5 ? 0.5 : 0))), snap2(x0 + xx + dx), snap2(y0 + yy + dy));
+        ctx3.drawImage(microBubble(B2.small ? 1 : Math.min(2, 1 + (i + s) % 3 * 0.5 + (q > 0.5 ? 0.5 : 0))), snap3(x0 + xx + dx), snap3(y0 + yy + dy));
       }
     }
     ctx3.globalAlpha = ga;
@@ -103086,7 +103917,7 @@ void main() {
       const x = ((M6[o] * S13.w + Math.sin(t * 0.21 + ph) * 10 + t * sp * 0.6 + dx * 1.4) % S13.w + S13.w) % S13.w;
       const y = S13.top + ((M6[o + 1] * H8 + t * sp + Math.sin(t * 0.5 + ph) * 3 + dy) % H8 + H8) % H8;
       ctx3.globalAlpha = ga * (0.18 + 0.32 * Math.max(0, Math.sin(t * 1.3 + ph * 3)));
-      ctx3.fillRect(snap2(x0 + x), snap2(y0 + y), 0.5, 0.5);
+      ctx3.fillRect(snap3(x0 + x), snap3(y0 + y), 0.5, 0.5);
     }
     ctx3.globalAlpha = ga;
   }
@@ -103094,12 +103925,12 @@ void main() {
     return { wl: kind2 === "boats" ? Math.round(v.h * 0.3) : 0 };
   }
   function drawBoatFloat(ctx3, x, y, hw, t, o = {}) {
-    x = snap2(x);
-    y = snap2(y);
+    x = snap3(x);
+    y = snap3(y);
     const a0 = ctx3.globalAlpha;
     ctx3.fillStyle = "#0a4a8a";
     for (let i = 0; i < 3; i++) {
-      const ww = snap2(hw * (0.9 - i * 0.22));
+      const ww = snap3(hw * (0.9 - i * 0.22));
       ctx3.globalAlpha = a0 * (0.22 - i * 0.05);
       ctx3.fillRect(x - ww, y + 1 + i, ww * 2, 1);
     }
@@ -103107,7 +103938,7 @@ void main() {
     if (hl) {
       ctx3.fillStyle = hl;
       for (let i = 0; i < 3; i++) {
-        const ww = snap2(hw * (1.05 - i * 0.25) * (o.sel ? 1.1 : 1));
+        const ww = snap3(hw * (1.05 - i * 0.25) * (o.sel ? 1.1 : 1));
         ctx3.globalAlpha = a0 * (0.55 - i * 0.14);
         ctx3.fillRect(x - ww, y - 0.5 + i, ww * 2, 0.5);
       }
@@ -103116,14 +103947,14 @@ void main() {
     for (const s of [-1, 1]) for (let j = 0; j < 3; j++) {
       const q = (t * 0.8 + j * 0.33 + (s > 0 ? 0.5 : 0)) % 1;
       ctx3.globalAlpha = a0 * 0.85 * (1 - q);
-      ctx3.fillRect(snap2(x + s * (hw * 0.62 + q * 7) - (s < 0 ? 2.5 - j * 0.5 : 0)), y - 0.5 + (j & 1) * 0.5, snap2(2.5 - j * 0.5), 0.5);
+      ctx3.fillRect(snap3(x + s * (hw * 0.62 + q * 7) - (s < 0 ? 2.5 - j * 0.5 : 0)), y - 0.5 + (j & 1) * 0.5, snap3(2.5 - j * 0.5), 0.5);
     }
     if (hl) {
       ctx3.fillStyle = hl === "#fff0a0" ? "#fff6c8" : "#ffffff";
       for (let i = 0; i < 2; i++) {
         const q = 0.5 + 0.5 * Math.sin(t * 2.4 + i * 2.1);
         if (q < 0.3) continue;
-        const gx = snap2(x + (i ? hw * 0.95 : -hw * 0.9)), gy2 = snap2(y - 5 - i * 5), arm = q > 0.75 ? 2 : 1;
+        const gx = snap3(x + (i ? hw * 0.95 : -hw * 0.9)), gy2 = snap3(y - 5 - i * 5), arm = q > 0.75 ? 2 : 1;
         ctx3.globalAlpha = a0 * q;
         ctx3.fillRect(gx - arm, gy2, arm * 2 + 0.5, 0.5);
         ctx3.fillRect(gx, gy2 - arm, 0.5, arm * 2 + 0.5);
@@ -103131,7 +103962,7 @@ void main() {
     }
     ctx3.globalAlpha = a0;
   }
-  var now8, BUDGET2, snap2, WATER8, ROCK2, CROWN, CORAL_R, LAB, LOW_KINDS, flipS, SPR6, spr2, FISH, scenes, PAD3, PAR2, OFF;
+  var now8, BUDGET2, snap3, WATER8, ROCK2, CROWN, CORAL_R, LAB, LOW_KINDS, flipS, SPR6, spr2, FISH, scenes, PAD3, PAR2, OFF;
   var init_labroom = __esm({
     "src/ui/labroom.js"() {
       init_voxel();
@@ -103147,7 +103978,7 @@ void main() {
       init_labtiles();
       now8 = () => typeof performance !== "undefined" ? performance.now() : Date.now();
       BUDGET2 = 7;
-      snap2 = (v) => Math.round(v * 2) / 2;
+      snap3 = (v) => Math.round(v * 2) / 2;
       WATER8 = [[0, "#8ff0ff"], [0.1, "#55d8f6"], [0.32, "#2cb2e6"], [0.58, "#1a8cd2"], [0.8, "#136cb8"], [1, "#0d4f98"]];
       ROCK2 = ["#5a6a92", "#6c7ea2", "#4c5a80", "#7e8eae", "#5e6e8c"];
       CROWN = { cols: ["#ff7aa0", "#ffa45a", "#ffe070", "#7ae08a", "#b48aff", "#5ae0e0"], density: 0.55, blobs: 14, ledge: 0.16, branch: true };
@@ -103639,7 +104470,7 @@ void main() {
               return true;
             }
           }
-          this.reject(id2, !c.reqOk ? "Research the one before it first." : !c.gateOk ? c.gate : !c.aero.ok ? "Not enough Aero for that one!" : !c.paid ? "Missing ingredients!" : "All benches are busy.");
+          this.reject(id2, !c.reqOk ? "Research the one before it first." : !c.gateOk ? c.gate : !c.aero.ok ? "Not enough Aero Bucks for that one!" : !c.paid ? "Missing ingredients!" : "All benches are busy.");
           return false;
         }
         reject(id2, reason) {
@@ -104417,7 +105248,7 @@ void main() {
         }
         // Lab nodes that an active quest asks for -> the revealed node on the way there gets the "!"
         questMarks() {
-          var _a4, _b, _c, _d;
+          var _a6, _b2, _c2, _d;
           const out = {};
           this.quest = {};
           const book2 = this.game.quests?.book;
@@ -104432,11 +105263,11 @@ void main() {
                 else if (ob.t === "boat") id2 = nodeFor("boat", BOAT_ORDER[ob.tier])?.id;
                 else if (ob.t === "visit") id2 = nodeFor("biome", ob.biome)?.id;
                 if (!id2 || this.S[id2] === "done") continue;
-                (_a4 = this.quest)[id2] || (_a4[id2] = q);
+                (_a6 = this.quest)[id2] || (_a6[id2] = q);
                 const m = this.revealed(id2) ? LAB_BY_ID[id2] : this.gate(id2);
                 if (m) {
                   out[m.id] = q;
-                  (_b = this.quest)[_c = m.id] || (_b[_c] = q);
+                  (_b2 = this.quest)[_c2 = m.id] || (_b2[_c2] = q);
                 }
               }
             }
@@ -104647,7 +105478,7 @@ void main() {
                 drawAeroBar(ctx3, x2, y2 + 14, IW, 9, labProgress(st, id2), { color: "#5fd23a" });
               });
               const cost = instantCost(st, id2);
-              buttons.push({ label: `Finish ${fmtAero(cost)}`, tone: "orange", icon: getUiIcon("aero") || getUiIcon("coin"), disabled: (st.coins || 0) < cost, sound: "ui_unlock", tip: "Finish it right now for Aero", fn: () => {
+              buttons.push({ label: `Finish ${fmtAero(cost)}`, tone: "orange", icon: getUiIcon("aero") || getUiIcon("coin"), disabled: (st.coins || 0) < cost, sound: "ui_unlock", tip: "Finish it right now for Aero Bucks", fn: () => {
                 if (instantFinish(g, id2)) g.audio.play("ui_unlock");
               } });
               buttons.push({ label: "Stop", tone: "glass", icon: getUiIcon("cross"), tip: "Stop it (refund)", fn: () => cancelResearch(g, id2) });
@@ -104933,9 +105764,9 @@ void main() {
       if (ai) ctx3.drawImage(ai, r.x + 10, y - 1);
       drawText(ctx3, k.label.toUpperCase(), r.x + 24, y + 1, { font: "small", color: INK_SOFT2 });
       statBar(ctx3, r.x + 80, y, r.w - 120, kk, k.key === "shock" ? "#ffd23a" : k.key === "luck" ? "#6fd23f" : "#35c8ff", 7);
-      const vt = k.key === "strength" ? `${v}kg` : k.key === "resilience" ? `${Math.round(v * 100)}%` : k.key === "shock" ? `x${rod.stats.shock.charges}` : v.toFixed(2);
+      const vt = k.key === "line" ? lineLabel(v).toUpperCase() : k.key === "strength" ? `${v}kg` : k.key === "resilience" ? `${Math.round(v * 100)}%` : k.key === "shock" ? `x${rod.stats.shock.charges}` : v.toFixed(2);
       drawText(ctx3, vt, r.x + r.w - 10, y + 1, { font: "small", align: "right", color: INK5 });
-      if (ui.hover({ x: r.x + 8, y: y - 2, w: r.w - 16, h: 11 })) ui.tip = k.key === "shock" ? `Shock: ${rod.stats.shock.power}s stun, ${rod.stats.shock.charges} per fight, ${rod.stats.shock.cooldown}s recharge` : k.label;
+      if (ui.hover({ x: r.x + 8, y: y - 2, w: r.w - 16, h: 11 })) ui.tip = k.key === "line" ? `Line: reaches the ${lineLabel(v)} zone (Lab: Longer Line, Workshop line spools)` : k.key === "shock" ? `Shock: ${rod.stats.shock.power}s stun, ${rod.stats.shock.charges} per fight, ${rod.stats.shock.cooldown}s recharge` : k.label;
       y += 14;
     }
     const by = r.y + r.h - 32;
@@ -105172,6 +106003,7 @@ void main() {
       init_uiicons();
       init_aero();
       init_rods();
+      init_line();
       init_lab();
       init_crafting();
       init_items();
@@ -106465,8 +107297,8 @@ void main() {
       ID_RE = /^[a-z][a-z0-9_-]{0,31}$/i;
       HEX_RE = /^#[0-9a-f]{6}$/i;
       SID_RE = /^[a-z0-9]{6,24}$/;
-      num = (v, lo, hi, def2 = lo) => typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def2;
-      int = (v, lo, hi, def2 = lo) => Math.round(num(v, lo, hi, def2));
+      num = (v, lo, hi, def3 = lo) => typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def3;
+      int = (v, lo, hi, def3 = lo) => Math.round(num(v, lo, hi, def3));
       id = (v) => typeof v === "string" && ID_RE.test(v) ? v : null;
       hex6 = (v) => typeof v === "string" && HEX_RE.test(v) ? v.toLowerCase() : null;
       isSid = (v) => typeof v === "string" && SID_RE.test(v);
@@ -107936,7 +108768,7 @@ void main() {
             { enter: "fizz", how: "bubble" },
             { prop: "bench" },
             { n: "fizz", s: "Bless you! Professor Fizz, at your service. My portable lab goes *everywhere*.", to: "seal", act: "wave", key: "cheer", emote: "sparkle", re: { seal: "clap" } },
-            { n: "fizz", s: "Bring me Aero and I will brew rods, tanks and gadgets. Mostly *non*-explosive!", shot: "prop", act: "point", fx: "flask", emote: "exclaim", re: { seal: "worried" }, pl: "jump" },
+            { n: "fizz", s: "Bring me Aero Bucks and I will brew rods, tanks and gadgets. Mostly *non*-explosive!", shot: "prop", act: "point", fx: "flask", emote: "exclaim", re: { seal: "worried" }, pl: "jump" },
             { n: "seal", s: "And down at the very bottom... something HUGE keeps *spinning*.", shot: "two", to: "fizz", act: "point", key: "point", emote: "question", pl: "think" },
             { boss: true },
             { n: "seal", s: "But first things first: let's fill that goldfish jar. *Splash down*!", shot: "group", act: "clap", key: "cheer", re: { fizz: "cheer" }, pl: "cheer" }
@@ -109313,10 +110145,10 @@ void main() {
         }
         // ---------------------------------------------------------------- small art helpers
         offscreen(id2, D2) {
-          var _a4;
+          var _a6;
           const H8 = this.H;
           const w = Math.round(H8 * 0.5), h = Math.round(H8 * 0.82);
-          const pool = (_a4 = this.cine).offs || (_a4.offs = {});
+          const pool = (_a6 = this.cine).offs || (_a6.offs = {});
           let o = pool[id2];
           if (!o || o.D !== D2 || o.w !== w || o.h !== h) {
             const c = document.createElement("canvas");
@@ -109884,7 +110716,7 @@ void main() {
             this.prep.push(prepWord("NEXT OCEAN", T5.small));
             const nx = CHAPTERS[ch.n];
             if (nx) this.prep.push(prepWord(OCEAN_NAMES[nx.ocean] || nx.ocean, T5.ocean));
-            for (const r of rewardList(ch.reward)) if (r.n) this.prep.push(prepWord((r.key === "aero" ? "+" : "x") + r.n, T5.num));
+            for (const r of rewardList(ch.reward)) if (r.n) this.prep.push(prepWord((r.key === "aero" || r.key === "gem" ? "+" : "x") + r.n, T5.num));
             if (this.mode() === "full" || b.replay) {
               if (SCRIPTS[ch.id]) this.warmSet(ch.id, true);
               if (ch.outro) this.warmNpc(ch.outro.npc);
@@ -109893,7 +110725,7 @@ void main() {
           } else if (b.kind === "done" && b.q) {
             this.prep.push(prepRow("QUEST COMPLETE!", T5.head));
             this.prep.push(prepWord(b.q.title.toUpperCase(), T5.sub));
-            for (const r of rewardList(b.q.reward)) if (r.n) this.prep.push(prepWord((r.key === "aero" ? "+" : "x") + r.n, T5.num));
+            for (const r of rewardList(b.q.reward)) if (r.n) this.prep.push(prepWord((r.key === "aero" || r.key === "gem" ? "+" : "x") + r.n, T5.num));
             if (b.heavy) this.warmNpc(b.q.giver);
           } else if (b.kind === "lab") {
             this.prep.push(prepWord("NEW RESEARCH!", { palette: "leaf", size: 16, depth: 3, scale: 2 }));
@@ -110866,7 +111698,7 @@ void main() {
             } catch {
             }
             if (r.n && k > 0.5) {
-              const txt = (r.key === "aero" ? "+" : "x") + r.n;
+              const txt = (r.key === "aero" || r.key === "gem" ? "+" : "x") + r.n;
               wordNow(txt, T5.num);
               if (!drawWord(ctx3, txt, T5.num, px3 + s / 2 + S13 * 0.42, py + 1, backOut2((k - 0.5) * 2))) drawText(ctx3, txt, Math.round(px3 + s / 2 + 4), Math.round(py - 3), { color: "#ffffff", shadow: "#04264e" });
             }
@@ -110900,6 +111732,7 @@ void main() {
         targetOf(r) {
           const k = r.key || "";
           if (k === "aero") return "aero";
+          if (k === "gem") return "gem";
           if (k.startsWith("bait:")) return "bait";
           if (k.startsWith("cosmetic:")) return "wardrobe";
           if (k.startsWith("food:")) return "aquarium";
@@ -110914,6 +111747,11 @@ void main() {
             const c = g.ui?.coinTarget?.();
             if (c) return [c.x, c.y];
             return [W11 - 60, 16];
+          }
+          if (tgt === "gem") {
+            const c = g.ui?.gemTarget?.();
+            if (c) return [c.x, c.y];
+            return [W11 - 30, 16];
           }
           for (const id2 of [tgt, "inventory"]) {
             let r = null;
@@ -110945,6 +111783,9 @@ void main() {
                 this.held = Math.max(0, this.held - f.aero);
                 if (g.ui) g.ui.coinBump = 1;
                 g.audio?.play?.("coin_collect", { vol: 0.45, pitch: 1 + f.i * 0.06 });
+              } else if (f.tgt === "gem") {
+                if (g.ui) g.ui.gemBump = 1;
+                g.audio?.play?.("sparkle", { vol: 0.5, pitch: 1.3 });
               } else {
                 g.audio?.play?.("icon_drop", { vol: 0.5 });
                 g.audio?.play?.("sparkle", { vol: 0.35 });
@@ -111138,7 +111979,7 @@ void main() {
             if (fly >= 0) {
               const fk = clamp012((fly - (c.fly ? 0.1 + i * 0.12 : 0)) / (c.fly ? 0.7 : 0.4));
               if (c.fly) {
-                const tr = this.hud.trackerRowRect?.(c.q.id) || { x: 14, y: 60, w: 160, h: 26 };
+                const tr = this.hud.trackerRowRect?.(c.q.id) || { x: this.W - 180, y: Math.round(this.H * 0.3) + 14, w: 160, h: 26 };
                 const ex = ease.inOutCubic(fk);
                 x = lerp(rx2, tr.x + 20, ex);
                 yy = lerp(ry2, tr.y + tr.h / 2, ex) - Math.sin(fk * Math.PI) * 40;
@@ -111522,7 +112363,7 @@ void main() {
             let x = rx2, y = ry2, s = sc * backOut2(k), a = (i - (n2 - 1) / 2) * 0.06;
             const fk = clamp012((b.t - b.flyAt - i * 0.14) / 0.65);
             if (fk > 0) {
-              const tr = this.hud.trackerRowRect?.(c.q.id) || { x: 14, y: 60, w: 160, h: 26 };
+              const tr = this.hud.trackerRowRect?.(c.q.id) || { x: this.W - 180, y: Math.round(this.H * 0.3) + 14, w: 160, h: 26 };
               const e = ease.inOutCubic(fk);
               x = lerp(rx2, tr.x + 20, e);
               y = lerp(ry2, tr.y + tr.h / 2, e) - Math.sin(fk * Math.PI) * 50;
@@ -111848,6 +112689,10 @@ void main() {
       drawAeroCoin(ctx3, cx, cy, px3 * 0.36, t);
       return;
     }
+    if (rw.key === "gem") {
+      drawGem(ctx3, cx, cy + Math.sin(t * 2 + ph) * 0.5, Math.max(1, Math.round(px3 / 13 * 2) / 2), { glint: (t * 0.45 + ph * 0.3) % 1.5 });
+      return;
+    }
     if (rw.key.startsWith("cosmetic:")) {
       let drawn = false;
       try {
@@ -111871,7 +112716,7 @@ void main() {
     let cx = x;
     for (let i = 0; i < list.length; i++) {
       const rw = list[i];
-      const txt = rw.key === "aero" ? String(rw.n) : rw.n ? "x" + rw.n : "";
+      const txt = rw.key === "aero" || rw.key === "gem" ? String(rw.n) : rw.n ? "x" + rw.n : "";
       const w = 18 + (txt ? measureText(txt, "small") + 3 : 0);
       if (cx + w > x + maxW) break;
       ctx3.drawImage(aeroSurface(w, 16, { tone: rw.big ? "green" : "white", r: "pill", gloss: 0.6, glossH: 6, curve: 1, rim: 0.8, glow: 0.4 }), cx, y);
@@ -111885,7 +112730,7 @@ void main() {
   function rewardTiles(ctx3, ui, list, x, y, size, maxW, t) {
     let cx = x;
     list.forEach((rw, i) => {
-      const txt = rw.key === "aero" ? String(rw.n) : rw.n ? "x" + rw.n : "";
+      const txt = rw.key === "aero" || rw.key === "gem" ? String(rw.n) : rw.n ? "x" + rw.n : "";
       const w = size + (txt ? measureText(txt, "small") + 6 : 0);
       if (cx + w > x + maxW) return;
       ctx3.drawImage(aeroSurface(w, size, { tone: rw.big ? "green" : "white", r: 7, gloss: 0.6, glossH: Math.round(size * 0.4), curve: 1, rim: 0.8, glow: 0.4 }), cx, y);
@@ -111934,6 +112779,7 @@ void main() {
       init_character();
       init_aero();
       init_labkit();
+      init_gemui();
       init_labrows();
       init_labart();
       init_quests();
@@ -111972,6 +112818,12 @@ void main() {
           this.incoming = {};
           this.landT = {};
           this.rowRects = {};
+          this.peek = 0;
+          this.peekHold = 0;
+          this.peekSig = null;
+          this.sigT = 0;
+          this.lastPin = void 0;
+          this.lastSlot = null;
           this.cine = new QuestCine(game, this, { drawPortrait: drawPortrait2, rewardIcon, npcName, NPC_COL, CHEERS });
           try {
             loadAlagard();
@@ -111981,6 +112833,7 @@ void main() {
             const q = QUEST_BY_ID[d.id];
             if (!q) return;
             if (q.kind === "main") this.flash[q.id] = 0;
+            this.poke(4);
             if (d.claimed) {
               this.cine.noteClaim(q, d.bonus);
               return;
@@ -112015,6 +112868,7 @@ void main() {
               wait2.n += ids.length;
               return;
             }
+            this.poke(4.5);
             this.banners.push({ kind: "ready", q: QUEST_BY_ID[ids[0]], n: ids.length, t: 0, rw: [] });
             game.audio?.play?.("sparkle", { vol: 0.6 });
           });
@@ -112041,15 +112895,56 @@ void main() {
         expectCard(id2) {
           this.incoming[id2] = this.t;
           delete this.landT[id2];
+          this.poke(3);
         }
         landCard(id2) {
           if (this.incoming[id2] !== void 0) {
             delete this.incoming[id2];
             this.landT[id2] = this.t;
           }
+          this.poke(3);
         }
+        // [cur26] the tracker lives off the right edge: a card flies to where its row WILL be (it slides in meanwhile)
         trackerRowRect(id2) {
-          return this.rowRects[id2] || (this.rect ? { x: this.rect.x, y: this.rect.y + 14, w: this.rect.w, h: 26 } : null);
+          if (this.rowRects[id2] && this.rect) return this.rowRects[id2];
+          const s = this.lastSlot || this.slot();
+          if (s) return { x: s.x + 5, y: s.y + 14, w: s.w - 10, h: 26 };
+          const W11 = this.game.screen?.W || 960, H8 = this.game.screen?.H || 540;
+          return { x: W11 - 180, y: Math.round(H8 * 0.3) + 14, w: 160, h: 26 };
+        }
+        poke(sec = 4.5) {
+          this.peekHold = Math.max(this.peekHold, sec);
+        }
+        // a cheap fingerprint of what the tracker shows (objective counts, ready claims): a change slides it in
+        progressSig() {
+          const book2 = this.book, pin = book2.pinned();
+          const qs = [...pin ? [pin] : [], ...book2.active().slice(0, 3)];
+          return qs.map((q) => q.id + ":" + book2.objectives(q).map((o) => o.have).join(",")).join("|") + "#" + book2.readyCount();
+        }
+        peekUpdate(dt) {
+          const g = this.game, S13 = ensureQuests(g.state);
+          this.sigT -= dt;
+          if (this.sigT <= 0 && g.state.tutorialDone) {
+            this.sigT = 0.3;
+            let sig = null;
+            try {
+              sig = this.progressSig();
+            } catch {
+              sig = this.peekSig;
+            }
+            if (this.peekSig !== null && sig !== this.peekSig) this.poke(4.5);
+            this.peekSig = sig;
+          }
+          if (S13.pin !== this.lastPin) {
+            if (this.lastPin !== void 0 && S13.pin) this.poke(5);
+            this.lastPin = S13.pin;
+          }
+          const busy = Object.keys(this.incoming).length > 0 || Object.keys(this.landT).length > 0 || Object.keys(this.flash).length > 0;
+          const pending2 = !!(S13.outro || S13.intro) && !(this.cine.busy() && this.cine.cur?.heavy);
+          const hovering = this.hov > 0.3 && this.peek > 0.5;
+          if (!hovering) this.peekHold = Math.max(0, this.peekHold - dt);
+          const want = this.peekHold > 0 || busy || pending2 || hovering;
+          this.peek = clamp012(this.peek + (want ? dt * 4 : -dt * 2.6));
         }
         slot() {
           const g = this.game;
@@ -112101,6 +112996,7 @@ void main() {
             this.flash[id2] += dt;
             if (this.flash[id2] > 2.4) delete this.flash[id2];
           }
+          this.peekUpdate(dt);
           const head = this.banners[0];
           const held = !!g.ui?.blocking || this.cine.busy();
           if (head && !held) head.t += dt;
@@ -112132,9 +113028,15 @@ void main() {
           const g = this.game;
           this.rect = null;
           if (!g.ui?.isOpen?.("lab")) iconBudget(2);
-          const s = this.slot();
+          let s = this.slot();
           const S13 = ensureQuests(g.state);
           const cineUp = !!g.ui?.active?.cinematic;
+          if (s) this.lastSlot = s;
+          if (s && s.side === "right") {
+            const e = ease.outBack ? ease.outBack(this.peek) : ease.outCubic(this.peek);
+            s = this.peek < 0.01 ? null : { ...s, x: Math.round(s.x + (1 - Math.min(1.08, e)) * ((s.edge ?? s.x + s.w) - s.x + 6)) };
+            if (!s) this.rowRects = {};
+          }
           if (s && (!g.ui?.blocking || cineUp)) this.drawTracker(ctx3, s, S13);
           if (!g.ui?.blocking && !this.cine.busy()) this.drawBanners(ctx3);
           try {
@@ -112307,7 +113209,7 @@ void main() {
             const rx2 = x0 + i * step, ry2 = cy + 62;
             const name = rw.key === "aero" ? "coin" : getUiIcon(rw.key)?.__icon3d ? rw.key : null;
             if (!(name && drawIcon3D(ctx3, name, rx2 - 12, ry2, Math.round(22 * (0.6 + 0.4 * ease.outBack(k))), { t, hover: k < 1 ? 1 : 0, phase: i }))) rewardIcon(ctx3, rw, rx2 - 12, ry2, 24, t, i);
-            const txt = rw.key === "aero" ? "+" + rw.n : rw.n ? "x" + rw.n : "";
+            const txt = rw.key === "aero" || rw.key === "gem" ? "+" + rw.n : rw.n ? "x" + rw.n : "";
             if (txt) drawPop3D(ctx3, txt, rx2 + 16, ry2, { t: t + i, pop: k, palette: "white", size: 16, depth: 2, wobble: 0.3, glowA: 0.3, sparkle: false });
             if (k < 0.2 && !rw.fx) {
               rw.fx = true;
@@ -112578,7 +113480,7 @@ void main() {
         }
         cardLayoutRaw(q, w) {
           const rl = rewardList(q.reward);
-          const rwW = Math.min(150, rl.reduce((a, rw) => a + 21 + (rw.key === "aero" ? measureText(String(rw.n), "small") + 3 : rw.n ? measureText("x" + rw.n, "small") + 3 : 0), 0));
+          const rwW = Math.min(150, rl.reduce((a, rw) => a + 21 + (rw.key === "aero" || rw.key === "gem" ? measureText(String(rw.n), "small") + 3 : rw.n ? measureText("x" + rw.n, "small") + 3 : 0), 0));
           const textW = Math.max(80, w - 44 - rwW - 14);
           const lines = wrapText(`"${q.text}"`, textW, "small").slice(0, 3);
           const LH = lineHeight("small") + 3;
@@ -113157,7 +114059,7 @@ void main() {
               if (s < 6) return;
               ctx3.drawImage(aeroSurface(s, s, { tone: rw.big ? "green" : "white", r: 9, gloss: 0.7, glossH: Math.round(s * 0.4), curve: 2, rim: 0.9, glow: 0.6 }), Math.round(x + (tw - s) / 2), Math.round(y + (tw - s) / 2));
               rewardIcon(ctx3, rw, x + tw / 2, y + tw / 2, 30 * k, t, i);
-              const lab3 = rw.key === "aero" ? String(rw.n) : rw.n ? "x" + rw.n : "";
+              const lab3 = rw.key === "aero" || rw.key === "gem" ? String(rw.n) : rw.n ? "x" + rw.n : "";
               if (lab3) drawText(ctx3, lab3, Math.round(x + tw / 2 - measureText(lab3, "small") / 2), y + tw + 3, { font: "small", color: INK5 });
               if (ui.hover({ x, y, w: tw, h: tw })) ui.tip = rw.label;
             });
@@ -113500,7 +114402,7 @@ void main() {
       init_foods();
       SORTS2 = [
         ["rarity", "Rarity"],
-        ["aero", "Aero/min"],
+        ["aero", "AB/min"],
         ["size", "Size"],
         ["happy", "Happiness"],
         ["hunger", "Hunger"],
@@ -113634,7 +114536,7 @@ void main() {
           for (const r of recs) total += this.aq?.releaseFish?.(r) || 0;
           for (const r of recs) this.checked.delete(r);
           if (recs.includes(this.sel)) this.sel = null;
-          this.toast(`Released ${recs.length} fish  +${fmtAero(total)} Aero`, "coin");
+          this.toast(`Released ${recs.length} fish  +${fmtAero(total)} Aero Bucks`, "coin");
         }
         breed(a, b) {
           const r = this.aq?.breedPair?.(a, b);
@@ -113752,7 +114654,7 @@ void main() {
           chip5(Math.max(78, measureText(`${rate.toFixed(1)}/min`) + 30), (r) => {
             drawAeroCoin(ctx3, r.x + 12, r.y + 10, 5, this.t);
             drawText(ctx3, `${rate.toFixed(1)}/min`, r.x + 21, r.y + 6, { color: INK14 });
-          }, "Aero your tank earns per minute");
+          }, "Aero Bucks your tank earns per minute");
           if (this.btn(ui, ctx3, { x: H8.x + H8.w - 30, y: H8.y + 6, w: 24, h: 22 }, "", { icon: "cross", tone: "red", tip: "Close (Esc)" })) {
             ui.close(this.id);
             return;
@@ -113847,7 +114749,7 @@ void main() {
                 return;
               }
               this.confirm = { recs: rel, value: rel.reduce((a, r) => a + this.value(r), 0) };
-            }, "Release for Aero (favourites are skipped)");
+            }, "Release for Aero Bucks (favourites are skipped)");
             b("Clear", "cross", "glass", () => this.checked.clear());
           } else {
             drawText(ctx3, "Tick cards for bulk actions   Double-click: see it swim   F: open / close", BK.x + 4, BK.y + 7, { font: "small", color: SOFT2 });
@@ -114158,7 +115060,7 @@ void main() {
             }, false, "Pick a partner in the list"],
             [`Release +${fmtAero(this.value(rec))}`, "coin", "red", () => {
               this.confirm = { recs: [rec], value: this.value(rec) };
-            }, false, "Let it go for Aero"]
+            }, false, "Let it go for Aero Bucks"]
           ];
           A22.forEach(([label3, icon3, tone5, f, dis, tip], i) => {
             const r = { x: D2.x + 8 + i % 2 * (cw + 6), y: y + Math.floor(i / 2) * (ch + 4), w: cw, h: ch };
@@ -114194,7 +115096,7 @@ void main() {
           drawText(ctx3, `Release ${nm}?`, tx, y + 14, { font: "big", color: INK14 });
           drawText(ctx3, "They swim back to the ocean.", tx, y + 30, { font: "small", color: SOFT2 });
           drawAeroCoin(ctx3, tx + 5, y + 44, 4.5, this.t);
-          drawText(ctx3, `+${fmtAero(c.value)} Aero`, tx + 13, y + 41, { color: INK14 });
+          drawText(ctx3, `+${fmtAero(c.value)} Aero Bucks`, tx + 13, y + 41, { color: INK14 });
           if (this.btn(ui, ctx3, { x: x + 20, y: y + h - 32, w: 120, h: 24 }, "Release", { icon: "check", tone: "red" })) {
             this.confirm = null;
             this.release(c.recs);
@@ -114257,6 +115159,7 @@ void main() {
       init_labicons();
       init_workshop();
       init_rods();
+      init_line();
       init_aero();
       init_ui();
       BENCH_CATS = /* @__PURE__ */ new Set(["build", "decor", "bait"]);
@@ -114582,7 +115485,7 @@ void main() {
             ctx3.fillRect(x + 45, y + 16, Math.round((sw - 102) * k), 1);
             drawText(ctx3, fmtT(rem), x + 44, y + 25, { font: "small", color: "#bfeaff" });
             const cost = wsRushCost(e);
-            if (ui.button(ctx3, x + sw - 52, y + 4, 48, h - 8, `${cost}`, { style: "orange", icon: "clock", disabled: st.coins < cost, tip: `Rush it for ${cost} Aero` })) {
+            if (ui.button(ctx3, x + sw - 52, y + 4, 48, h - 8, `${cost}`, { style: "orange", icon: "clock", disabled: st.coins < cost, tip: `Rush it for ${cost} Aero Bucks` })) {
               if (wsRush(g, i)) this.celebrate(wsRecipe(st, e.rid));
             }
           }
@@ -114632,7 +115535,7 @@ void main() {
               const ic = itemIcon(m.id, 13);
               if (ic) ctx3.drawImage(ic, cx, cy);
             }
-            let nm = m.aero ? "Aero" : ITEMS[m.id]?.name || m.id;
+            let nm = m.aero ? "Aero Bucks" : ITEMS[m.id]?.name || m.id;
             const qty = `${m.aero ? fmtAero(m.have) : Math.min(m.have, 999)}/${m.aero ? fmtAero(m.need) : m.need}`;
             while (measureText(nm, "normal") > cw - measureText(qty, "normal") - 24 && nm.length > 3) nm = nm.slice(0, -1);
             drawText(ctx3, nm, cx + 16, cy + 2, { color: INK15 });
@@ -114699,7 +115602,7 @@ void main() {
                 ctx3.fillStyle = "#ff5a3a";
                 ctx3.fillRect(bx + Math.round(bw * kk(ve)) - 1, y - 1, 2, 10);
               }
-              const fmt2 = (q) => k.key === "strength" ? `${Math.round(q)}kg` : k.key === "resilience" ? `${Math.round(q * 100)}%` : q.toFixed(2);
+              const fmt2 = (q) => k.key === "line" ? lineLabel(q) : k.key === "strength" ? `${Math.round(q)}kg` : k.key === "resilience" ? `${Math.round(q * 100)}%` : q.toFixed(2);
               drawText(ctx3, v2 !== null ? fmt2(v2) : fmt2(v), x + w, y, { font: "small", align: "right", color: v2 !== null ? OK2 : INK15 });
               y += 10;
             }
@@ -117239,9 +118142,9 @@ void main() {
           for (const iid of Object.keys(items)) {
             const it2 = ITEMS[iid];
             if (it2?.kind !== "blueprint" || !(items[iid] > 0)) continue;
-            const def2 = buildingDef(it2.builds);
-            if (!def2) continue;
-            out.push({ key: "bp:" + iid, kind: "blueprint", item: iid, id: it2.builds, name: def2.name, offer: { kind: "owned", n: items[iid] }, cat: "build" });
+            const def3 = buildingDef(it2.builds);
+            if (!def3) continue;
+            out.push({ key: "bp:" + iid, kind: "blueprint", item: iid, id: it2.builds, name: def3.name, offer: { kind: "owned", n: items[iid] }, cat: "build" });
           }
           for (const id2 of DECOR_IDS) out.push({ key: "decor:" + id2, kind: "decor", id: id2, name: PROPS[id2].name, offer: this.offer(id2), cat: catOf(id2) });
           return out;
@@ -117276,7 +118179,7 @@ void main() {
             return null;
           }
           if (!this.game.spendCoins?.(o.price)) {
-            this.game.toast?.("Not enough Aero.", "coin");
+            this.game.toast?.("Not enough Aero Bucks.", "coin");
             this.aq.sfx("ui_error");
             return null;
           }
@@ -117290,8 +118193,8 @@ void main() {
         }
         // ------------------------------------------------------------------ placement maths
         plOf(p) {
-          var _a4;
-          return p.kind === "building" ? (_a4 = p.rec).tank || (_a4.tank = { u: 0.5, l: 2, h: 0.5, f: false }) : p.rec;
+          var _a6;
+          return p.kind === "building" ? (_a6 = p.rec).tank || (_a6.tank = { u: 0.5, l: 2, h: 0.5, f: false }) : p.rec;
         }
         uOf(x) {
           return clamp012(x / (this.aq.shape.W - 40) + 0.5);
@@ -118136,7 +119039,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           if (f) this.game.emit?.("tankFish", rec);
         }
         evolveFish(dt) {
-          var _a4, _b;
+          var _a6, _b2;
           for (const f of this.fish.slice()) {
             const ev2 = f.sp?.evolve;
             if (!ev2 || !ev2.into || !SPECIES_BY_ID[ev2.into]) continue;
@@ -118147,7 +119050,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
             rec.species = into.id;
             rec.tankAge = 0;
             if (g.state.journal) {
-              const j = (_a4 = g.state.journal)[_b = into.id] || (_a4[_b] = { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: Date.now(), variants: {} });
+              const j = (_a6 = g.state.journal)[_b2 = into.id] || (_a6[_b2] = { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: Date.now(), variants: {} });
               j.caught = (j.caught || 0) + 1;
               j.maxSize = Math.max(j.maxSize || 0, rec.sizeCm || 0);
               j.minSize = Math.min(j.minSize ?? 9999, rec.sizeCm || 9999);
@@ -118454,7 +119357,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           this.game.toast?.(`${a.rec.name || a.sp.name} & ${b.rec.name || b.sp.name} laid eggs!`, "heart");
         }
         hatch(egg) {
-          var _a4;
+          var _a6;
           const g = this.game;
           const sp = SPECIES_BY_ID[egg.species];
           if (!sp) return;
@@ -118462,7 +119365,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           const rolled2 = rollIndividual(sp, { mutationChance: (s.mutationChance ?? 0.05) * 3 * (egg.mutate || 1), shinyChance: (s.shinyChance ?? 1 / 220) * 3 * (egg.shiny || 1), sizeBonus: -0.05 });
           const inTank = this.fish.length < this.capacity();
           const rec = { ...rolled2, inTank, happiness: 0.85, hunger: 0.2, coinT: 0, bornAt: Date.now(), caughtAt: Date.now(), rarity: sp.rarity, bred: true, parents: egg.parents };
-          ((_a4 = g.state).fish || (_a4.fish = [])).push(rec);
+          ((_a6 = g.state).fish || (_a6.fish = [])).push(rec);
           const p = this.shape.floorPoint(egg.x, egg.z, 4);
           if (inTank) this.makeFish(rec, { splash: false, baby: true, at: [p[0], p[1] + 8, p[2]] });
           this.fxAt(p, "burst", 10);
@@ -118603,7 +119506,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           if (lv >= g.levels.length - 1) return false;
           const cost = gearCost(id2, lv + 1);
           if (!this.game.spendCoins?.(cost)) {
-            this.game.toast?.("Not enough Aero.", "coin");
+            this.game.toast?.("Not enough Aero Bucks.", "coin");
             return false;
           }
           this.st.tank.gear[id2] = lv + 1;
@@ -119159,7 +120062,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           const out = [{ id: "back", ...L4.btn, run: () => g.setView?.("ocean"), tip: "Back to the ocean" }];
           out.push({ id: "pill", ...L4.plate, run: () => {
           }, tip: `${this.tierInfo().name}
-{fish} ${this.fish.length}/${this.capacity()}  {coin} ${this.ratePerMin().toFixed(1)} Aero/min` });
+{fish} ${this.fish.length}/${this.capacity()}  {coin} ${this.ratePerMin().toFixed(1)} AB/min` });
           const D2 = L4.dock;
           const lampOff = this.st.tank.lampOff;
           const dock = [
@@ -119647,7 +120550,7 @@ ${row3.g.desc}`, run: () => this.buyGear(row3.g.id) };
           return `${rec.name || sp.name}${rec.bred ? " {sparkle}" : ""}
 ${sp.name}
 ${hearts} ${status}
-{coin}${this.fishRate(f).toFixed(1)} Aero/min`;
+{coin}${this.fishRate(f).toFixed(1)} AB/min`;
         }
         // ------------------------------------------------------------------ drawing
         drawFull(ctx3) {
@@ -119939,7 +120842,7 @@ ${hearts} ${status}
         // quest-sealed tiles (dithered indigo veil, chain X, gold padlock) over their dimmed voxel food; a food unlocked since
         // the tray last showed it breaks its seal (the padlock drops, the colour floods back, a sparkle burst).
         drawFeedPanel(ctx3) {
-          var _a4;
+          var _a6;
           const r = this.feedPanelRect(), R7 = Math.round, kd = r.kd;
           ctx3.fillStyle = "rgba(3,38,74,0.2)";
           ctx3.fillRect(r.x + 6, r.y + r.h + 1, r.w - 12, R7(3 * kd));
@@ -119952,7 +120855,7 @@ ${hearts} ${status}
           }
           const lf = kd >= 1.2 ? "normal" : "small";
           drawText(ctx3, "Pick a food, then click the water", r.x + r.w / 2, r.y + r.pad - 1, { font: "small", align: "center", color: AERO.ink });
-          const seen = (_a4 = this.st.tank).foodSeen || (_a4.foodSeen = {});
+          const seen = (_a6 = this.st.tank).foodSeen || (_a6.foodSeen = {});
           const us = this.unseal || (this.unseal = {});
           for (const c of r.chips) {
             const F3 = FOODS[c.id], on = !c.locked && this.foodType === c.id, hov = this.hoverBtn === "food:" + c.id;
@@ -120017,7 +120920,7 @@ ${hearts} ${status}
               const ti = this.tierInfo();
               icon3("tank", row3.x + L4(6), row3.y + L4(6));
               drawText(ctx3, `${ti.name}  (size ${this.tier + 1}/${TANK_TIERS.length})`, row3.x + L4(24), row3.y + L4(6), { color: ink, font: f1 });
-              drawText(ctx3, `{fish} ${this.capacity()} fish  x${ti.rate.toFixed(2)} Aero`, row3.x + L4(8), row3.y + L4(22), { font: f2, color: ink });
+              drawText(ctx3, `{fish} ${this.capacity()} fish  x${ti.rate.toFixed(2)} Aero Bucks`, row3.x + L4(8), row3.y + L4(22), { font: f2, color: ink });
               const next = TANK_TIERS[this.tier + 1];
               if (next) {
                 const unlocked2 = tankTier(this.st) > this.tier;
@@ -120144,7 +121047,7 @@ ${hearts} ${status}
           { text: "So proud!", mood: "love", reply: "You should be!" },
           { text: "Next one is bigger", mood: "smug", reply: "That's the spirit!" }
         ] },
-        coin: { text: "Fish make Aero! Grab the drop.", pose: "point", mood: "happy" },
+        coin: { text: "Fish make Aero Bucks! Grab the drop.", pose: "point", mood: "happy" },
         lab: { text: "Spend it in The Lab!", pose: "point", mood: "excited" },
         research: { text: "Start your first research!", pose: "point", mood: "happy" },
         done: { text: "You're a natural, {name}! Keep me around for tips?", pose: "cheer", mood: "excited", choices: [
@@ -120156,7 +121059,7 @@ ${hearts} ${status}
       TIPS = [
         { text: "Rare fish love special bait.", at: "bait" },
         { text: "Floating boxes hide loot. Fish them up!" },
-        { text: "Your tank fish make Aero while you play.", at: "aquarium" },
+        { text: "Your tank fish make Aero Bucks while you play.", at: "aquarium" },
         { text: "New oceans open up from the Map.", at: "map" },
         { text: "Different rods, different skills. Visit The Lab!", at: "lab" },
         { text: "Some fish only show up at night." },
@@ -121826,15 +122729,31 @@ ${hearts} ${status}
           return { x: R6(it2.x), y: R6(it2.y), w: B2, h: B2 };
         }
         // [phase6] the quest tracker's reserved area (see header)
+        // [cur26] no more top-left UI: the slot sits on the RIGHT edge, under the wallet plaque and its toasts, and
+        // `side: 'right'` tells the tracker to slide in from there (it is hidden until quest progress / a pin / a card).
+        // In the tank the slot stops left of the tank's tool rail.
         questSlot() {
           const g = this.game;
           if (g.tutorial?.intro || this.show < 0.05 || !this.wantShow()) return null;
           const m = this.m || this.metrics();
-          const chipH = R6(20 * m.k);
-          const y = (this.chip.h ? this.chip.y + this.chip.h : m.margin + chipH) + R6(6 * m.k);
           const w = Math.min(R6(168 * m.k), R6(this.W * 0.34));
-          const h = Math.min(R6(104 * m.k), Math.max(40, (this.gear.y || this.H) - y - R6(70 * m.k)));
-          return { x: m.margin, y, w, h, a: clamp(this.show * 1.4, 0, 1) };
+          const cr2 = g.ui?.coinRect;
+          const y = Math.max(R6(this.H * 0.3), (cr2 ? cr2.y + cr2.h : m.margin + R6(22 * m.k)) + R6(46 * m.k));
+          let right = this.W - m.margin;
+          if (g.state.view === "aquarium") {
+            try {
+              const d = g.aquarium?.fullLayout?.()?.dock;
+              if (d && d.x > this.W * 0.5) right = Math.min(right, d.x - R6(6 * m.k));
+            } catch {
+            }
+          }
+          let bot = this.H;
+          try {
+            bot = Math.min(this.H, this.topY());
+          } catch {
+          }
+          const h = Math.min(R6(104 * m.k), Math.max(40, bot - y - R6(10 * m.k)));
+          return { x: right - w, y, w, h, a: clamp(this.show * 1.4, 0, 1), side: "right", edge: this.W };
         }
         // top edge of the hotbar (incl. its raised bubbles), for panels that want to stay clear of it
         topY() {
@@ -122065,10 +122984,7 @@ ${hearts} ${status}
             this.chip = { x: 0, y: 0, w: 0, h: 0 };
             return;
           }
-          const a0 = ctx3.globalAlpha;
-          ctx3.globalAlpha = a0 * clamp(this.show * 1.4, 0, 1);
-          this.drawChip(ctx3);
-          ctx3.globalAlpha = a0;
+          this.chip = { x: 0, y: 0, w: 0, h: 0 };
           if (this.gearVisible()) this.drawGear(ctx3);
           this.drawBar(ctx3, false);
         }
@@ -122258,11 +123174,11 @@ ${hearts} ${status}
           const rodPop = this.rodPop || 0;
           if (rh > 0.05) drawAeroGlow(ctx3, rcx, rcy, R6(D2 * 0.75), "#ffffff", 0.7 * rh);
           const sw = 1 + rh * 0.08 + Math.sin(rodPop * 9) * rodPop * 0.08;
-          const blit2 = (img, x, y, s = sw) => {
+          const blit3 = (img, x, y, s = sw) => {
             const w = R6(img.width * s), h = R6(img.height * s);
             ctx3.drawImage(img, R6(x - w / 2), R6(y - h / 2), w, h);
           };
-          blit2(tile2(D2, "#5cc0f4", rh > 0.5), rcx, rcy + 1);
+          blit3(tile2(D2, "#5cc0f4", rh > 0.5), rcx, rcy + 1);
           let rod = null;
           try {
             rod = equippedRod(g.state);
@@ -122277,7 +123193,7 @@ ${hearts} ${status}
               ic = null;
             }
             const wob = calm ? 0 : Math.sin(t * 7) * rh * 1.5 * k;
-            if (ic) blit2(ic, rcx + wob * 0.3, rcy - rh * 2 * k);
+            if (ic) blit3(ic, rcx + wob * 0.3, rcy - rh * 2 * k);
           }
           if (rh > 0.4 && !calm) drawSparkle(ctx3, rcx + D2 * 0.3, rcy - D2 * 0.32, 2, rh);
           const b = this.box, bh = this.baitHov;
@@ -122290,7 +123206,7 @@ ${hearts} ${status}
           } catch {
             cur = null;
           }
-          blit2(tile2(D2, "#ffb43c", bh > 0.5), bcx, bcy + 1, 1 + bh * 0.08);
+          blit3(tile2(D2, "#ffb43c", bh > 0.5), bcx, bcy + 1, 1 + bh * 0.08);
           if (cur?.art) drawBaitGloss(ctx3, cur.art, bcx, bcy, R6(D2 * (1 + bh * 0.08)), t, { bubble: false, bob: b.hover });
           else {
             const f = iconFrame("bait", R6(D2 * 0.8), calm ? 0 : Math.sin(t * 6) * bh * 0.8);
@@ -122456,7 +123372,7 @@ ${hearts} ${status}
   function installBrowserBridge(game) {
     const target = () => location.protocol === "file:" ? "*" : location.origin;
     window.addEventListener("message", (e) => {
-      var _a4, _b;
+      var _a6, _b2;
       if (e.source !== window || !e.data || typeof e.data.type !== "string") return;
       if (e.data.type === "fishtop:bridge-hello") {
         window.postMessage({ type: "fishtop:game-hello", version: 1 }, target());
@@ -122474,7 +123390,7 @@ ${hearts} ${status}
         if (known.has(r.uid)) continue;
         const sp = SPECIES_BY_ID[r.species];
         const rec = { ...sanitize(r), biome: sp.biome, rarity: sp.rarity, fromBrowser: true };
-        const j = (_a4 = st.journal)[_b = sp.id] || (_a4[_b] = { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: rec.caughtAt, variants: {} });
+        const j = (_a6 = st.journal)[_b2 = sp.id] || (_a6[_b2] = { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: rec.caughtAt, variants: {} });
         j.caught++;
         j.maxSize = Math.max(j.maxSize, rec.sizeCm);
         j.minSize = Math.min(j.minSize, rec.sizeCm);
@@ -123166,6 +124082,7 @@ ${hearts} ${status}
       init_quests2();
       init_progression();
       init_rods();
+      init_gems();
       Game = class {
         constructor(canvas, params2) {
           this.params = params2;
@@ -123180,6 +124097,8 @@ ${hearts} ${status}
           this.camera = new Camera(this);
           this.clock = new Clock(this);
           this.events = {};
+          bindGemsGame(this);
+          this.gemGift = ensureGems(this.state);
           this.on("boatUpgraded", () => this.recomputeStats());
           this.time = 0;
           this.timeScale = 1;
@@ -123277,8 +124196,8 @@ ${hearts} ${status}
         }
         // ------------------------------------------------------------------ events
         on(ev2, fn) {
-          var _a4;
-          ((_a4 = this.events)[ev2] || (_a4[ev2] = [])).push(fn);
+          var _a6;
+          ((_a6 = this.events)[ev2] || (_a6[ev2] = [])).push(fn);
         }
         off(ev2, fn) {
           this.events[ev2] = (this.events[ev2] || []).filter((f) => f !== fn);
@@ -123389,7 +124308,7 @@ ${hearts} ${status}
             return false;
           }
           if (!this.spendCoins(sk.cost)) {
-            this.toast("Not enough Aero.", "coin");
+            this.toast("Not enough Aero Bucks.", "coin");
             return false;
           }
           this.state.skills[id2] = true;
@@ -123433,13 +124352,13 @@ ${hearts} ${status}
           this.emit("hooked", fish);
         }
         onFishCaught(fish) {
-          var _a4, _b;
+          var _a6, _b2;
           const sp = fish.sp;
           this.school.remove(fish);
           const rec = { ...fish.rec, caughtAt: Date.now(), biome: this.ocean.biome.id, rarity: sp.rarity };
           const st = this.state;
           st.stats.caught++;
-          const j = (_a4 = st.journal)[_b = sp.id] || (_a4[_b] = { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: Date.now(), variants: {} });
+          const j = (_a6 = st.journal)[_b2 = sp.id] || (_a6[_b2] = { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: Date.now(), variants: {} });
           const isNew = j.caught === 0;
           const record = rec.sizeCm > j.maxSize && j.caught > 0;
           j.caught++;
@@ -126848,7 +127767,7 @@ ${hearts} ${status}
     }
     const fishT = { sum: 0, worst: 0, who: "" };
     function frame2(now10) {
-      var _a4;
+      var _a6;
       requestAnimationFrame(frame2);
       const dt = Math.min(0.05, (now10 - last) / 1e3);
       last = now10;
@@ -126893,7 +127812,7 @@ ${hearts} ${status}
       g.setTransform(1, 0, 0, 1, 0, 0);
       const ms = performance.now() - T0;
       frameMs.push(ms);
-      ((_a4 = window.__vf).fishLog || (_a4.fishLog = [])).push([+ms.toFixed(1), +fishT.sum.toFixed(1), +fishT.worst.toFixed(1), fishT.who, voxelFishStats().spent]);
+      ((_a6 = window.__vf).fishLog || (_a6.fishLog = [])).push([+ms.toFixed(1), +fishT.sum.toFixed(1), +fishT.worst.toFixed(1), fishT.who, voxelFishStats().spent]);
       if (window.__vf.fishLog.length > 400) window.__vf.fishLog.shift();
       if (frameMs.length > 600) frameMs.shift();
       perf.n++;
@@ -127292,6 +128211,70 @@ ${hearts} ${status}
     }
   });
 
+  // src/dev/zz_face26.js
+  var zz_face26_exports = {};
+  __export(zz_face26_exports, {
+    run: () => run34
+  });
+  function run34(params2) {
+    const sc0 = Number(params2.get("s") || 2), W11 = Math.round(Math.max(480, (40 * sc0 + 40) * 5 + 20)), H8 = Math.round(Math.max(300, (80 * sc0 + 30) * 2 + 20));
+    const cv = document.getElementById("screen");
+    cv.width = W11;
+    cv.height = H8;
+    const Z = Number(params2.get("z") || 4);
+    cv.style.width = W11 * Z + "px";
+    cv.style.height = H8 * Z + "px";
+    const g = ctxOf(cv);
+    setCharacterBudget(1e9);
+    const look = { ...DEFAULT_CHARACTER, ...params2.get("look") ? JSON.parse(params2.get("look")) : {} };
+    const sc = Number(params2.get("s") || 2);
+    const view = params2.get("v") || "moods";
+    const t = Number(params2.get("t") || 0.3);
+    g.fillStyle = "#3a7fb0";
+    g.fillRect(0, 0, W11, H8);
+    const lab3 = (s, x, y) => drawText(g, s, x, y, { font: "small", color: "#fff", align: "center", shadow: "#0b1622" });
+    if (view === "moods") {
+      const items = [["idle", null, null], ["blink", null, null, 1], ["happy", "cheer", null], ["sad", "sad", "sad"], ["surprised", null, "surprised"], ["angry", null, "angry"], ["love", null, "love"], ["excited", null, "excited"], ["squint", "pull", null], ["laugh", "laugh", null]];
+      items.forEach(([name, pose2, mood, blink], i) => {
+        const x = Math.round(30 * sc + 20 + i % 5 * (40 * sc + 40)), y = Math.round((80 * sc + 30) * (1 + Math.floor(i / 5)));
+        drawCharacter(g, x, y + 60 * (sc - 2) * 0, { pose: pose2 || "idle", t: pose2 === "cheer" ? 0.05 : t, facing: 1, scale: sc, look, id: "f" + i, mood, blink, trail: false, shadow: false, rod: false });
+        lab3(name, x, y + 4);
+      });
+    } else if (view === "styles") {
+      const st = ["bean", "sparkle", "anime", "happy", "sleepy", "star", "heart", "swirl", "led", "wink", "dot", "teary", "derp"];
+      st.forEach((e, i) => {
+        const x = 36 + i % 7 * 68, y = 120 + Math.floor(i / 7) * 130;
+        drawCharacter(g, x, y, { pose: "idle", t, facing: 1, scale: sc, look: { ...look, eyes: e }, id: "s" + i, trail: false, shadow: false, rod: false });
+        lab3(e, x, y + 4);
+      });
+    } else if (view === "scales") {
+      [0.45, 0.62, 1, 1.5, 2, 3].forEach((s, i) => {
+        const x = [20, 50, 90, 150, 240, 380][i];
+        drawCharacter(g, x, 240, { pose: "idle", t, facing: 1, scale: s, look, id: "k" + i, trail: false, shadow: false, rod: false });
+        drawCharacter(g, x, 120, { pose: "idle", t, yaw: 0, scale: s, look, id: "kf" + i, trail: false, shadow: false, rod: false, mood: i % 2 ? "happy" : null });
+      });
+    } else if (view === "turn") {
+      [0, -30, -60, -90, 30, 160].forEach((yw, i) => {
+        drawCharacter(g, 40 + i * 80, 200, { pose: "idle", t, yaw: yw, scale: sc, look, id: "t" + i, trail: false, shadow: false, rod: false });
+        lab3("yaw " + yw, 40 + i * 80, 204);
+      });
+    } else if (view === "npcs") {
+      Object.keys(NPCS).forEach((id2, i) => {
+        const x = 40 + i * 80;
+        drawNPC(g, id2, { x, y: 200, t, scale: sc, facing: 1, pose: "idle", mood: "happy", id: "n" + i });
+        lab3(id2, x, 204);
+      });
+    }
+  }
+  var init_zz_face26 = __esm({
+    "src/dev/zz_face26.js"() {
+      init_canvas();
+      init_font();
+      init_character();
+      init_npcs();
+    }
+  });
+
   // import("./dev/**/*.js") in src/main.js
   var globImport_dev_js = __glob({
     "./dev/audio.js": () => Promise.resolve().then(() => (init_audio2(), audio_exports)),
@@ -127327,7 +128310,8 @@ ${hearts} ${status}
     "./dev/uiart.js": () => Promise.resolve().then(() => (init_uiart(), uiart_exports)),
     "./dev/voxfish.js": () => Promise.resolve().then(() => (init_voxfish(), voxfish_exports)),
     "./dev/voxui.js": () => Promise.resolve().then(() => (init_voxui(), voxui_exports)),
-    "./dev/world.js": () => Promise.resolve().then(() => (init_world(), world_exports))
+    "./dev/world.js": () => Promise.resolve().then(() => (init_world(), world_exports)),
+    "./dev/zz_face26.js": () => Promise.resolve().then(() => (init_zz_face26(), zz_face26_exports))
   });
 
   // src/main.js

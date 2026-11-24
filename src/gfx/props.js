@@ -23,6 +23,7 @@
 import { VoxelModel, renderVoxels, refineSteps } from './voxel.js';
 import { renderSteps } from '../world/slabrender.js';
 import { RNG } from '../core/rng.js';
+import { UNLOCK_PROPS } from './unlockprops.js'; // [hot26] buildable props that unlock hotbar buttons
 import { hash3, clamp } from '../core/math.js';
 
 // ---------- noise (fast permutation-table value noise) ----------
@@ -4807,6 +4808,8 @@ def('shop_stall', { name: 'Bait Stall', biome: 'shop', tags: ['shop', 'glow'] },
   };
 });
 
+
+for (const [id, d] of Object.entries(UNLOCK_PROPS)) def(id, d.meta, d.build); // [hot26]
 
 // ---------- public API ----------
 export const PROPS = {};

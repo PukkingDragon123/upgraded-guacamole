@@ -515,7 +515,7 @@ export class LabTree {
         return true;
       }
     }
-    this.reject(id, !c.reqOk ? 'Research the one before it first.' : !c.gateOk ? c.gate : !c.aero.ok ? 'Not enough Aero for that one!' : !c.paid ? 'Missing ingredients!' : 'All benches are busy.');
+    this.reject(id, !c.reqOk ? 'Research the one before it first.' : !c.gateOk ? c.gate : !c.aero.ok ? 'Not enough Aero Bucks for that one!' : !c.paid ? 'Missing ingredients!' : 'All benches are busy.');
     return false;
   }
 
@@ -1353,7 +1353,7 @@ export class LabTree {
           drawAeroBar(ctx, x, y + 14, IW, 9, labProgress(st, id), { color: '#5fd23a' });
         });
         const cost = instantCost(st, id);
-        buttons.push({ label: `Finish ${fmtAero(cost)}`, tone: 'orange', icon: getUiIcon('aero') || getUiIcon('coin'), disabled: (st.coins || 0) < cost, sound: 'ui_unlock', tip: 'Finish it right now for Aero', fn: () => { if (instantFinish(g, id)) g.audio.play('ui_unlock'); } });
+        buttons.push({ label: `Finish ${fmtAero(cost)}`, tone: 'orange', icon: getUiIcon('aero') || getUiIcon('coin'), disabled: (st.coins || 0) < cost, sound: 'ui_unlock', tip: 'Finish it right now for Aero Bucks', fn: () => { if (instantFinish(g, id)) g.audio.play('ui_unlock'); } });
         buttons.push({ label: 'Stop', tone: 'glass', icon: getUiIcon('cross'), tip: 'Stop it (refund)', fn: () => cancelResearch(g, id) });
       } else if (s === 'queued') {
         text(`Queued #${labQueued(st, id)}: it starts when a bench frees up.`, '#6a3ab8', 2);

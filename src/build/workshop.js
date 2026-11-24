@@ -238,7 +238,7 @@ export function wsCheck(state, r) {
   else if (owned) reason = 'Already yours';
   else if (queued) reason = 'Crafting...';
   else if (!slot) reason = 'Queue full';
-  else if (!aero.ok) reason = 'Not enough Aero';
+  else if (!aero.ok) reason = 'Not enough Aero Bucks';
   else if (!items.every((x) => x.ok)) reason = 'Missing materials';
   return { ok: !reason, aero, items, owned, queued, slot, reason };
 }

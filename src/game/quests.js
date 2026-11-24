@@ -10,7 +10,7 @@
 //           {t: 'species', n}  distinct species caught      {t: 'research', n | id}  Lab nodes done (count or one)
 //           {t: 'tank', tier}  {t: 'boat', tier}             {t: 'visit', biome}  {t: 'depth', zone, alt: obj}
 //           {t: 'aero', n}  Aero earned since the quest started    {t: 'tutorial'}  {t: 'open', panel}
-//     reward {aero, items: {matId: n}, bait: {baitId: n}, cosmetics: [wardrobe ids], lab: [node ids], unlock: [{kind, id}]}
+//     reward {aero, gems ([cur26] Byte Gems), items: {matId: n}, bait: {baitId: n}, cosmetics: [wardrobe ids], lab: [node ids], unlock: [{kind, id}]}
 //   [phase8:prog] objectives {t: 'chest', n, tier?} (chests cracked open, tier or better) {t: 'have', id, n, take?} (items in
 //     the Satchel; take = handed over on completion) {t: 'dest', id} (sailed to the Lab / Workshop) {t: 'craftRod', n | id}
 //     (Workshop rods owned) {t: 'rodUp', n} (any rod tuned to n stars) {t: 'tackle', n} (tackle slots filled).
@@ -53,6 +53,7 @@ import { OCEAN_VALUE } from './shopdata.js'; // [balance]
 import { SIDE_STORIES, MILESTONES, MILESTONE_LINES, ORDER_POOL, DAILY_AERO, ORDER_MATS } from './questdata.js'; // [quests16]
 import { gearLevel, GEAR_BY_ID } from '../aquarium/tanks.js'; // [quests16] tank gear goals
 import { RNG } from '../core/rng.js'; // [quests16] the daily order board's seed
+import { addGems, GEM_NAME, GEM_ONE } from './gems.js'; // [cur26] Byte Gems
 
 export const ZONES = ['sunlit', 'twilight', 'midnight', 'abyss'];
 const CHEST_RANK = ['crate', 'iron', 'golden', 'orb']; // [phase8:prog]
@@ -67,14 +68,14 @@ export const CHAPTERS = [
     id: 'ch1', title: 'Splash Down', ocean: 'oscean', giver: 'seal',
     intro: [
       { npc: 'seal', text: 'Welcome to the (OS)cean! I\'m Bubbles. Let\'s turn you into a real angler!' },
-      { npc: 'fizz', text: 'And I\'m Professor Fizz! Bring me Aero and I\'ll invent you wonderful things!' },
+      { npc: 'fizz', text: 'And I\'m Professor Fizz! Bring me Aero Bucks and I\'ll invent you wonderful things!' },
     ],
     outro: { npc: 'marina', text: 'Ahoy! Marina, pier keeper. I charted the Sunny Shallows for you - fund the trip in The Lab!' },
     reward: { aero: 250, chart: 'shallows', cosmetics: ['hat_leafcrown'], unlock: [{ kind: 'recipe', id: 'ws_rod_clover' }] }, // [phase8:prog] + a rod recipe
     quests: [
       Q('c1_lesson', 'seal', 'Fishing 101', 'Hook, reel, shock! I\'ll show you everything.', [{ t: 'tutorial' }], { aero: 10, bait: { crumbs: 5 } }),
       Q('c1_catch', 'seal', 'First Splash', 'Three fish. You can do it!', [{ t: 'catch', n: 3 }], { aero: 15, items: { driftwood: 2 } }),
-      Q('c1_keep', 'seal', 'Home Sweet Tank', 'Keep a fish! It makes Aero while you fish.', [{ t: 'keep', n: 1 }], { aero: 10, items: { shell: 2 } }),
+      Q('c1_keep', 'seal', 'Home Sweet Tank', 'Keep a fish! It makes Aero Bucks while you fish.', [{ t: 'keep', n: 1 }], { aero: 10, items: { shell: 2 } }),
       Q('c1_chest', 'seal', 'Crack It Open!', 'There\'s a crate in your Satchel. Tap the glowing knots to crack it!', [{ t: 'chest', n: 1 }], { aero: 10, items: { fish_scale: 3 } }), // [phase8:prog]
       Q('c1_lab', 'fizz', 'Lab Coat On', 'Plan a tile in The Lab, then press Confirm!', [{ t: 'research', n: 1 }], { items: { driftwood: 3, kelp_fibre: 2 } }),
       Q('c1_dex', 'seal', 'FishDex Rookie', 'Every new fish goes in your FishDex.', [{ t: 'species', n: 4 }], { aero: 25 }),
@@ -88,7 +89,7 @@ export const CHAPTERS = [
       { npc: 'marina', text: 'The Shallows are warm, bright and bursting with fish. Hop in the dinghy!' },
       { npc: 'seal', text: 'The Bait Shop is open! Better bait, better fish!' },
     ],
-    outro: { npc: 'bloat', text: 'Hrrumph! Captain Bloat. Up north, the Frosty Fjord hides a tale or two... Fizz has the chart. Bring Aero!' },
+    outro: { npc: 'bloat', text: 'Hrrumph! Captain Bloat. Up north, the Frosty Fjord hides a tale or two... Fizz has the chart. Bring Aero Bucks!' },
     reward: { aero: 800, chart: 'fjord', cosmetics: ['top_sailor'], items: { sea_glass: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_frost' }] }, // [phase8:prog]
     quests: [
       Q('c2_sail', 'marina', 'Set Sail', 'Fund the Sunny Shallows expedition in The Lab, then sail there from the Map.', [{ t: 'research', id: 'sea_shallows' }, { t: 'visit', biome: 'shallows' }], { aero: 20 }), // [prog18] oceans are bought
@@ -140,7 +141,7 @@ export const CHAPTERS = [
       Q('c4_deep', 'seal', 'Midnight Snack', 'Reach the Midnight Zone. Bring a light!', [{ t: 'depth', zone: 'midnight', alt: { t: 'catch', n: 3, rarity: 'uncommon' } }], { aero: 100, bait: { lantern: 2 } }),
       Q('c4_golden', 'fizz', 'Golden Glitter', 'Crack open a Golden Chest. Lockpicks ready!', [{ t: 'chest', tier: 'golden', n: 1 }], { aero: 150, items: { pkg_iron: 1 } }), // [phase8:prog]
       Q('c4_magnet', 'fizz', 'Magnetic Personality', 'Craft the Magnet Rod. Boxes will come to YOU.', [{ t: 'craftRod', id: 'magnet' }], { aero: 120, items: { spring_coil: 2 } }), // [phase8:prog]
-      Q('c4_aero', 'fizz', 'Cha-Ching', 'Earn 3,000 Aero.', [{ t: 'aero', n: 3000 }], { items: { circuit_board: 1 } }),
+      Q('c4_aero', 'fizz', 'Cha-Ching', 'Earn 3,000 Aero Bucks.', [{ t: 'aero', n: 3000 }], { items: { circuit_board: 1 } }),
       Q('c4_shock', 'fizz', 'Shock Therapy', 'Ten PERFECT zaps (my Spark Joy study) unlock the Capacitor. Then research it in the Shock row!', [{ t: 'research', id: 'shock2' }], { aero: 100 }),
       Q('c4_chrome', 'fizz', 'Chrome Dome', 'Help Marina with her Rust Bucket job, then research the Chrome Caster. Fast, shiny and strong.', [{ t: 'research', id: 'rod_chrome' }], { aero: 100, items: { gear: 2, pearl: 1 } }), // [balance] main-track goal
       Q('c4_boss', 'fizz', 'Boss: Blue Screen Ray', 'A fatal exception lurks in the deep. ZAP it when it\'s dazed!', [{ t: 'boss', id: 'bsod' }], { aero: 250, items: { circuit_board: 1 } }), // [phase9:fishing]
@@ -178,7 +179,7 @@ export const CHAPTERS = [
       Q('c6_sail', 'bloat', 'Hot Water', 'Fund the Lava Rift expedition in The Lab, then brave the heat.', [{ t: 'research', id: 'sea_volcano' }, { t: 'visit', biome: 'volcano' }], { aero: 150 }),
       Q('c6_catch', 'bloat', 'Fire and Fins', 'Catch 12 Lava Rift fish.', [{ t: 'catch', n: 12, biome: 'volcano' }], { items: { ancient_stone: 2 } }),
       Q('c6_deep', 'seal', 'Into the Abyss', 'Reach the Abyssal Zone. Deep breath!', [{ t: 'depth', zone: 'abyss', alt: { t: 'catch', n: 2, rarity: 'rare' } }], { aero: 300, bait: { blackhole: 1 } }),
-      Q('c6_aero', 'seal', 'Big Spender', 'Earn 15,000 Aero.', [{ t: 'aero', n: 15000 }], { items: { circuit_board: 2, pearl: 1 } }),
+      Q('c6_aero', 'seal', 'Big Spender', 'Earn 15,000 Aero Bucks.', [{ t: 'aero', n: 15000 }], { items: { circuit_board: 2, pearl: 1 } }),
       Q('c6_dex', 'fizz', 'Encyclopedia', 'Discover 35 species.', [{ t: 'species', n: 35 }], { aero: 400 }),
       Q('c6_turbo', 'bloat', 'Need for Speed', 'Craft the Turbo Reel Rod. Vroom!', [{ t: 'craftRod', id: 'turbo' }], { aero: 400, items: { lava_glass: 1 } }), // [phase8:prog]
       Q('c6_tackle', 'marina', 'Fully Kitted', 'Fill all four tackle slots on your rod.', [{ t: 'tackle', n: 4 }], { aero: 300, items: { pearl: 1 } }), // [phase8:prog]
@@ -222,6 +223,15 @@ for (const c of CHAPTERS) {
   const k = OCEAN_VALUE[c.ocean] || 1;
   for (const q of [...c.quests, ...c.side]) if (q.reward?.aero && k !== 1) q.reward.aero = Math.round((q.reward.aero * k) / 5) * 5;
 }
+// [cur26] Byte Gems (src/game/gems.js): modest gem rewards on every quest kind (the ONLY way to earn gems, with
+// boss quests paying the most). Data may set reward.gems by hand; everything else gets these defaults.
+export const GEM_REWARDS = { main: 2, boss: 10, side: 3, order: 1, orderBonus: 5, chapter: (n) => 10 + n * 5, mile: (tier) => Math.min(15, tier * 3) };
+for (const c of CHAPTERS) {
+  (c.reward ||= {}).gems ??= GEM_REWARDS.chapter(c.n);
+  for (const q of c.quests) (q.reward ||= {}).gems ??= q.objectives.some((o) => o.t === 'boss') ? GEM_REWARDS.boss : GEM_REWARDS.main;
+  for (const q of c.side) (q.reward ||= {}).gems ??= GEM_REWARDS.side;
+}
+for (const q of MILESTONES) (q.reward ||= {}).gems ??= GEM_REWARDS.mile(q.tier || 1);
 export const CHAPTER_BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));
 export const QUEST_BY_ID = {};
 for (const c of CHAPTERS) for (const q of [...c.quests, ...c.side]) { q.chapter = c.id; QUEST_BY_ID[q.id] = q; }
@@ -279,7 +289,7 @@ export const WEATHER_NAMES = {
 const TIME_NAMES = { night: 'at night', day: 'in daylight', dusk: 'at dawn or dusk' };
 const CRAFT_CATS = { rods: 'rods', tackle: 'pieces of tackle', bait: 'bait batches', boat: 'boat parts', upgrade: 'rod upgrades', tank: 'tank upgrades' };
 const TOTAL_LABELS = {
-  caught: (n) => `Catch ${fmt(n)} fish in total`, species: (n) => `Discover ${n} species`, aero: (n) => `Earn ${fmt(n)} Aero in total`,
+  caught: (n) => `Catch ${fmt(n)} fish in total`, species: (n) => `Discover ${n} species`, aero: (n) => `Earn ${fmt(n)} Aero Bucks in total`,
   research: (n) => `Finish ${n} research projects`, bosses: (n) => n > 1 ? `Beat ${n} different bosses` : 'Beat a boss',
   zaps: (n) => `Land ${fmt(n)} PERFECT zaps`, flawless: (n) => `Make ${n} flawless catches`, chests: (n) => `Crack open ${n} chests`,
   fed: (n) => `Feed your tank ${n} times`, built: (n) => `Place ${n} things in your tank`, crafted: (n) => `Craft ${n} things`,
@@ -328,7 +338,7 @@ export function objLabel(o) {
     case 'boat': return `Get the ${BOAT_NAMES[BOAT_ORDER[o.tier]] || 'next boat'}`;
     case 'visit': return `Visit ${OCEAN_NAMES[o.biome] || o.biome}`;
     case 'depth': return `Reach the ${ZONE_NAMES[o.zone] || o.zone}`;
-    case 'aero': return `Earn ${o.n.toLocaleString('en-US')} Aero`;
+    case 'aero': return `Earn ${o.n.toLocaleString('en-US')} Aero Bucks`;
     case 'tutorial': return 'Finish Bubbles\' fishing lesson';
     case 'open': return `Open the ${o.panel}`;
     case 'chest': return o.tier ? (o.n > 1 ? `Crack open ${o.n} ${CHEST_NAMES[o.tier] || o.tier}s (or better)` : `Crack open a ${CHEST_NAMES[o.tier] || o.tier}`) : o.n > 1 ? `Crack open ${o.n} chests` : 'Crack open a chest'; // [phase8:prog]
@@ -344,7 +354,7 @@ export function objLabel(o) {
     case 'build': return o.n > 1 ? `Place ${o.n} things in your tank` : 'Place something in your tank';
     case 'hatch': return o.n > 1 ? `Hatch ${o.n} eggs` : 'Hatch an egg';
     case 'evolve': return 'Raise a tank fish until it evolves';
-    case 'collect': return `Pop ${o.n} Aero bubbles in your tank`;
+    case 'collect': return `Pop ${o.n} Aero Buck bubbles in your tank`;
     case 'tankFish': return `Have ${o.n} fish swimming in your tank`;
     case 'gearLv': { const g = GEAR_BY_ID[o.id]; return `Get the ${g?.levels?.[o.lv] || (g?.name || o.id) + ' level ' + o.lv} for your tank`; }
     case 'dress': return o.n > 1 ? `Change your look ${o.n} times` : 'Change your look in the Wardrobe';
@@ -409,7 +419,8 @@ export function objIcon(o) {
 
 export function rewardList(rw = {}) {
   const out = [];
-  if (rw.aero) out.push({ key: 'aero', label: rw.aero.toLocaleString('en-US') + ' Aero', n: rw.aero });
+  if (rw.aero) out.push({ key: 'aero', label: rw.aero.toLocaleString('en-US') + ' Aero Bucks', n: rw.aero });
+  if (rw.gems) out.push({ key: 'gem', label: rw.gems + ' ' + (rw.gems === 1 ? GEM_ONE : GEM_NAME), n: rw.gems, gem: true }); // [cur26]
   for (const id of rw.lab || []) {
     const nd = LAB_BY_ID[id];
     const biome = nd?.unlock?.find((u) => u.kind === 'biome')?.id;
@@ -444,6 +455,7 @@ export function grantReward(game, rw = {}, reason = 'quest') {
     const W = game.screen?.W || 960;
     if (typeof game.addCoins === 'function') game.addCoins(aero, W / 2, 70); else { st.coins = (st.coins || 0) + aero; st.totalCoins = (st.totalCoins || 0) + aero; }
   }
+  if (rw.gems) addGems(st, rw.gems, reason); // [cur26] Byte Gems
   for (const [id, n] of Object.entries(rw.items || {})) { try { ITEMS.addItem(st, id, n); } catch { /* items not ready */ } }
   for (const [id, n] of Object.entries(rw.bait || {})) { try { BAIT.ensureBait?.(st); BAIT.addBait(st, id, n); } catch { /* bait not ready */ } }
   for (const id of rw.cosmetics || []) { try { if (!CHAR.grantCosmetic?.(st, id)) (st.cosmetics ||= {})[id] = true; } catch { (st.cosmetics ||= {})[id] = true; } }
@@ -840,7 +852,7 @@ export class QuestBook {
     const base = DAILY_AERO[c.ch];
     const objectives = t.make(c, r);
     const mats = ORDER_MATS[c.ch].filter((m) => !objectives.some((o) => o.t === 'have' && o.id === m));
-    const reward = { aero: round5(base * k), items: { [r.pick(mats)]: c.ch >= 3 ? 2 : 1 } };
+    const reward = { aero: round5(base * k), items: { [r.pick(mats)]: c.ch >= 3 ? 2 : 1 }, gems: GEM_REWARDS.order }; // [cur26] gems
     return { id: `o_${this.S.daily.day}_${slot}_${t.id}`, kind: 'order', pool: t.id, giver: t.giver, title: t.title, text: t.text, objectives, reward };
   }
   refreshDaily(force = false) {
@@ -861,7 +873,7 @@ export class QuestBook {
     D.list.push({
       id: `o_${key}_bonus`, kind: 'orderBonus', giver: 'dot', title: 'Board Cleared!',
       text: 'BEEP BOOP! All three orders filled. Bonus protocol engaged: one shiny chest, freshly dusted.',
-      objectives: [{ t: 'ordersToday', n: ORDERS_PER_DAY }], reward: { aero: round5(DAILY_AERO[ch] * 1.5), items: { [PKG_BY_CH[ch]]: 1 } },
+      objectives: [{ t: 'ordersToday', n: ORDERS_PER_DAY }], reward: { aero: round5(DAILY_AERO[ch] * 1.5), items: { [PKG_BY_CH[ch]]: 1 }, gems: GEM_REWARDS.orderBonus }, // [cur26] gems
     });
     for (const q of D.list) QUEST_BY_ID[q.id] = q;
     this.game.emit?.('ordersRefreshed', { day: key });

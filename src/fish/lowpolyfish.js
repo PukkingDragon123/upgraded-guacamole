@@ -377,15 +377,19 @@ function buildFish(c, ph, inflStep, gape, hi) {
     if (mouth.type === 'inferior') { const ub = (mouth.u0 ?? 0.05) + k * (mouth.u - (mouth.u0 ?? 0.05)); return M.botL(ub) + (mouth.lift ?? 0.012) * L * Math.sin(Math.PI * k); }
     return mTipY + (mCornerY - mTipY) * k - (mouth.curve ?? 0.006) * L * Math.sin(Math.PI * k);
   };
-  const gAng = mouth && gape > 0 && mouth.type !== 'inferior' ? gape * (mouth.gapeK ?? 0.42) : 0;
+  // [deep26] mouth.rest: deep-sea predators hang their jaws a little open at rest (teeth on show); mouth.thrust: the
+  // lower jaw slides forward as it opens (goblin shark)
+  const gOpen = mouth ? Math.max(gape, mouth.rest || 0) : 0;
+  const gAng = mouth && gOpen > 0 && mouth.type !== 'inferior' ? gOpen * (mouth.gapeK ?? 0.42) : 0;
   const hx = mouth ? xN - mouth.u * L : 0, hy = mouth ? mouthY(mouth.u) : 0;
+  const thrust = mouth?.thrust ? mouth.thrust * L / (mouth.gapeK ?? 0.42) : 0;
   const jaw = (p) => {
     if (!gAng) return p;
     const u = (xN - p[0]) / L;
     if (u > mouth.u * 1.3 || p[1] >= mouthY(Math.min(u, mouth.u))) return p;
     const w = smooth(mouth.u * 1.3, mouth.u * 0.85, u) * gAng;
     const cs = Math.cos(-w), sn = Math.sin(-w), dx = p[0] - hx, dy = p[1] - hy;
-    return [hx + dx * cs - dy * sn, hy + dx * sn + dy * cs, p[2]];
+    return [hx + dx * cs - dy * sn + thrust * w, hy + dx * sn + dy * cs, p[2]];
   };
   const blind = flat ? rgb01(flat.blind || '#f4f2ee') : null;
   // ---- body loft
@@ -820,6 +824,25 @@ function buildFish(c, ph, inflStep, gape, hi) {
         const fix = (p) => D(up < 0 ? jaw(p) : p);
         const bb = base.map(fix), tp = fix(tip);
         part3(body, bb, tp, tc, W);
+      }
+    }
+  }
+  // ---- [deep26] long fangs (viperfish, loosejaw, seadevils): {u, len, up (+1 rises from the lower jaw, -1 hangs from
+  // the upper jaw), w (base width / len), lean (tip forward, / len), out (how far out on the flank)}
+  if (S.fangs && mouth) {
+    const tc = rgb01(S.mouth?.teeth?.col || '#f4f8ff');
+    for (const fg of S.fangs) {
+      const u = Math.max(0.004, fg.u), X = xN - u * L, Y = mouthY(Math.min(u, mouth.u));
+      const up = fg.up ?? 1, tl = fg.len * L;
+      const w = Math.max(0.0045 * L, tl * (fg.w ?? 0.14));
+      const z = surf(u, Y) * (fg.out ?? 0.82);
+      const lean = (fg.lean ?? 0.12) * tl;
+      for (const sd of [1, -1]) {
+        const y0 = Y - up * 0.004 * L;
+        const base = [[X - w, y0, sd * z], [X + w, y0, sd * z], [X, y0, sd * Math.max(0, z - w * 1.4)]];
+        const tip = [X + lean, Y + up * tl, sd * z * 1.04];
+        const fix = (p) => D(up > 0 ? jaw(p) : p);
+        part3(body, base.map(fix), fix(tip), tc, W);
       }
     }
   }

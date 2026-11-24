@@ -517,7 +517,10 @@ export function* realLayoutJob(c, r, infl = 0) {
           const sl = S.slits;
           for (let k = 0; k < sl.n; k++) {
             const us = sl.u0 + (sl.u1 - sl.u0) * (k / Math.max(1, sl.n - 1));
-            if (Math.abs((u - us - (v - 0.4) * 0.03) * L * r) < 0.55 && v > sl.v0 + k * (sl.dv ?? 0) && v < sl.v1) tone3(o, -0.35);
+            const ds = (u - us - (v - 0.4) * 0.03) * L * r;
+            if (Math.abs(ds) < 0.55 && v > sl.v0 + k * (sl.dv ?? 0) && v < sl.v1) tone3(o, -0.35);
+            // [deep26] frilled gill margins (frilled shark): a wavy pale frill trailing each slit
+            else if (sl.frill && ds >= 0.55 && ds < 0.55 + (sl.frillW ?? 1.6) * (0.75 + 0.25 * Math.sin(v * 60)) && v > sl.v0 - 0.04 && v < sl.v1 + 0.04) mix3(o, o, hexRGB(sl.frill), 0.75);
           }
         }
         if (lat && u >= lat.u0 && u <= lat.u1) {

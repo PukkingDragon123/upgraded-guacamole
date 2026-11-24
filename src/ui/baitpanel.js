@@ -298,7 +298,7 @@ export class BaitPanel {
       if (button(ui, ctx, ox + 10 + i * 36, y, 32, 18, 'x' + b, { tone: this.batch === b ? 'green' : 'glass', active: this.batch === b })) this.batch = b;
     });
     const chk = canCraft(st, rec, this.batch, DEPS);
-    if (splashButton(ui, ctx, ox + ow - 92, y - 1, 84, 20, 'Craft!', { tone: 'orange', disabled: !chk.ok, sound: 'ui_buy', tip: chk.ok ? `Make ${this.batch}` : chk.reason === 'items' ? 'Need more materials' : chk.reason === 'aero' ? 'Need more Aero' : null })) {
+    if (splashButton(ui, ctx, ox + ow - 92, y - 1, 84, 20, 'Craft!', { tone: 'orange', disabled: !chk.ok, sound: 'ui_buy', tip: chk.ok ? `Make ${this.batch}` : chk.reason === 'items' ? 'Need more materials' : chk.reason === 'aero' ? 'Need more Aero Bucks' : null })) {
       const res = craftCustom(st, rec, this.batch, DEPS);
       if (res.ok) {
         g.toast?.(`Crafted ${this.batch}x ${res.bait.name}!`, 'sparkle');
