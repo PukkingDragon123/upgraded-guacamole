@@ -68,7 +68,7 @@ export const SCRIPTS = {
       { n: 'fizz', s: 'Bring me Aero Bucks and I will brew rods, tanks and gadgets. Mostly *non*-explosive!', shot: 'prop', act: 'point', fx: 'flask', emote: 'exclaim', re: { seal: 'worried' }, pl: 'jump' },
       { n: 'seal', s: 'And down at the very bottom... something HUGE keeps *spinning*.', shot: 'two', to: 'fizz', act: 'point', key: 'point', emote: 'question', pl: 'think' },
       { boss: true },
-      { n: 'seal', s: 'But first things first: let\'s fill that goldfish jar. *Splash down*!', shot: 'group', act: 'clap', key: 'cheer', re: { fizz: 'cheer' }, pl: 'cheer' },
+      { n: 'seal', s: 'But first things first: let\'s fill that Nano Tank. *Splash down*!', shot: 'group', act: 'clap', key: 'cheer', re: { fizz: 'cheer' }, pl: 'cheer' },
     ],
     finale: [
       { n: 'seal', s: 'You did it! The (OS)cean has a brand new *legend*!', act: 'clap', key: 'cheer', re: { fizz: 'cheer' }, pl: 'cheer' },

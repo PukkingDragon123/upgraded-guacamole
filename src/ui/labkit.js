@@ -61,7 +61,7 @@ export function pill(ui, ctx, x, y, w, h, label, o = {}) {
   const r = { x, y, w, h };
   const hov = !o.disabled && ui.hover(r);
   const down = hov && ui.inp.down;
-  drawAeroButton(ctx, x, y, w, h, { label, icon: o.icon || null, tone: o.tone || 'aqua', font: o.font, state: o.disabled ? 'disabled' : down ? 'down' : hov ? 'hover' : o.active ? 'down' : 'normal' });
+  drawAeroButton(ctx, x, y, w, h, { label, icon: o.icon || null, tone: o.tone || 'aqua', font: o.font, fixedFont: o.fixedFont, state: o.disabled ? 'disabled' : down ? 'down' : hov ? 'hover' : o.active ? 'down' : 'normal' });
   if (hov && o.tip) ui.tip = o.tip;
   if (hov) ui.markHot?.('lab' + label + x + y);
   if (!o.disabled && ui.clicked(r)) { ui.game.audio.play(o.sound || 'ui_click'); return true; }

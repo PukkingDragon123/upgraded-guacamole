@@ -15,7 +15,7 @@ import { AERO, CURRENCY, fmtAero, aeroSurface, aeroCached, drawAeroCoin, drawSpa
 import { iconFrame } from '../gfx/bigicons.js';
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { drawPop3D, text3dCanvas, POP_PALETTE } from './pop3d.js'; // [phase9:ui]
-import { drawDrop, drawGem, drawDropSplash, drawGemShards, pxSparkle } from './gemui.js'; // [cur26] pixel-art wallet
+import { drawWalletPlaque, walletSize, walletTip, walletTick, walletP } from './gemui.js'; // [wallet32] pixel-art wallet
 import { gems as gemCount, GEM_NAME } from '../game/gems.js'; // [cur26]
 
 const GHOST_IDS = new Set(['journal', 'inventory', 'wardrobe', 'settings', 'bait', 'baitshop', 'multiplayer', 'workshop', 'quests', 'lab', 'fishmgr']);
@@ -89,6 +89,9 @@ export class UI {
   }
 
   toast(text, icon = 'info', time = 3.5, o = {}) {
+    // [polish32] the same message again while it is still up: count it (x2, x3 ...) and keep it up, no duplicate plate
+    const dup = this.toasts.find((t) => t.text === text && t.icon === icon && t.t < t.max - 0.4);
+    if (dup) { dup.n = (dup.n || 1) + 1; dup.max = Math.max(dup.max, dup.t + time); dup.bump = 1; return; }
     this.toasts.push({ text, icon, t: 0, max: time, pal: o.palette || null }); // [food24] o.palette: the 3D letters' palette
     if (this.toasts.length > 4) this.toasts.shift();
   }
@@ -96,7 +99,7 @@ export class UI {
   update(dt) {
     this.time += dt;
     setUiScale(this.game.state?.settings?.uiScale || 'big'); // [phase6:ui]
-    for (const t of this.toasts) t.t += dt;
+    for (const t of this.toasts) { if (!t.held) t.t += dt; t.bump = Math.max(0, (t.bump || 0) - dt * 4); } // [polish32] held = waiting for room
     this.toasts = this.toasts.filter((t) => t.t < t.max);
     this.hoverPrev = this.hoverKey; this.hoverKey = null; // [polish17] hover tick bookkeeping (one frame of memory)
     const g = this.game;
@@ -283,11 +286,13 @@ export class UI {
   }
 
   coinTarget() {
+    if (this.hdrWallet && this.time - this.hdrWallet.time < 0.15) return { ...this.hdrWallet.drop }; // [wallet32] a window's header wallet
     if (this.wallet?.drop) return { x: this.wallet.drop.x, y: this.wallet.drop.y }; // [cur26] the droplet icon
     const r = this.coinRect || { x: this.game.screen.W - 90, y: 6, w: 80, h: 20 };
     return { x: r.x + Math.round(r.h * 0.52), y: r.y + Math.round(r.h / 2) };
   }
   gemTarget() { // [cur26] the gem icon on the wallet
+    if (this.hdrWallet && this.time - this.hdrWallet.time < 0.15) return { ...this.hdrWallet.gem }; // [wallet32]
     if (this.wallet?.gem) return { x: this.wallet.gem.x, y: this.wallet.gem.y };
     return { x: this.game.screen.W - 30, y: 20 };
   }
@@ -307,103 +312,31 @@ export class UI {
     }
   }
 
-  // [cur26] The wallet: a hand-drawn 2D PIXEL-ART plaque top right (stepped corners, ink outline, a broken highlight
-  // line, rivets, little ripple marks) with two inset wells: the Aero Bucks droplet + count (blue half) and the Byte
-  // Gems crystal + count (violet half). Pixel-font numbers tick up; a gain splashes the droplet (pixel droplets arc out)
-  // or makes the gem glint (a diagonal shine sweep + twinkles); a pixel drip forms under the droplet now and then.
-  // 1 art px = p logical px (half-px steps are single device px on the 2x UI layer).
+  // [wallet32] The wallet: the hand-drawn pixel-art plaque top right (src/ui/gemui.js drawWalletPlaque: brass frame +
+  // rivets, blue sea-glass Aero Bucks half, violet Byte Gems half, recessed wells with two-tone pixel digits that hop
+  // as they tick up, droplet splash / gem glint on gains). 1 art px = walletP(mode) logical px (whole device px).
+  // While a window shows its own header wallet (drawHeaderWallet) or a window covers this corner, the plaque slides
+  // up out of the way, so there is never a second wallet peeking out beside a window.
   drawWallet(ctx) {
-    const g = this.game, W = g.screen.W, t = this.time;
-    const mode = uiScaleMode();
-    const p = mode === 'huge' ? 2.5 : mode === 'normal' ? 1.5 : 2;
-    const font = mode === 'big' ? 'normal' : 'big', sc = mode === 'normal' ? 1 : 2;
-    const cap = capH(font) * sc;
-    const rm = !!g.state?.settings?.reducedMotion;
-    const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'M' : fmtAero(n));
-    const aTxt = fmt(Math.floor(this.coinShown)), gTxt = String(Math.floor(this.gemShown));
-    const aw = Math.max(measureText(aTxt, font, sc), measureText('0000', font, sc)), gw = Math.max(measureText(gTxt, font, sc), measureText('00', font, sc));
-    const u = (n) => Math.round(n * p * 2) / 2;
-    const PH = u(18), wellH = u(12);
-    const dropW = u(11), gemW = u(13);
-    const segA = u(3) + dropW + u(3) + aw + u(6), segG = u(3) + gemW + u(3) + gw + u(6);
-    const PW = u(3) + segA + u(3) + segG + u(3);
+    const g = this.game, W = g.screen.W, dt = this.dtLast || 1 / 60;
+    walletTick(this, dt);
+    const p = walletP(uiScaleMode());
     const m = Math.round(6 * uiK());
-    const hov = !this.blocking && this.hover({ x: W - PW - m - 2, y: m, w: PW, h: PH + u(2) });
-    this.pillHov = (this.pillHov || 0) + ((hov ? 1 : 0) - (this.pillHov || 0)) * Math.min(1, (this.dtLast || 1 / 60) * 14);
-    const lift = hov ? u(1) : 0;
-    const x = Math.round(W - PW - m - 2), y = Math.round(m) - lift + (this.coinBump > 0.5 ? u(0.5) : 0);
-    this.coinRect = { x, y, w: PW, h: PH };
-    const xA = x + u(3), xG = xA + segA + u(3);
-    const ink = hov ? '#123a66' : '#0d2340';
-    // drop shadow + body outline (stepped corners)
-    ctx.fillStyle = 'rgba(4,22,44,0.32)';
-    ctx.fillRect(x + u(2), y + PH, PW - u(3), u(1) + lift);
-    ctx.fillStyle = ink;
-    ctx.fillRect(x + u(2), y, PW - u(4), PH); ctx.fillRect(x + u(1), y + u(1), PW - u(2), PH - u(2)); ctx.fillRect(x, y + u(2), PW, PH - u(4));
-    // the two halves: blue sea-glass / violet crystal
-    const half = (x0, w, c) => {
-      ctx.fillStyle = c.base; ctx.fillRect(x0, y + u(1), w, PH - u(2));
-      ctx.fillStyle = c.top; ctx.fillRect(x0, y + u(1), w, u(5));
-      ctx.fillStyle = c.bot; ctx.fillRect(x0, y + PH - u(4), w, u(3));
-      // little ripple marks in the top band (hand-drawn: irregular spacing)
-      ctx.fillStyle = c.rip;
-      for (let i = 0, rx = x0 + u(4); rx < x0 + w - u(4); i++, rx += u(7 + (i % 3) * 2)) { ctx.fillRect(rx, y + u(3), u(2), u(1)); ctx.fillRect(rx + u(2), y + u(2), u(1), u(1)); }
-    };
-    const blue = { base: '#21608f', top: '#2e7db2', bot: '#174a74', rip: '#4f9fcf', hi: '#8fdcf6', well: '#0b2642', wt: '#06182c', wb: '#2b6d9c' };
-    const vio = { base: '#46338a', top: '#5a45aa', bot: '#33246a', rip: '#7a62c8', hi: '#c6aaf6', well: '#1d1344', wt: '#120a2e', wb: '#5b3ea6' };
-    half(x + u(1), xG - u(1.5) - (x + u(1)), blue);
-    half(xG - u(1.5), x + PW - u(1) - (xG - u(1.5)), vio);
-    // broken highlight line along the top (with a gap or two, like a quick pen stroke)
-    ctx.fillStyle = blue.hi; ctx.fillRect(x + u(3), y + u(1), Math.round((xG - x - u(8)) * 0.62), u(1)); ctx.fillRect(x + u(2), y + u(2), u(1), u(1));
-    ctx.fillRect(x + u(5) + Math.round((xG - x - u(8)) * 0.62), y + u(1), u(3), u(1));
-    ctx.fillStyle = vio.hi; ctx.fillRect(xG + u(1), y + u(1), Math.round((x + PW - xG - u(4)) * 0.55), u(1));
-    // the seam between the halves: an ink notch with a light bevel
-    ctx.fillStyle = ink; ctx.fillRect(xG - u(2), y + u(1), u(1), PH - u(2));
-    ctx.fillStyle = '#3c8cc0'; ctx.fillRect(xG - u(3), y + u(3), u(1), PH - u(7));
-    ctx.fillStyle = '#7a62c8'; ctx.fillRect(xG - u(1), y + u(3), u(1), PH - u(7));
-    // rivets at both ends
-    for (const [rx, c] of [[x + u(1.5), '#a8e6ff'], [x + PW - u(3.5), '#dcc8ff']]) {
-      ctx.fillStyle = c; ctx.fillRect(rx, y + u(8), u(2), u(2));
-      ctx.fillStyle = ink; ctx.fillRect(rx + u(1), y + u(9), u(1), u(1));
-    }
-    // inset wells for the numbers
-    const well = (wx, ww, c) => {
-      const wy = y + Math.round((PH - wellH) / 2);
-      ctx.fillStyle = c.well; ctx.fillRect(wx + u(1), wy, ww - u(2), wellH); ctx.fillRect(wx, wy + u(1), ww, wellH - u(2));
-      ctx.fillStyle = c.wt; ctx.fillRect(wx + u(1), wy, ww - u(2), u(1));
-      ctx.fillStyle = c.wb; ctx.fillRect(wx + u(1), wy + wellH - u(1), ww - u(2), u(1));
-      return wy;
-    };
-    const aWx = xA + u(3) + dropW + u(2), gWx = xG + u(3) + gemW + u(2);
-    const wy = well(aWx, aw + u(6), blue); well(gWx, gw + u(6), vio);
-    const ty = Math.round(wy + (wellH - cap) / 2);
-    drawText(ctx, aTxt, aWx + u(3) + aw, ty, { font, scale: sc, align: 'right', color: this.coinBump > 0.4 ? '#ffffff' : '#dff8ff', shadow: '#03101e' });
-    drawText(ctx, gTxt, gWx + u(3) + gw, ty, { font, scale: sc, align: 'right', color: this.gemBump > 0.4 ? '#ffffff' : '#f0e4ff', shadow: '#0c0620' });
-    // the droplet (squashes + splashes when Aero Bucks land; a slow idle wobble otherwise)
-    const dcx = xA + u(3) + dropW / 2, dcy = y + PH / 2;
-    const idle = rm ? 0 : Math.max(0, Math.sin(t * 1.3)) ** 12 * 0.5;
-    drawDrop(ctx, dcx, dcy, p, { squash: Math.max(this.coinBump > 0 ? Math.sin(this.coinBump * Math.PI) : 0, idle) });
-    if (!rm && (t * 0.37) % 1 < 0.05) pxSparkle(ctx, dcx - u(1.5), dcy - u(3), p * 0.5, 1, '#ffffff');
-    if (this.coinBump > 0) drawDropSplash(ctx, dcx, dcy, p * 0.75, this.coinBump);
-    // a drip forms under the droplet half and falls off now and then (pure charm)
-    if (!rm) {
-      const dt0 = (t + 1.7) % 7.5;
-      const dxp = Math.round(dcx - u(0.5));
-      if (dt0 < 1.2) { const hh = dt0 < 0.6 ? 1 : 2; ctx.fillStyle = '#4fb4ec'; ctx.fillRect(dxp, y + PH, u(1), u(hh)); }
-      else if (dt0 < 2.0) { const k = (dt0 - 1.2) / 0.8; ctx.globalAlpha *= 1 - k; ctx.fillStyle = '#8ae6ff'; ctx.fillRect(dxp, Math.round(y + PH + u(2) + k * k * u(14)), u(1), u(2)); ctx.globalAlpha /= Math.max(0.001, 1 - k); }
-    }
-    // the gem (a shine sweeps across it every few seconds and on every gem that ticks in)
-    const gcx = xG + u(3) + gemW / 2, gcy = y + PH / 2;
-    const sweep = this.gemBump > 0 ? 1 - this.gemBump : rm ? -1 : ((t * 0.32) % 1.6) - 0.3;
-    drawGem(ctx, gcx, gcy - u(0.5) - (this.gemBump > 0 ? Math.sin(this.gemBump * Math.PI) * u(1) : 0), p, { glint: sweep, sparkle: this.gemBump > 0 ? this.gemBump : 0 });
-    if (this.gemBump > 0) drawGemShards(ctx, gcx, gcy, p * 0.75, this.gemBump);
-    this.wallet = { drop: { x: Math.round(dcx), y: Math.round(dcy) }, gem: { x: Math.round(gcx), y: Math.round(gcy) }, a: { x: x, y, w: xG - x - u(1.5), h: PH }, g: { x: xG - u(1.5), y, w: x + PW - xG + u(1.5), h: PH } };
-    if (hov) {
-      const onGem = this.inp.x >= xG - u(1.5);
-      this.tip = onGem
-        ? `{bytegem} ${GEM_NAME}: ${gemCount(g.state)}\nEarned from quests, orders and milestones.\nSkip timers or buy cosmetics with them.`
-        : `{abdrop} ${CURRENCY}: ${fmtAero(g.state.coins || 0)}\nWater-droplet money from fish and your tank.`;
-    }
+    const sz = walletSize(this, { p });
+    const right = W - m - 2, rect = { x: right - sz.w, y: m, w: sz.w, h: sz.h + p };
+    const hdr = this.hdrWallet && this.time - this.hdrWallet.time < 0.15;
+    const covered = this.stack.some((q) => q.rect && q.rect.x < rect.x + rect.w && q.rect.x + q.rect.w > rect.x && q.rect.y < rect.y + rect.h && q.rect.y + q.rect.h > rect.y);
+    this.walletHide = clamp01((this.walletHide || 0) + ((hdr || covered) ? dt * 7 : -dt * 7));
+    this.coinRect = { x: rect.x, y: rect.y, w: sz.w, h: sz.h };
+    if (this.walletHide >= 1) { this.wallet = null; return; }
+    const off = Math.round(ease.inCubic(this.walletHide) * (sz.h + m + 4));
+    const hov = !this.blocking && this.walletHide <= 0 && this.hover(rect);
+    const a0 = ctx.globalAlpha;
+    if (this.walletHide > 0) ctx.globalAlpha = a0 * (1 - this.walletHide);
+    const lay = drawWalletPlaque(ctx, this, { right, y: m - off, p, hov, id: 'hud' });
+    ctx.globalAlpha = a0;
+    this.wallet = { drop: lay.drop, gem: lay.gem, a: lay.a, g: lay.g };
+    if (hov) this.tip = walletTip(this, this.inp.x >= lay.g.x);
   }
 
   // (pre-[cur26]) The Aero counter: a glossy frosted pill top-right with a spinning 3D Aero drop and the amount (scales with the UI size).
@@ -482,14 +415,30 @@ export class UI {
     // [polish17] while a window is open, toasts sit in the free strip under it (above the hotbar) instead of on top
     // of its header buttons (close, wallet); when there is no room there they keep the top-right spot
     const a = this.blocking ? this.active : null;
+    // [polish32] only as many toasts as fit beside an open window show at once; the others wait (their clock is held)
+    // so they never pile over the window's header or the HUD quest tracker
+    const slotH = Math.round(44 * Math.min(1.3, k));
+    let maxShow = 4, top = true;
     if (a?.rect && this.toasts.length) {
-      const need = this.toasts.length * Math.round(34 * Math.min(1.3, k)) + 8;
       const below = a.rect.y + a.rect.h + Math.round(8 * k), floor = Math.min(g.screen.H, g.hud?.topY?.() ?? g.screen.H) - 4;
-      if (below + need <= floor && y + need > a.rect.y) y = below;
+      const fitBelow = Math.floor((floor - below) / slotH), fitTop = Math.floor((a.rect.y - y) / slotH);
+      if (fitTop < this.toasts.length) {
+        if (fitBelow >= 1 && fitBelow >= fitTop) { y = below; maxShow = fitBelow; top = false; } else maxShow = Math.max(1, fitTop);
+      }
     }
-    for (const t of this.toasts) {
+    let right = W - Math.round(10 * k) - 6; // [polish17] room inside the plate so 3D letters never touch its edge
+    // [polish32] in the tank the dock column owns the right edge: toasts sit left of it
+    if (g.state.view === 'aquarium') { try { const d = g.aquarium?.fullLayout?.()?.dock; if (d && d.x > W * 0.5) right = Math.min(right, d.x - Math.round(8 * k) - 6); } catch { /* optional */ } }
+    const shown = this.toasts.slice(-maxShow);
+    for (const t of this.toasts) t.held = !shown.includes(t);
+    let bot = 0;
+    for (const t of shown) {
       const fadeIn = Math.min(1, t.t * 3.2), fadeOut = Math.min(1, (t.max - t.t) * 2.5);
-      const lines = wrapText(t.text, Math.round(92 * k), 'normal').slice(0, 2);
+      // [polish32] long messages get a wider plate instead of being cut after two lines
+      const txt = t.n > 1 ? `${t.text} x${t.n}` : t.text;
+      let lines = wrapText(txt, Math.round(92 * k), 'normal');
+      if (lines.length > 2) lines = wrapText(txt, Math.round(128 * k), 'normal');
+      lines = lines.slice(0, 3);
       const pal = t.pal || POP_PALETTE[t.icon] || 'white', TS = 1.25;
       const sizes = lines.map((l) => text3dCanvas(l, { palette: pal, scale: TS }));
       if (sizes.some((c) => !c)) { this.drawToastFallback(ctx, t, y); y += 22; continue; }
@@ -497,11 +446,11 @@ export class UI {
       const D = Math.round(24 * Math.min(1.3, k));
       const h = Math.max(D, th), w = tw + D + 6;
       const lift = (1 - fadeOut) * 14;
-      const right = W - Math.round(10 * k) - 6; // [polish17] room inside the plate so 3D letters never touch its edge
-      const x = right - w + (1 - ease.outCubic(fadeIn)) * 40;
+      const x = right - w + (1 - ease.outCubic(fadeIn)) * 40 - Math.round(Math.sin((t.bump || 0) * Math.PI) * 5); // [polish32] a repeat nudges it
       // [polish17] toasts glide to a new slot (a panel opening / closing, an older toast leaving) instead of jumping
       t.yy = t.yy == null ? y : t.yy + (y - t.yy) * Math.min(1, (this.dtLast || 1 / 60) * 12);
       const cy = t.yy + h / 2 - lift;
+      bot = Math.max(bot, t.yy + h + 8);
       ctx.save();
       ctx.globalAlpha = Math.min(fadeIn * 1.5, fadeOut);
       // [phase10:ui] a bevelled voxel plate under the toast (deep glass slab, pops in with a little squash)
@@ -527,6 +476,11 @@ export class UI {
       }
       y += h + 12 + Math.round(6 * k); // [phase10:ui] room for the plates
     }
+    // [polish32] where the toast stack ends at the top right (the HUD quest tracker slides down under it), eased
+    const tgt = top ? bot : 0;
+    const dtl = this.dtLast || 1 / 60;
+    const tb = this.toastBottom || 0;
+    this.toastBottom = Math.abs(tgt - tb) < 0.5 ? tgt : tb + (tgt - tb) * Math.min(1, dtl * (tgt > tb ? 14 : 6));
   }
 
   // only while the Alagard font is still loading: a plain line of text, no box

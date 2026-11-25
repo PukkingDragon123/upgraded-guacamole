@@ -28,6 +28,7 @@ import { drawAeroButton, drawAeroSurface, aeroSurface, aeroCached, drawGlossOrb,
 import { getBigIcon } from '../gfx/bigicons.js';
 import { unlocked as labUnlocked } from '../game/lab.js';
 import { gems, canSpendGems, spendGems, GEM_NAME } from '../game/gems.js';
+import { drawHeaderWallet } from './gemui.js'; // [wallet32]
 import { drawWardrobeRoom, warmWardrobeRoom, wardrobeRoomStats } from './wardroberoom.js';
 import { HI, HI_ON } from '../gfx/hires.js';
 import { drawPop3D } from './pop3d.js';
@@ -36,7 +37,7 @@ const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const SAY = {
   equip: ['Ooh!', 'Fresh!', 'So shiny!', 'Bubbly!', 'Love it!', 'Yes!'],
   buy: ['Mine!', 'Ka-ching!', 'Sparkly!'],
-  broke: ['Need more Aero...', 'Too pricey!'],
+  broke: ['Need more Aero Bucks...', 'Too pricey!'],
   brokeGems: ['Need more gems...', 'Quests give gems!'],
   poke: ['Hehe!', 'Boop!', 'Pop?', 'Hey!'],
   spin: ['Wheee!', 'Dizzy...'],
@@ -354,21 +355,7 @@ export class WardrobePanel {
     const cr = { x: r.x + r.w - 26, y: r.y + 7, w: 19, h: 19 };
     this.frameClose = cr;
     if (ui.button(ctx, cr.x, cr.y, cr.w, cr.h, '', { icon: 'cross', tip: 'Close (Esc)', sound: 'ui_close' })) ui.close(this.id);
-    // wallet: Aero + Byte Gems
-    let x = cr.x - 5;
-    const pill = (txt, tone, tip, coin) => {
-      const w = measureText(txt, 'normal') + 25;
-      x -= w;
-      const rr = { x, y: r.y + 8, w, h: 18 };
-      drawAeroButton(ctx, rr.x, rr.y, w, 18, { tone, label: '', radius: 6 });
-      if (coin) drawAeroCoin(ctx, rr.x + 10, rr.y + 9, 5, this.t);
-      else { const gi = gemIcon(); ctx.drawImage(gi, Math.round(rr.x + 10 - gi.width / 2), Math.round(rr.y + 9 - gi.height / 2)); }
-      drawText(ctx, txt, rr.x + 19, rr.y + 5, { color: '#ffffff', shadow: tone === 'purple' ? '#341670' : '#0a3e74' });
-      if (ui.hover(rr)) ui.tip = tip;
-      x -= 4;
-    };
-    pill(String(gems(st)), 'purple', GEM_NAME, false);
-    pill(fmtAero(st.coins || 0), 'sky', CURRENCY, true);
+    drawHeaderWallet(ctx, ui, cr.x - 5, r.y + 7); // [wallet32] the shared pixel wallet (was two glossy pills)
   }
 
   // ---------------------------------------------------------------- stage

@@ -473,7 +473,8 @@ export class Gear {
     let hand = jammed ? 0 : (cr.speed || 0) * 60 * rk;
     // [simple24] other ways to spin: hold W / Up / R (a steady crank), tap them, or roll the mouse wheel
     const inp = F.input;
-    const meter = B?.gearMode === 'meter';
+    // [polish32] no battle (the gear sliding in / out, a boss intro) = the meter housing too, not the old round RPM gauge
+    const meter = !B || B.gearMode === 'meter';
     if (meter && !jammed && inp) {
       const keys = ['w', 'ArrowUp', 'r'];
       if (keys.some((k) => inp.key?.(k))) hand = Math.max(hand, 135);
@@ -683,7 +684,8 @@ export class Gear {
     const T = B ? clamp(B.tension ?? 0, 0, 1.2) : 0;
     ctx.save();
     ctx.globalAlpha = clamp01(vis * 1.4);
-    const meter = B?.gearMode === 'meter';
+    // [polish32] no battle (the gear sliding in / out, a boss intro) = the meter housing too, not the old round RPM gauge
+    const meter = !B || B.gearMode === 'meter';
     const kk = isHi(ctx) ? HI : 1;
     // ---- box reels: the glass plate under the RPM gauge and the progress ring
     if (!meter) {
@@ -868,7 +870,7 @@ export class Gear {
   // streak of pixel chevrons along the rim while it spins; during a beat the gear rests ('STOP' is the meter's job).
   drawSpinHint(ctx, cx, cy, L, B) {
     const t = this.t, S = L.S, R = L.R;
-    const slow = this.rpm < 40 && !B.beat && !B.stunned;
+    const slow = !!B && this.rpm < 40 && !B.beat && !B.stunned;
     if (slow) {
       const a = t * 6;
       const rr = R * 0.62;

@@ -29,6 +29,7 @@ import { SHOP_LEVELS } from './isp.js';
 import { installStore } from './shop.js';
 import { countOf } from './bait.js';
 import { SPECIES } from '../fish/species.js';
+import { drawHeaderWallet } from '../ui/gemui.js'; // [wallet32]
 
 const INK = AERO.ink, INK_SOFT = AERO.inkSoft;
 const STATS = [
@@ -164,15 +165,9 @@ export class ShopPanel {
 
   // ---------------------------------------------------------------- header wallet
   drawWallet(ctx, ui, right, y) {
-    const txt = fmtAero(this.game.ui.coinShown ?? this.game.state.coins);
-    const w = measureText(txt) + 26, h = 18;
-    const x = right - w;
-    const bump = this.flash > 0 ? Math.round(Math.sin(this.flash * 12) * 2) : 0;
-    ctx.drawImage(aeroCached(`shopwallet|${w}`, () => aeroSurface(w, h, { tone: 'frost', r: 'pill', gloss: 0.75, glossH: 8, curve: 2, rim: 0.9, glow: 0.5, glowColor: '#bfeaff', sparkle: 1 })), x, y - bump);
-    drawAeroCoin(ctx, x + 10, y + 9 - bump, 6, this.t);
-    drawText(ctx, txt, right - 7, y + 6 - bump, { align: 'right', color: INK, shadow: '#ffffff' });
-    this.walletAt = { x: x + 10, y: y + 9 };
-    if (ui.hover({ x, y, w, h })) ui.tip = CURRENCY;
+    // [wallet32] the shared pixel-art header wallet (Aero Bucks + Byte Gems), replacing the frosted Aero pill
+    const r = drawHeaderWallet(ctx, ui, right, y - 1);
+    this.walletAt = { x: r.x + 6, y: r.y + 9 };
   }
 
   // ---------------------------------------------------------------- Bubbles' counter

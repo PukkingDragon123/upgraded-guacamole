@@ -24,6 +24,7 @@ import { aeroSurface, aeroCached, drawAeroFrame, drawAeroCard, drawAeroCoin, fmt
 import { panelRect } from './ui.js';
 import { gemSkipButton } from './gemui.js'; // [cur26]
 import { wsSkipCost, wsSkip } from '../game/skips.js'; // [cur26]
+import { drawHeaderWallet } from './gemui.js'; // [wallet32]
 
 const BENCH_CATS = new Set(['build', 'decor', 'bait']);
 const CAT_ALIAS = { building: 'build', plans: 'decor', special: 'bait' }; // src/build/crafting.js categories
@@ -127,12 +128,7 @@ export class WorkshopPanel {
     this.fx.draw(ctx);
     FR.finish();
     // Aero balance chip in the header
-    const coinTxt = fmtAero(st.coins);
-    const cw = measureText(coinTxt, 'big') + 34;
-    const cx = L.r.x + L.r.w - 34 - cw;
-    ctx.drawImage(aeroCached(`wscoin|${cw}`, () => aeroSurface(cw, 22, { tone: 'white', r: 'pill', gloss: 0.7, glossH: 9, rim: 0.9 })), cx, L.r.y + 4);
-    drawAeroCoin(ctx, cx + 12, L.r.y + 15, 7, this.t);
-    drawText(ctx, coinTxt, cx + cw - 9, L.r.y + 10, { font: 'big', align: 'right', color: INK });
+    drawHeaderWallet(ctx, ui, L.r.x + L.r.w - 34, L.r.y + 6); // [wallet32] the shared pixel-art wallet (was a white Aero chip)
     if (ui.button(ctx, FR.close.x, FR.close.y, FR.close.w, FR.close.h, '', { icon: 'cross', tip: 'Close (Esc)' })) ui.close(this.id);
   }
 
@@ -330,8 +326,12 @@ export class WorkshopPanel {
     drawText(ctx, rc.name, x, y, { font: 'big', scale: measureText(rc.name, 'big', 2) <= w ? 2 : 1, color: INK });
     y += measureText(rc.name, 'big', 2) <= w ? 22 : 13;
     const rn = RARITY[rc.rarity]?.name || '';
-    ctx.fillStyle = col; ctx.fillRect(x, y, measureText(rn, 'small') + 10, 11);
-    drawText(ctx, rn.toUpperCase(), x + 5, y + 3, { font: 'small', color: '#ffffff', shadow: shade(col, -0.6) });
+    // [polish32] a square tag with a dark rim; common's pale grey gets its dark ink so the word reads
+    const tagC = rc.rarity === 'common' || !rc.rarity ? '#8496aa' : col, tagW = measureText(rn, 'small') + 10;
+    ctx.fillStyle = shade(tagC, -0.5); ctx.fillRect(x - 1, y - 1, tagW + 2, 13);
+    ctx.fillStyle = tagC; ctx.fillRect(x, y, tagW, 11);
+    ctx.fillStyle = mix(tagC, '#ffffff', 0.45); ctx.fillRect(x, y, tagW, 1);
+    drawText(ctx, rn.toUpperCase(), x + 5, y + 3, { font: 'small', color: '#ffffff', shadow: shade(tagC, -0.6) });
     if (rc.time) drawText(ctx, `${fmtT(rc.time)} craft`, x + w, y + 2, { font: 'normal', align: 'right', color: INK_SOFT });
     y += 16;
     const lines = wrapText(rc.desc || '', w, 'normal').slice(0, 3);

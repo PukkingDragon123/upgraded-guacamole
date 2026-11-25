@@ -1173,7 +1173,8 @@ export class Tutorial {
     if (this.step === 'card' && !g.ui?.isOpen?.('reveal')) return;
     // the target: bouncing pixel focus brackets (the guide's pointing fin is the arrow)
     if (!tg.noRing) {
-      if (tg.rect) this.drawPointer(ctx, tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2, Math.max(tg.rect.w, tg.rect.h) * 0.6, false);
+      // [polish32] brackets hug the target's own rect (a square box sized by its longest side overshot wide targets)
+      if (tg.rect) { const r = tg.rect, k = g.screen.W >= 1200 ? 2 : 1; AE.drawPixelBrackets?.(ctx, Math.round(r.x) - 3 * k, Math.round(r.y) - 3 * k, Math.round(r.w) + 6 * k, Math.round(r.h) + 6 * k, t, { gap: 2 * k, bounce: true, k }); if (Math.sin(t * 5) > 0.97) AE.drawSparkle?.(ctx, r.x + r.w + 2, r.y - 2, 2, 1); }
       else if (tg.point || tg.ring) { const p = tg.point || tg.ring; this.drawPointer(ctx, p[0], p[1], tg.small ? 10 : tg.ghost ? 26 : 18, false, tg.bang); }
     }
     // [tut16] the HUD part this step is about: pixel brackets hugging its rect
@@ -1353,6 +1354,7 @@ export class Tutorial {
     const end = this.step === 'done' || this.step === 'lessonDone';
     const i = end ? DOTS.length : DOTS.indexOf(this.step);
     if (i < 0 || (end && this.t > 2.5)) return;
+    if (this.game.state.view === 'aquarium') return; // [polish32] the tank's top plate / build toolbar own the top centre
     const W = this.game.screen.W;
     const k = Math.min(1.6, this.dlg.fontSize / 16);
     const n = DOTS.length, gap = Math.round(11 * k), x0 = Math.round(W / 2 - ((n - 1) * gap) / 2), y = Math.round(14 * k);

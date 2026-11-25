@@ -30,8 +30,9 @@
 //                                           the shared panel window: glass body, big icon + title, red close orb
 //   drawAeroCard(ctx, x, y, w, h, {tone='frost', inset})   frosted inner card
 // Eco accents (reference look: 2000s eco wallpapers):
-//   drawAeroLeaf(ctx, x, y, len, wid, angleDeg, {flip, tone})   one glossy pixel leaf, base at (x, y)
-//   drawLeafSprig(ctx, x, y, corner 'tl'|'tr'|'bl'|'br', scale=1)  a twig of 4-5 glossy leaves spilling from a corner
+//   drawAeroLeaf(ctx, x, y, len, wid, angleDeg, {tone})   one hand-drawn pixel leaf (nearest drawn angle), base at (x, y)
+//   drawLeafSprig(ctx, x, y, corner 'tl'|'tr'|'bl'|'br', scale=1 | 'L'|'S', px, {t, phase})  [wallet32] a hand-drawn
+//                                               pixel twig of 4-5 leaves rooted at (x, y) (src/ui/pixleaves.js)
 //   drawSunFlare(ctx, cx, cy, r, alpha=1)       soft pixel sun bloom with a star glint (no rays)
 //   drawArcLines(ctx, cx, cy, r0, n, {gap, a0, a1, alpha, w, h})   thin white arcs (clipped to w x h from 0,0 of ctx)
 //   drawSplash(ctx, x, y, w, {flip})            a curling water splash with droplets (base line at y)
@@ -45,6 +46,7 @@ import { hash1, bayer } from '../core/math.js';
 import { pixelBubble, pixelCloud } from '../gfx/pxsprites.js';
 import { alagardReady, alagardBitmap, loadAlagard } from '../gfx/alagard.js';
 import { HI, withHi, hiArt, autoHi, fitHi, dualArt } from '../gfx/hires.js'; // [phase9:ui]
+import { drawPixLeaf, drawLeafCluster } from './pixleaves.js'; // [wallet32] hand-drawn pixel leaves
 
 export const CURRENCY = 'Aero Bucks';
 export const AERO = {
@@ -685,8 +687,13 @@ let decor3d = null;
 export function setDecorRenderer(fn) { decor3d = fn; }
 //   drawVoxDecor(ctx, name, cx, cy, px, {t, phase, sway, still}) -> bool   centred, gently swaying
 export function drawVoxDecor(ctx, name, cx, cy, px, o = {}) {
-  if (!decor3d) return false;
   const t = o.t ?? performance.now() / 1000;
+  // [wallet32] leaf ornaments are hand-drawn 2D pixel sprites now (src/ui/pixleaves.js), centred like the voxel ones
+  if (name === 'leaves' || name === 'leaves_l') {
+    drawLeafCluster(ctx, name === 'leaves_l' ? 'tl' : 'tr', cx, cy, { center: true, size: px >= 36 ? 'L' : 'S', scale: px >= 96 ? 2 : 1, t, phase: o.phase, still: o.still });
+    return true;
+  }
+  if (!decor3d) return false;
   const turn = o.still ? 0 : Math.sin(t * 0.9 + (o.phase || 0)) * (o.sway ?? 0.18);
   let f = null;
   try { f = decor3d(name, Math.round(px), turn); } catch { f = null; }
@@ -790,7 +797,8 @@ export function drawAeroLabel(ctx, text, x, y, o = {}) {
   const tone = o.tone || 'glass';
   ctx.drawImage(aeroCached(`label|${w}|${h}|${tone}`, () => surfaceTex(w, h, { tone, r: 'pill', gloss: 0.6, glossH: Math.round(h * 0.45), curve: 1, rim: 0.8, glow: 0.4 })), lx, ly);
   const T = toneOf(tone);
-  drawText(ctx, text, lx + Math.round((w - tw) / 2), ly + Math.round((h - capH(font)) / 2), { font, color: T.text, shadow: T.text === '#ffffff' ? T.shadow : null });
+  // [polish32] light text gets its dark shadow on every tone (the grey COMMON label was pale-on-pale)
+  drawText(ctx, text, lx + Math.round((w - tw) / 2), ly + Math.round((h - capH(font)) / 2), { font, color: T.text, shadow: /^#[ef]/i.test(T.text || '') ? T.shadow : null });
   return { x: lx, y: ly, w, h };
 }
 
@@ -855,7 +863,8 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
   // (skipped when the window reaches the top-right HUD corner: they would sit on the Aero counter)
   const SW = ctx.canvas ? ctx.canvas.width / (ctx.__hi || 1) : Infinity;
   const nearHud = y < 84 && x + w > SW - 220;
-  if (deco && !nearHud && !drawVoxDecor(ctx, 'leaves', x + w + 12, y - 10, Math.round(56 * k), { t, phase: x * 0.01 })) drawLeafSprig(ctx, x + w + 4, y - 2, 'tr', k);
+  // [wallet32] a hand-drawn pixel twig rooted on the corner, spilling up and out (clear of the close orb below it)
+  if (deco && !nearHud) drawLeafCluster(ctx, 'tr', x + w - 3, y + 2, { size: k >= 1 ? 'L' : 'S', t, phase: x * 0.01 });
   const close = { x: x + w - 25, y: y + 6, w: 18, h: 18 };
   // finish(ctx): call after drawing the panel's content so the ornaments and the splash sit on top
   const finish = (c2 = ctx) => {
@@ -877,114 +886,18 @@ export function drawAeroCard(ctx, x, y, w, h, o = {}) {
 
 // ---------------------------------------------------------------- eco accents
 
-const LEAF_TONES = {
-  leaf: ['#13561a', '#2a8c22', '#52bf2c', '#8fe03a', '#d4ff7a'],
-  lime: ['#2a6a12', '#4aa61e', '#7fd636', '#b8f05a', '#ecffa8'],
-  deep: ['#0c4416', '#1c7024', '#36a034', '#68cc48', '#b4f080'],
-};
-
-function leafTex(len, wid, ang, flip, tone) {
-  const R = LEAF_TONES[tone] || LEAF_TONES.leaf;
-  const P = R.map((h) => rgbOf(h));
-  const a = (ang * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
-  const hw = wid / 2;
-  const pts = [[0, 0], [ca * len, sa * len], [ca * len * 0.5 - sa * hw, sa * len * 0.5 + ca * hw], [ca * len * 0.5 + sa * hw, sa * len * 0.5 - ca * hw]];
-  const minX = Math.floor(Math.min(...pts.map((q) => q[0]))) - 2, minY = Math.floor(Math.min(...pts.map((q) => q[1]))) - 2;
-  const maxX = Math.ceil(Math.max(...pts.map((q) => q[0]))) + 2, maxY = Math.ceil(Math.max(...pts.map((q) => q[1]))) + 2;
-  const W = maxX - minX, H = maxY - minY, ox = -minX, oy = -minY;
-  const b = new PixelBuffer(W, H);
-  const fs = flip ? -1 : 1;
-  const shape = (x, y) => {
-    const px = x + 0.5 - ox, py = y + 0.5 - oy;
-    const u = (px * ca + py * sa) / len, v = ((-px * sa + py * ca) / hw) * fs;
-    if (u < 0.02 || u > 1) return null;
-    let half = Math.pow(Math.sin(Math.PI * Math.min(1, Math.pow(u, 0.85) * 1.02)), 0.6) * (1 - 0.12 * u);
-    if (len > 18) half *= 1 - 0.07 * (0.5 + 0.5 * Math.sin(u * len * 1.1));
-    if (Math.abs(v) > half) return null;
-    return [u, v, half];
-  };
-  const inside = new Uint8Array(W * H);
-  const info = new Array(W * H);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const q = shape(x, y); if (q) { inside[y * W + x] = 1; info[y * W + x] = q; } }
-  const m = (x, y) => x >= 0 && y >= 0 && x < W && y < H && inside[y * W + x];
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    if (!inside[y * W + x]) continue;
-    const [u, v, half] = info[y * W + x];
-    let c;
-    if (!m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1)) c = P[0];
-    else if (Math.abs(v) < 0.09 + 0.05 * (1 - u)) c = P[4];
-    else {
-      const lit = v < 0 ? 1 : 0;
-      let k = 1.6 + lit * 1.0 - u * 0.5 + (1 - Math.abs(v) / half) * 0.35;
-      // side veins
-      const vein = (u * len * 0.42 - Math.abs(v) * hw * 0.32) % 4;
-      if (vein > 0 && vein < 0.7 && Math.abs(v) < half * 0.85) k += 0.55;
-      k = Math.max(0, Math.min(3.99, k));
-      const i = Math.floor(k), f = k - i, A = P[i], B = P[Math.min(4, i + 1)];
-      c = [A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, A[2] + (B[2] - A[2]) * f];
-      // glossy specular streak on the lit half
-      if (v < -0.18 && v > -0.62 && u > 0.18 && u < 0.72) {
-        const s = 0.42 * Math.sin(((u - 0.18) / 0.54) * Math.PI);
-        c = [c[0] + (255 - c[0]) * s, c[1] + (255 - c[1]) * s, c[2] + (255 - c[2]) * s];
-      }
-    }
-    b.set(x, y, packRGB(c[0], c[1], c[2]));
-  }
-  // stalk
-  for (let i = 0; i < 3; i++) { const sx = Math.round(ox - ca * i), sy = Math.round(oy - sa * i); if (sx >= 0 && sy >= 0 && sx < W && sy < H) b.set(sx, sy, packRGB(P[1][0], P[1][1], P[1][2])); }
-  const cv = b.toCanvas();
-  cv.ox = ox; cv.oy = oy;
-  return cv;
-}
-
 export function drawAeroLeaf(ctx, x, y, len, wid, angleDeg, o = {}) {
-  len = Math.max(4, Math.round(len)); wid = Math.max(3, Math.round(wid));
-  const ang = Math.round(angleDeg / 10) * 10;
-  const c = aeroCached(`leaf|${len}|${wid}|${ang}|${o.flip ? 1 : 0}|${o.tone || 'leaf'}`, () => {
-    const c1 = leafTex(len, wid, ang, !!o.flip, o.tone || 'leaf');
-    return withHi(c1, () => { const b = leafTex(len * HI, wid * HI, ang, !!o.flip, o.tone || 'leaf'); return fitHi(c1, b, c1.ox, c1.oy, b.ox, b.oy); });
-  });
-  ctx.drawImage(c, Math.round(x - c.ox), Math.round(y - c.oy));
+  // [wallet32] a hand-drawn pixel leaf at the nearest drawn angle (no rotated / stretched texture); `wid` and `flip`
+  // are implied by the art
+  drawPixLeaf(ctx, x, y, len, angleDeg, { tone: o.tone });
 }
-
-// Sprig layout for the top-left corner (leaves spill up and to the left); other corners mirror it.
-const SPRIG = [
-  { x: 28, y: -3, len: 22, wid: 14, ang: -28, flip: true, tone: 'lime' },
-  { x: 2, y: 12, len: 26, wid: 16, ang: 128, flip: false, tone: 'lime' },
-  { x: 3, y: 3, len: 34, wid: 20, ang: 174, flip: true, tone: 'deep' },
-  { x: 16, y: -4, len: 32, wid: 19, ang: -70, flip: true, tone: 'leaf' },
-  { x: 0, y: 0, len: 42, wid: 24, ang: -132, flip: false, tone: 'lime' },
-]
-
-function sprigTex(corner, scale) {
-  const fx = corner === 'tr' || corner === 'br' ? -1 : 1, fy = corner === 'bl' || corner === 'br' ? -1 : 1;
-  const S = Math.ceil(110 * scale), O = Math.ceil(52 * scale);
-  const c = makeCanvas(S, S);
-  const g = ctxOf(c);
-  // twig
-  for (let i = 0; i <= 40; i++) {
-    const k = i / 40, px = O + fx * (38 * k) * scale, py = O + fy * (-5 * Math.sin(k * Math.PI)) * scale;
-    g.fillStyle = '#1f6a18'; g.fillRect(Math.round(px), Math.round(py), 2, 2);
-    g.fillStyle = '#7ed43a'; g.fillRect(Math.round(px), Math.round(py), 1, 1);
-  }
-  for (const L of SPRIG) {
-    let a = L.ang;
-    if (fx < 0) a = 180 - a;
-    if (fy < 0) a = -a;
-    const flip = (fx * fy < 0) ? !L.flip : L.flip;
-    drawAeroLeaf(g, O + fx * L.x * scale, O + fy * L.y * scale, L.len * scale, L.wid * scale, a, { flip, tone: L.tone });
-  }
-  c.ox = O; c.oy = O;
-  return c;
-}
-
-export function drawLeafSprig(ctx, x, y, corner = 'tl', scale = 1) {
-  scale = Math.round(scale * 10) / 10;
-  const c = aeroCached(`sprig|${corner}|${scale}`, () => {
-    const c1 = sprigTex(corner, scale);
-    return withHi(c1, () => { const b = sprigTex(corner, scale * HI); return fitHi(c1, b, c1.ox, c1.oy, b.ox, b.oy); });
-  });
-  ctx.drawImage(c, Math.round(x - c.ox), Math.round(y - c.oy));
+// [wallet32] a hand-drawn pixel twig (src/ui/pixleaves.js) rooted at (x, y), spilling towards `corner`.
+// scale: a number (old API: >= 0.85 -> the big twig, >= 1.8 -> 2x) or a size 'L' | 'S' with an integer `px` scale;
+// o: {t, phase, still} for the 3-frame sway. Returns the drawn rect.
+export function drawLeafSprig(ctx, x, y, corner = 'tl', scale = 1, px = 1, o = {}) {
+  const size = typeof scale === 'string' ? scale : scale >= 0.85 ? 'L' : 'S';
+  const s = typeof scale === 'string' ? px : scale >= 1.8 ? 2 : 1;
+  return drawLeafCluster(ctx, corner, x, y, { size, scale: s, t: o.t, phase: o.phase, still: o.still });
 }
 
 // [phase8:ui] pixel sun: a bayer-dithered bloom in three steps (rays removed in polish17)

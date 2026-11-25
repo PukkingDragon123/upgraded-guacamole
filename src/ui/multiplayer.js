@@ -55,11 +55,14 @@ export class MultiplayerPanel {
     drawGlossOrb(ctx, sx + 8, r.y + 15, 3, net.status === 'online' ? '#d8ffb0' : '#ffffff');
     drawText(ctx, label, sx + 14, r.y + 12, { font: 'small', color: '#ffffff' });
     if (ui.button(ctx, F.close.x, F.close.y, F.close.w, F.close.h, '', { icon: 'cross', tip: 'Close (Esc)', sound: 'ui_close' })) { ui.close(this.id); return; }
+    // [polish32] while locked, the content under the veil gets no pointer (no hover tips / clicks leaking through)
+    const locked = !net.unlocked?.(), px = ui.inp.x, py = ui.inp.y;
+    if (locked) { ui.inp.x = -9999; ui.inp.y = -9999; }
     this.drawLeft(ctx, ui, r.x + 10, r.y + 34, 156, H - 44);
     this.drawPlayers(ctx, ui, r.x + 174, r.y + 34, W - 184, 112);
     this.drawEmotes(ctx, ui, r.x + 174, r.y + 152, W - 184, 30);
     this.drawFeed(ctx, ui, r.x + 174, r.y + 188, W - 184, H - 198);
-    if (!net.unlocked?.()) this.drawLocked(ctx, ui, r.x + 8, r.y + 32, W - 16, H - 40);
+    if (locked) { ui.inp.x = px; ui.inp.y = py; this.drawLocked(ctx, ui, r.x + 8, r.y + 32, W - 16, H - 40); }
     F.finish(ctx);
     if (this.edit) this.placeEdit();
   }

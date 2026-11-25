@@ -426,7 +426,8 @@ that feels hand-made."
   - Currencies: `aerobuck` / `aerobucks` (the glossy drop, aliases of `coin` / `aero`) and `gem` / `bytegem` (the faceted
     violet Byte Gem: octagonal crown + pavilion, alternating facet tones, cyan emissive "byte" pixels, white glint).
     `has3D(name)` also answers true for every `UI3D_VOX` name. src/ui/gemui.js (the wallet, quest rewards, the gem Skip
-    button, `{abdrop}` / `{bytegem}`) draws these voxel frames (`icon3dFrame`, the gem turns once per shine sweep, the
+    button, `{abdrop}` / `{bytegem}`) draws these voxel frames (EXCEPT the wallet plaques: [wallet32] uses the hand-drawn
+    pixel droplet / gem there) (`icon3dFrame`, the gem turns once per shine sweep, the
     drop squashes about its foot); its own pixel sprites only stand in until a frame is built.
   - Lab: `labIcon('fish')` / `fish:` (no id) = the grouper; `fish:<species>` keeps the species' voxel fish.
 - Icons [icons15] (replaces the low-res toy-block icons): every model icon (bigicons.modelFrame / iconFrame / getBigIcon /
@@ -714,7 +715,8 @@ and the boss charge-dodge / minion clicks.
   `getUiIcon('aerobuck')` / `getUiIcon('gem')` pixel icons exist (3D renders are ignored); `drawDrop`, `drawGem`
   (diagonal glint sweep), `drawDropSplash`, `drawGemShards`, `pixelPlate`, `drawGemButton`, `gemSkipButton(ui, ...)`,
   `drawEggChip`, inline text icons `{abdrop}` / `{bytegem}`.
-- Wallet (`UI.drawWallet` in ui.js, replaces the glossy Aero pill): a pixel-art plaque top right (stepped corners, ink
+- Wallet: SUPERSEDED by [wallet32] (brass-framed plaque, pixel sprites, header wallets). Original [cur26] notes:
+  (`UI.drawWallet` in ui.js, replaces the glossy Aero pill): a pixel-art plaque top right (stepped corners, ink
   outline, broken highlight line, ripple marks, rivets; blue droplet half + violet gem half, inset wells, pixel-font
   numbers). Coins tick up as before (`coinShown`, splash on `coinBump`); gems tick up one by one (`gemShown`,
   glint on `gemBump`). `ui.coinRect` = the whole plaque; `ui.coinTarget()` / `ui.gemTarget()` = the icons (quest
@@ -971,6 +973,51 @@ User direction: "the 3D stuff more cel-shaded and the shading very good".
   sheetStep budget; the sprite shader adds a few smoothsteps (no fwidth). tools/perf.mjs frame numbers are unchanged
   within its run-to-run noise.
 
+## Wallet plaque + header wallets, hand-drawn pixel leaves [wallet32]
+User direction: "Make the currency UI a lot better like before, this is too ugly, and the leaves like 2D pixel art
+detailed". Supersedes the [cur26] wallet drawing and the voxel / rotated leaf ornaments.
+- Wallet (`src/ui/gemui.js`, `drawWalletPlaque(ctx, ui, {right, y, p, mini, hov, id})`; `UI.drawWallet` in ui.js only
+  places it): a hand-crafted pixel plaque on ONE art-pixel grid. The static part (`plaqueArt`, cached per digit-field
+  width) is an art-px canvas: hard drop-shadow row, ink silhouette with [2,1] stepped corners, a 2 px BRASS rim (lit
+  top-left, shaded bottom-right, top glints), a dark line around the glass, a blue sea-glass half (Aero Bucks) and a
+  violet crystal half (Byte Gems) with banded fills, dithered seams, a broken highlight stroke and ripple / facet
+  marks, a brass divider, three brass rivets, recessed number wells (1 px notch, dark top row, light bevel). It is
+  blitted at `p` logical px per art px with nearest neighbour; `walletP(mode)` = 1 / 1.5 / 2 (normal / big / huge)
+  on the 2x UI layer (whole device px) and 1 / 2 / 3 at 1x. Icons are the HAND-DRAWN pixel sprites (`DROP_BIG` 11x15,
+  `GEM_BIG` 15x13, `DROP_SMALL` / `GEM_SMALL` for the mini plaque; the voxel models read muddy at this size).
+  Digits: per-char art canvases (`glyphArt`: 'big' face, two-tone white / pale tint, hard shadow), in FIXED-WIDTH cells
+  so the plaque never jitters while a number ticks up. Specs `WALLET_ART.FULL` (23 art px tall, 'big' digits) and
+  `.MINI` (18 tall, 'normal' digits, 1 px rim).
+- Motion (all whole art px, nothing scaled): coins tick up (`ui.coinShown`), gems tick one by one (`ui.gemShown`);
+  every digit that changes hops 2 art px (1 on the mini) and flashes pale gold (`hopState` per plaque id, decayed by
+  `walletTick`); on `coinBump` the droplet hops and 7 pixel droplets arc up out of it (`walletSplash`); on `gemBump`
+  the gem hops, a diagonal shine sweeps its facets (also idly every few s), a `+` twinkle and `drawGemShards` chips;
+  idle: a bubble pixel rises in the water glass, a facet glint blinks, the droplet bobs 1 px and drips under the plaque
+  now and then. Reduced motion turns the idle bits off. Tooltips per half (`walletTip`).
+- Header wallets: `drawHeaderWallet(ctx, ui, right, y)` (the MINI plaque, right-aligned, ~18 logical px tall)
+  replaces each window's own pills / chips: Wardrobe, Quests (left of the close pill; Claim all moves left of it),
+  The Lab, Workshop, Bait Shop (`ShopPanel.drawWallet`). It records `ui.hdrWallet` ({drop, gem, rects, time});
+  while one was drawn in the last 0.15 s, or any open window's rect overlaps the HUD plaque, the HUD plaque slides
+  up and fades out (`ui.walletHide`), so there is never a second wallet beside / under a window, and
+  `coinTarget()` / `gemTarget()` aim coin and gem flights at the header wallet. `ui.coinRect` keeps the HUD plaque's
+  rect even while hidden (toasts and the quest tracker slot stack under it as before).
+- Leaves (`src/ui/pixleaves.js`): HAND-DRAWN 2D pixel leaves (1 char = 1 art px = 1 logical px, `.hi` twin = the same
+  art scaled by nearest neighbour). Art: `ART` = 3 sizes (X 28 px, L 20 px, S 14 px long) x 8 drawn angles (15, 40,
+  65, 115, 140, 165, 200, 340 deg, counter-clockwise), each shaded for top-left light: 1 px dark outline, 5 hue-shifted
+  greens (teal shadow -> yellow-lime light), pale midrib, shade-half veins, gloss streak + white glint on the lit half,
+  a dew drop (white / aqua / teal) on the X and L leaves; tones `leaf` / `lime` / `deep` are palette swaps. Nothing is
+  rotated or stretched (`drawPixLeaf` picks the nearest drawn angle and an integer scale). Clusters (`leafCluster`,
+  `drawLeafCluster`): a 2 px twig with 3-5 leaves per corner ('tr' / 'tl' spill up and out, 'br' / 'bl' spill
+  sideways and a little up), sizes 'L' (X + L leaves) / 'S' (L + S), 3 hand-placed sway frames (rest, lean, lean
+  more; ping-pong ~2.6 s, still with `still`). The old APIs route there: `drawAeroLeaf` (one leaf), `drawLeafSprig`
+  (a twig rooted at x, y; also `(ctx, x, y, corner, 'L'|'S', px, {t, phase})`), `drawVoxDecor('leaves' | 'leaves_l')`
+  (centred twig). Placements: window frames (`drawAeroFrame`: rooted on the top-right corner, spilling up and out,
+  clear of the close button; skipped near the HUD corner as before), both hotbar ends (rooted just outside the dock),
+  the gear pod, quest chapter cards, fish manager, Lab corners, the Bait Shop awning. The old procedural `leafTex` /
+  `sprigTex` are gone.
+- Tooling: the leaf art was generated once with a scratch script (almond profile + shading rules at fixed angles) and
+  then frozen as strings; edit the strings directly.
+
 ## Pixel-art UI chrome, no rounded shapes [pixui30]
 User direction: "UI all is 100 percent pixel art, no round" and "no ugly UI". Supersedes the glossy-glass / voxel-slab
 chrome of [phase8:ui] / [phase9:ui] / [phase10:ui] (icons, voxel ornaments and 3D pop-up text are unchanged).
@@ -1019,7 +1066,8 @@ chrome of [phase8:ui] / [phase9:ui] / [phase10:ui] (icons, voxel ornaments and 3
 - Left as is (not UI chrome): in-world art (fish, water bubbles, particles, voxel scenery, the Lab fog-of-war light
   pools, wardrobe room floor, map sun), icons (owned by the icon agent: bigicons / icons3d / iconvox / voxicon /
   labicons / itemart, the labrows vector padlocks / chains, the labtree padlock sprite), the fishing HUD (src/fishing/*,
-  owned by the fishing agent: it can switch to the PIXEL KIT), pixel leaves / voxel ornaments on the window frames, and
+  owned by the fishing agent: it can switch to the PIXEL KIT), voxel ornaments on the window frames (the LEAVES are
+  hand-drawn pixel sprites since [wallet32]), and
   the 3D voxel pop-up text. Sub-pixel (0.5 logical) stamps in the Lab tree land on whole device pixels on the 2x layer.
 
 ## Fishing HUD as ocean pixel art + real struggle effects [fishui30]

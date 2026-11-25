@@ -483,17 +483,20 @@ export class JournalPanel {
       ctx.globalAlpha = 1;
       return;
     }
-    // one short line of flavour
+    // [polish32] two lines of flavour (there is room; one line cut most descriptions mid-sentence)
     const desc = wrapText(sp.desc || sp.behavior || '', w, f1);
     if (desc.length) {
-      let l = desc[0];
-      if (desc.length > 1) {
-        l = l.replace(/[\s,.;:]*$/, '') + '...';
-        while (l.length > 4 && measureText(l, f1) > w) l = l.slice(0, -4).replace(/[\s,.;:]*$/, '') + '...';
+      const LHd = capH(f1) + 4, n = Math.min(2, desc.length);
+      for (let i = 0; i < n; i++) {
+        let l = desc[i];
+        if (i === n - 1 && desc.length > n) {
+          l = l.replace(/[\s,.;:]*$/, '') + '...';
+          while (l.length > 4 && measureText(l, f1) > w) l = l.slice(0, -4).replace(/[\s,.;:]*$/, '') + '...';
+        }
+        drawText(ctx, l, x, y + i * LHd, { font: f1, color: INK_SOFT });
       }
-      drawText(ctx, l, x, y, { font: f1, color: INK_SOFT });
-      if (desc.length > 1 && ui.hover({ x, y: y - 2, w, h: capH(f1) + 4 })) ui.tip = sp.desc || sp.behavior;
-      y += capH(f1) + 6;
+      if (desc.length > n && ui.hover({ x, y: y - 2, w, h: LHd * n + 2 })) ui.tip = sp.desc || sp.behavior;
+      y += LHd * n + 2;
     }
     // bait tastes
     const RW = BU ? 20 : 16; // row height for the bait / fight rows

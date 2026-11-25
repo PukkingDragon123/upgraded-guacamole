@@ -17,7 +17,7 @@ import * as NPC from '../gfx/npcs.js';
 import * as CHAR from '../gfx/character.js';
 import { aeroSurface, aeroCached, drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroCoin, drawAeroBar, drawLeafSprig, drawAeroBadge, drawAeroButton, drawPixelBrackets, toneOf, AERO, pixelRectPath } from './aero.js';
 import { icon, pill, iconBudget, INK, INK_SOFT, OK } from './labkit.js';
-import { drawGem } from './gemui.js'; // [cur26] Byte Gems
+import { drawGem, drawHeaderWallet } from './gemui.js'; // [cur26] Byte Gems, [wallet32] header wallet
 import { drawAnimIcon, drawPadlock } from './labrows.js';
 import { roundRectPath } from './labart.js';
 import { CHAPTERS, CHAPTER_BY_ID, QUEST_BY_ID, NPC_NAMES, QuestBook, ensureQuests, rewardList, STORY_QUESTS, MILESTONES, MILESTONE_LINES, MILESTONE_BY_LINE, ORDERS_PER_DAY } from '../game/quests.js';
@@ -631,8 +631,9 @@ export class QuestPanel {
     // claim all
     const nReady = g.state.tutorialDone ? book.readyCount() : 0;
     if (pill(ui, ctx, hb.x + hb.w - 26, hb.y + 4, 22, 22, '', { tone: 'red', icon: getUiIcon('cross'), tip: 'Close (Esc)' })) { ui.close(this.id); return; }
+    const wal = drawHeaderWallet(ctx, ui, hb.x + hb.w - 31, hb.y + 6); // [wallet32] the shared pixel-art wallet (rewards land here)
     if (nReady > 1) {
-      const lab = `Claim all (${nReady})`, w = measureText(lab) + 46, x = hb.x + hb.w - 32 - w;
+      const lab = `Claim all (${nReady})`, w = measureText(lab) + 46, x = wal.x - 6 - w;
       drawAeroGlow(ctx, x + w / 2, hb.y + 15, w * 0.6, '#fff6a0', 0.3 + 0.15 * Math.sin(t * 5));
       if (pill(ui, ctx, x, hb.y + 4, w, 22, lab, { tone: 'orange', icon: icon('star', 14), sound: 'ui_unlock', tip: 'Collect every reward waiting' })) {
         const n = book.claimAll();
@@ -961,15 +962,18 @@ export class QuestPanel {
     for (let i = 0; i < rl.length; i++) {
       const rw = rl[i];
       const big = rw.big;
-      const w = big ? measureText(rw.label, 'small') + 26 : 22;
+      // [polish32] small chips show their amount too (the Aero Bucks / Byte Gems / item chips were bare icons)
+      const amt = (rw.key === 'aero' || rw.key === 'gem') ? (rw.n ?? 0).toLocaleString('en-US') : rw.n > 1 ? 'x' + rw.n : '';
+      const w = big ? measureText(rw.label, 'small') + 26 : 22 + (amt ? measureText(amt, 'small') + 2 : 0);
       if (rx + w > R.x + R.w - 12) break;
       if (big) {
         ctx.drawImage(aeroSurface(w, 18, { tone: 'green', r: 'pill', gloss: 0.7, glossH: 7, curve: 1, rim: 0.8, glow: 0.6 }), rx, sy + 12);
         drawAnimIcon(ctx, rw.key, rx + 10, sy + 21, 14, t, i, {});
         drawText(ctx, rw.label.toUpperCase(), rx + 20, sy + 18, { font: 'small', color: '#ffffff', shadow: '#1c5a0e' });
       } else {
-        ctx.drawImage(aeroSurface(20, 18, { tone: 'white', r: 6, gloss: 0.6, glossH: 7, curve: 1, rim: 0.8, glow: 0.4 }), rx, sy + 12);
+        ctx.drawImage(aeroSurface(w, 18, { tone: 'white', r: 6, gloss: 0.6, glossH: 7, curve: 1, rim: 0.8, glow: 0.4 }), rx, sy + 12);
         rewardIcon(ctx, rw, rx + 10, sy + 21, 14, t, i);
+        if (amt) drawText(ctx, amt, rx + 19, sy + 18, { font: 'small', color: INK });
       }
       if (ui.hover({ x: rx, y: sy + 12, w, h: 18 })) ui.tip = rw.label;
       rx += w + 4;

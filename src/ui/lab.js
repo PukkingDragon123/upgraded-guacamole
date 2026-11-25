@@ -12,7 +12,7 @@ import { rgba, mix, shade } from '../core/color.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { loadAlagard, alagardReady, alagardBitmap } from '../gfx/alagard.js';
-import { aeroSurface, aeroCached, drawAeroCoin, fmtAero, drawAeroGlow, drawAeroBubble, drawAeroBadge, drawSparkle, drawLeafSprig, drawAeroBar, toneFrom } from './aero.js';
+import { aeroSurface, aeroCached, drawAeroCoin, fmtAero, drawAeroGlow, drawAeroBubble, drawAeroBadge, drawSparkle, drawLeafSprig, drawAeroBar, toneFrom, fitFont } from './aero.js';
 import * as CHAR from '../gfx/character.js';
 import * as NPC from '../gfx/npcs.js';
 import { LAB_NODES, LAB_BY_ID, BRANCHES, BRANCH_ORDER, ensureLab, labSlots, labProgress, labRemaining, labFocus, startResearch, instantFinish, labTick, labReadyCount, labCheck, labStatus, fmtTime } from '../game/lab.js';
@@ -25,6 +25,7 @@ import { drawAnimIcon } from './labrows.js';
 import { LabTree } from './labtree.js';
 import { dualArt, withHi } from '../gfx/hires.js'; // [phase9:ui]
 import { drawRodsView, drawRodCard, drawCraftView, drawCraftCard, drawBoatsView, drawBoatCard } from './labviews.js';
+import { drawHeaderWallet } from './gemui.js'; // [wallet32]
 
 const TABS = [
   { id: 'tree', label: 'Research', icon: 'beaker' },
@@ -261,22 +262,19 @@ export class LabPanel {
       tx += measureText(title, 'normal', 2) + 14;
     }
     // tabs
+    // [polish32] one label face for the whole tab row (a short label used to get the bigger face on its own)
+    const tfont = fitFont('Research', 'normal', Infinity, 14);
     for (const tb of this.tabs()) {
       const ic = icon(tb.icon, 16);
-      const w = measureText(tb.label) + (ic ? ic.width : 16) + 30;
+      const w = measureText(tb.label, tfont) + (ic ? ic.width : 16) + 30;
       const on = this.tab === tb.id;
-      if (pill(ui, ctx, tx, by + 4, w, 22, tb.label, { tone: on ? 'green' : 'white', icon: ic, active: on })) this.setTab(tb.id);
+      if (pill(ui, ctx, tx, by + 4, w, 22, tb.label, { tone: on ? 'green' : 'white', icon: ic, active: on, font: tfont, fixedFont: true })) this.setTab(tb.id);
       if (tb.id === 'tree') { const n = labReadyCount(st); if (n && !on) drawAeroBadge(ctx, tx + w + 2, by, n, t); }
       tx += w + 4;
     }
     // Aero + close
     const cw = 22, cx = P.x + P.w - cw - 12;
-    const amt = fmtAero(st.coins);
-    const aw = measureText(amt) + 30;
-    const ax = cx - aw - 8;
-    ctx.drawImage(aeroSurface(aw, 20, { tone: 'white', r: 'pill', gloss: 0.7, glossH: 9, curve: 1, rim: 0.8, glow: 0.4 }), ax, by + 5);
-    drawAeroCoin(ctx, ax + 11, by + 15, 6, t);
-    drawText(ctx, amt, ax + 21, by + 12, { color: INK });
+    drawHeaderWallet(ctx, ui, cx - 8, by + 6); // [wallet32] the shared pixel-art wallet (was a white Aero pill)
     if (pill(ui, ctx, cx, by + 4, cw, 22, '', { tone: 'red', icon: getUiIcon('cross'), tip: 'Close (Esc)' })) ui.close(this.openId);
   }
 

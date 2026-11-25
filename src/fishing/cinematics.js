@@ -15,6 +15,7 @@ import { drawText3D, text3dSprite } from '../gfx/text3d.js'; // [phase9:fishing]
 import { gemIcon } from '../gfx/bigicons.js';
 import { drawAngler } from './hud.js';
 import { pxHalo } from './pixui.js'; // [fishui30]
+import { pixelRect, pixelRectPath } from '../ui/aero.js'; // [polish32] stepped pills
 
 // ------------------------------------------------------------------ glossy jelly text
 // Palettes: vertical gradient stops (top -> bottom), outline, outer glow.
@@ -90,21 +91,19 @@ export function drawFancyText(ctx, text, x, y, scale, o = {}) {
 
 // Glossy Aero pill with optional rarity stars / icon.
 export function drawGlassPill(ctx, cx, y, w, h, col = '#59c3ff', a = 0.92) {
-  const x = Math.round(cx - w / 2); y = Math.round(y);
-  const r = Math.floor(h / 2);
+  // [polish32] a stepped pixel pill (was round-ended): dark 1 px rim, pale glass top half, colour bottom half
+  const x = Math.round(cx - w / 2); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  if (w < 3 || h < 3) return;
   ctx.save();
   ctx.globalAlpha *= a;
-  for (let i = 0; i < h; i++) {
-    const dy = i < r ? r - i - 0.5 : i >= h - r ? i - (h - r) + 0.5 : 0;
-    const inset = dy > 0 ? Math.round(r - Math.sqrt(Math.max(0, r * r - dy * dy))) : 0;
-    const k = i / Math.max(1, h - 1);
-    ctx.fillStyle = '#0c3a52'; ctx.fillRect(x + inset - 1, y + i, w - inset * 2 + 2, 1);
-    ctx.fillStyle = k < 0.5 ? rgba('#ffffff', 0.92 - k * 0.6) : rgba(col, 0.55 + k * 0.4);
-    ctx.fillRect(x + inset, y + i, w - inset * 2, 1);
-    if (k >= 0.5) { ctx.fillStyle = rgba(col, 0.9); ctx.fillRect(x + inset, y + i, w - inset * 2, 1); }
-  }
-  ctx.fillStyle = '#0c3a52'; ctx.fillRect(x + r, y - 1, w - 2 * r, 1); ctx.fillRect(x + r, y + h, w - 2 * r, 1);
-  ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fillRect(x + r, y + 1, w - 2 * r, 1);
+  pixelRect(ctx, x - 1, y - 1, w + 2, h + 2, 'pill', col, { outline: '#0c3a52' });
+  ctx.save();
+  pixelRectPath(ctx, x, y, w, h, 'pill');
+  ctx.clip();
+  ctx.fillStyle = rgba('#ffffff', 0.82); ctx.fillRect(x, y, w, Math.ceil(h / 2));
+  ctx.fillStyle = rgba('#ffffff', 0.45); ctx.fillRect(x, y + Math.ceil(h / 2), w, 1);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fillRect(x + 2, y + 1, w - 4, 1);
+  ctx.restore();
   ctx.restore();
 }
 
