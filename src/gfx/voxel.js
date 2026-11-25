@@ -17,6 +17,7 @@
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { shade, pack, unpack, mix } from '../core/color.js';
 import { hash3, clamp } from '../core/math.js';
+import { TOON, celOn, toonRamp7 } from './toon.js';
 
 const DEG = Math.PI / 180;
 
@@ -284,7 +285,9 @@ const PD = 2; // occupancy padding
  * opts: scale (px per voxel), yaw, pitch (degrees), outline, edges / sideEdges (highlight strength),
  *       ao (strength in ramp steps), jitter (ramp steps), smooth (default normal smoothing), groundAO,
  *       depthLines, depthThreshold, track: [palette idx], light: {top, lit, dark, bottom} tones (ramp
- *       index space 0..6), glowRadius, keepVoxel(x, y, z) -> bool (mask for layered renders).
+ *       index space 0..6), glowRadius, keepVoxel(x, y, z) -> bool (mask for layered renders),
+ *       cel (default: the global shading mode, see toon.js; false = classic 7-step shading), rim (cel rim band;
+ *       default on at scale >= 1.5).
  * Palette entry options: emissive (bool | 0..1), jitter, light (tone offset), smooth (0..1 blend toward
  *   smoothed normals), spec / specPow (glint), edge (edge-highlight multiplier), aoMul, contrast, ramp.
  * regions[idx] = {x, y, w, h, n, cx, cy, inner: {x, y, w, h}} for tracked indices (and all emissive ones).
@@ -303,20 +306,24 @@ export function renderVoxels(model, opts = {}) {
   const hitU = pooled('hitU', Float32Array, N), hitV = pooled('hitV', Float32Array, N);
   traceRays(model, b, cam, vol, hitVox, hitN, depth, hitU, hitV);
 
+  const cel = opts.cel ?? celOn();
   const tone = pooled('tone', Float32Array, N), edgeMul = pooled('edgeMul', Float32Array, N);
+  const specHit = cel ? pooled('specHit', Uint8Array, N).fill(0) : null;
   const faceTone = faceTones(cam, opts.light);
-  shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone, edgeMul);
+  shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone, edgeMul, specHit);
 
   const edgeBoost = pooled('edgeBoost', Float32Array, N).fill(0);
   const sideMark = pooled('sideMark', Uint8Array, N).fill(0);
   edgeHighlights(cam, opts, hitN, depth, edgeMul, edgeBoost, sideMark);
 
-  const ramps = palette.map((pe) => (pe ? Uint32Array.from((pe.ramp || ramp7(pe.color, pe.contrast ?? 1)).map((h) => pack(h) >>> 0)) : null));
+  const ramps = palette.map((pe) => (pe ? Uint32Array.from((pe.ramp || (cel ? toonRamp7 : ramp7)(pe.color, pe.contrast ?? 1)).map((h) => pack(h) >>> 0)) : null));
   const out = new Uint32Array(N);
   const glowBuf = cam.hasEmissive ? new Uint32Array(N) : null;
   const ids = new Uint8Array(N);
   const level = pooled('level', Int8Array, N).fill(-1);
-  quantize(model, N, hitVox, hitN, tone, edgeBoost, ramps, out, glowBuf, ids, level);
+  quantize(model, N, hitVox, hitN, tone, edgeBoost, ramps, out, glowBuf, ids, level, specHit);
+  if (cel) despeckle(W, H, hitVox, depth, ids, level, specHit, ramps, out);
+  if (cel && TOON.vox.rim && (opts.rim ?? cam.s >= 1.5)) rimPass(palette, W, H, hitVox, ids, level, ramps, out);
 
   if (opts.keepVoxel) {
     const { nx, ny } = model;
@@ -498,11 +505,13 @@ function faceTones(cam, lightOpt) {
 }
 
 // Pass 2: per-hit tone = face light (blended toward smoothed normals) + spec + jitter - vertex AO.
-function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone, edgeMul) {
+function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone, edgeMul, specHit) {
   const { nx, ny, nz, data, palette } = model;
   const { occ, SY, SZ } = vol;
   const N = cam.N;
-  const aoAmt = opts.ao ?? 1.15, jitterDef = opts.jitter ?? 0.22, smoothDef = opts.smooth ?? 0;
+  // [cel29] cel: damped jitter (clean bands), hard specular shapes (specHit) instead of a tone glint
+  const V = TOON.vox, jK = specHit ? V.jitter : 1;
+  const aoAmt = (opts.ao ?? 1.15) * (specHit ? V.ao : 1), jitterDef = opts.jitter ?? 0.22, smoothDef = opts.smooth ?? 0;
   const { R, U, C } = cam;
   const LV = [-0.45 * R[0] + 0.85 * U[0] + 0.55 * C[0], -0.45 * R[1] + 0.85 * U[1] + 0.55 * C[1], -0.45 * R[2] + 0.85 * U[2] + 0.55 * C[2]];
   let hvx = LV[0] + C[0], hvy = LV[1] + C[1], hvz = LV[2] + C[2];
@@ -512,10 +521,13 @@ function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, to
   const pJit = new Float32Array(P), pSmooth = new Float32Array(P), pSpec = new Float32Array(P), pPow = new Float32Array(P), pLight = new Float32Array(P), pAo = new Float32Array(P), pEdge = new Float32Array(P);
   for (let i = 1; i < P; i++) {
     const pe = palette[i];
-    pJit[i] = pe.jitter ?? jitterDef;
+    pJit[i] = (pe.jitter ?? jitterDef) * jK;
     pSmooth[i] = pe.smooth ?? smoothDef;
+    // [cel29] organic (smoothed) materials take their band from the smoothed normal almost entirely: a face term near a
+    // band threshold would flip voxel steps back and forth (striped, noisy band edges)
+    if (specHit && pSmooth[i] > 0) pSmooth[i] = Math.min(1, pSmooth[i] + V.smoothAdd);
     pSpec[i] = pe.spec || 0;
-    pPow[i] = pe.specPow ?? 24;
+    pPow[i] = (pe.specPow ?? 24) * (specHit ? V.specPow : 1);
     pLight[i] = pe.light || 0;
     pAo[i] = (pe.aoMul ?? 1) * aoAmt;
     pEdge[i] = pe.edge ?? (pSmooth[i] >= 0.35 ? 0 : 1);
@@ -580,7 +592,11 @@ function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, to
       }
       if (pSpec[v] > 0) {
         const hd = smooth > 0 ? sx * hvx + sy * hvy + sz * hvz : NX[nid] * hvx + NY[nid] * hvy + NZ[nid] * hvz;
-        if (hd > 0) ft += Math.pow(hd, pPow[v]) * pSpec[v];
+        if (hd > 0) {
+          const g = Math.pow(hd, pPow[v]) * pSpec[v];
+          if (!specHit) ft += g;
+          else if (g > V.specCut) specHit[p] = 1;
+        }
       }
     }
     tone[p] = ft + pLight[v] + hj - (1 - ao) * pAo[v];
@@ -619,7 +635,8 @@ function edgeHighlights(cam, opts, hitN, depth, edgeMul, edgeBoost, sideMark) {
 }
 
 // Quantise tones to each palette entry's 7-step hue-shifted ramp; emissive entries self-light.
-function quantize(model, N, hitVox, hitN, tone, edgeBoost, ramps, out, glowBuf, ids, level) {
+function quantize(model, N, hitVox, hitN, tone, edgeBoost, ramps, out, glowBuf, ids, level, specHit) {
+  const V = TOON.vox, tD = V.deep, tS = V.shadow, tL = V.lit, tH = V.hi;
   const { data, palette } = model;
   const P = palette.length;
   const pEm = new Float32Array(P), pLight = new Float32Array(P);
@@ -636,10 +653,78 @@ function quantize(model, N, hitVox, hitN, tone, edgeBoost, ramps, out, glowBuf, 
       const et = (nid === 2 ? 5 : nid === 4 || nid === 1 ? 4.4 : 3.8) + pLight[v] + edgeBoost[p] * 0.5;
       tn += (et - tn) * em;
     }
-    const li = tn < 0 ? 0 : tn > 6 ? 6 : Math.round(tn);
+    let li;
+    if (specHit && em <= 0) {
+      // [cel29] clean light bands: 1 deep, 2 shadow, 3 mid, 4 lit, 5 highlight, 6 the hard specular shape
+      li = specHit[p] ? 6 : tn >= tL ? (tn >= tH ? 5 : 4) : tn >= tS ? 3 : tn >= tD ? 2 : 1;
+    } else li = tn < 0 ? 0 : tn > 6 ? 6 : Math.round(tn);
     level[p] = li;
     out[p] = ramps[v][li];
     if (em > 0 && glowBuf) glowBuf[p] = out[p];
+    if (specHit && em > 0) specHit[p] = 2;
+  }
+}
+
+// [cel29] Band despeckle: a lone pixel whose light band differs from 3+ agreeing neighbours on the same surface takes
+// their band (its own palette colour stays, so painted texture is untouched). Noisy surfaces (carved grooves, AO
+// corners, jitter) otherwise sprinkle single shadow / lit pixels across a band; contours and silhouettes stay crisp.
+function despeckle(W, H, hitVox, depth, ids, level, specHit, ramps, out) {
+  const src = pooled('lvSrc', Int8Array, W * H);
+  src.set(level.subarray(0, W * H));
+  const nb = [0, 0, 0, 0];
+  for (let py = 1; py < H - 1; py++) for (let px = 1; px < W - 1; px++) {
+    const p = py * W + px;
+    if (hitVox[p] < 0 || specHit[p]) continue;
+    const lv = src[p], d = depth[p];
+    let n = 0;
+    for (let k = 0; k < 4; k++) {
+      const q = k === 0 ? p - 1 : k === 1 ? p + 1 : k === 2 ? p - W : p + W;
+      if (hitVox[q] < 0 || specHit[q] || Math.abs(depth[q] - d) > 1.6) continue;
+      nb[n++] = src[q];
+    }
+    if (n < 3) continue;
+    // the majority band among the neighbours (needs 3 votes)
+    let best = -1;
+    for (let i = 0; i < n && best < 0; i++) {
+      let c = 0;
+      for (let j = 0; j < n; j++) if (nb[j] === nb[i]) c++;
+      if (c >= 3) best = nb[i];
+    }
+    if (best < 0 || best === lv) continue;
+    let same = 0;
+    for (let i = 0; i < n; i++) if (nb[i] === lv) same++;
+    if (same) continue;
+    level[p] = best;
+    out[p] = ramps[ids[p]][best];
+  }
+}
+
+// [cel29] Rim band: a 1 px edge inside the silhouette on the side turned from the key light (right edges, and
+// bottom edges that sit in shadow), in the lit tone pushed toward the cool rim colour. Thin features (< 3 px wide)
+// keep their colour; emissive and specular pixels are left alone.
+const rimCache = new Map();
+function rimColorOf(c) {
+  let o = rimCache.get(c);
+  if (o === undefined) {
+    const a = unpack(c), b = unpack(pack(TOON.rimColor)), k = TOON.rimMix;
+    o = (((a[3] & 255) << 24) | (Math.round(a[2] + (b[2] - a[2]) * k) << 16) | (Math.round(a[1] + (b[1] - a[1]) * k) << 8) | Math.round(a[0] + (b[0] - a[0]) * k)) >>> 0;
+    if (rimCache.size > 4096) rimCache.clear();
+    rimCache.set(c, o);
+  }
+  return o;
+}
+function rimPass(palette, W, H, hitVox, ids, level, ramps, out) {
+  for (let py = 0; py < H; py++) for (let px = 2; px < W; px++) {
+    const p = py * W + px;
+    if (hitVox[p] < 0 || hitVox[p - 1] < 0 || hitVox[p - 2] < 0) continue;
+    const lv = level[p];
+    if (lv >= 5) continue;
+    const right = px + 1 >= W || hitVox[p + 1] < 0;
+    const below = lv <= 2 && py > 1 && hitVox[p - W] >= 0 && hitVox[p - 2 * W] >= 0 && (py + 1 >= H || hitVox[p + W] < 0);
+    if (!right && !below) continue;
+    const v = ids[p];
+    if (palette[v].emissive) continue;
+    out[p] = rimColorOf(ramps[v][4]);
   }
 }
 

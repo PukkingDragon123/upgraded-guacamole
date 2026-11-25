@@ -945,3 +945,47 @@ User direction: "deeper zones have more scary fishes too, add more deep sea fish
   shows), thrash (lancetfish: big jitter), bite (sabertooth, viperfish, loosejaw, fangtooth: each lunge takes 2.5 %
   off the catch bar), reverse (Lasiognathus: it reels YOU in for 1.5 s, stop spinning), dive (cusk eel, sixgill: a
   long heavy pull). Timed twists wait for shock beats and stuns.
+
+## Cel (toon) shading for all 3D / voxel art [cel29]
+User direction: "the 3D stuff more cel-shaded and the shading very good".
+- One model in every renderer: a single top-left key light; light is quantised into clean bands, LIT (warm, lifted
+  toward white), MID (the painted colour), SHADOW (cooler / purpler, hue-shifted rather than greyed) and a DEEP core
+  (undersides, deep creases), with a cool ambient floor so darks never go muddy. Glossy materials get a small
+  hard-edged specular shape (size follows the material's shine / specPow); the silhouette edge turned away from the
+  key light gets a thin rim band. Emissive / glow parts stay unshaded and bright; ink outlines are unchanged.
+- Tuning: `src/gfx/toon.js` `TOON` is the only place to adjust the look (band thresholds for the CPU renderer
+  `TOON.vox`, the GPU `TOON.gl` and the intro `TOON.intro`; shadow / deep / lit hue shifts and lightness; rim colour,
+  strength and width; specular cut / size; jitter / AO damping; voxel-mesh normal smoothing). `toonRamp7(hex)` builds
+  the CPU band colours (same 7 indices as `ramp7`: 0 core, 1 deep, 2 shadow, 3 mid, 4 lit, 5 highlight, 6 specular;
+  authored `ramp` palettes are used as they are). `setShading('cel' | 'classic')` / `celOn()` is the global mode;
+  every renderer also takes a per-call `cel` option (`cel: false` = classic for that render).
+- CPU voxel ray renderer (`voxel.js renderVoxels`): with cel on, tones map to bands instead of the 7-step rounding
+  (thresholds on its tone scale: deep 1.3 / shadow 2.62 / lit 3.62 / highlight 4.9; edge highlights still bump a band);
+  per-voxel jitter x0.4; smoothed materials are smoothed a little more (`smoothAdd`) so band contours do not flip on
+  voxel steps; spec glints above `specCut` become the hard specular band (index 6); a `despeckle` pass gives a lone
+  pixel the band of 3+ agreeing neighbours on the same surface (its palette colour stays: painted texture is kept);
+  `rimPass` (scale >= 1.5, `rim` option) lights a 1 px band inside the silhouette on right edges and shadowed bottom
+  edges (features >= 3 px wide), the lit tone mixed toward `TOON.rimColor`. Runs before `keepVoxel` cuts, so layered
+  renders get no seams. Covers props, buildings, tank decor, world scenery / islands / reefs, the Lab backdrop, the
+  wardrobe room, cutscene props, the player / NPCs, voxel gear and items, and `text3d` sprites.
+- WebGL2 sprites / scenes (`lowpoly.js` FS; fish, creatures, the grouper, the 3D tank): half-lambert bands
+  (deep 0.28 / shadow 0.6 / lit 0.86) smoothstepped over a fixed ~1 px width (`TOON.gl.soft`; no `fwidth`, which is
+  costly on software GL) so they are crisp but never stair-step;
+  tints from `TOON.gl`; the material's `ambient` lifts its shadow tint, `soft` (the plush grouper) warms the shadows
+  and adds a warm terminator band, `vivid` keeps its saturation lift; env reflections are damped to `TOON.gl.env` on
+  opaque parts (glass / translucent parts keep 85 %), iridescence is kept. Voxel meshes from `voxelize.js` now carry
+  a smoothed surface normal per face (radius-2 kernel over the solid map, octahedral-encoded in the unused uv slots;
+  `VoxMesh.voxN`, meta stride 10 bytes) and are lit with 78 % smoothed / 22 % face normal, so bands follow the body's
+  form while voxel steps still read; specular and rim use the smoothed normal. The glow-mask pass of the fish sheets
+  passes `cel: false`. The Canvas2D software fallback applies the same bands / tints per face.
+- WebGL intro (`voxgl.js` VOX_FS): half-lambert x AO quantised with the same tints (`TOON.intro` thresholds) plus a
+  hard glint on glossy voxels; post effects unchanged. Pixel-art 2D icons are untouched.
+- Settings > Cel (`state.settings.celShading`, default on; tip "Shading: Cel / Classic"): sprites are baked once, so
+  the switch saves and reloads the page; Game sets the mode right after loading the save (before any bake). The
+  switches squeeze their rows (smaller icons) when the card is too short for the 4th row. Dev pages accept
+  `?shading=classic` for A/B screenshots.
+- Cost: the CPU pass adds a despeckle + rim scan (O(pixels), well under the ray cast: all props page 1.55 s classic vs
+  1.57 s cel, within noise); voxelisation adds the 56-cell normal kernel per surface voxel (~+0.5 ms per fish pose,
+  normal encoded once per voxel), i.e. ~+10-15 % on a fish sheet build, still spread over frames by [perf27]'s
+  sheetStep budget; the sprite shader adds a few smoothsteps (no fwidth). tools/perf.mjs frame numbers are unchanged
+  within its run-to-run noise.

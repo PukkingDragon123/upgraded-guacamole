@@ -26,6 +26,7 @@ const TOGGLES = [
   ['browserFish', 'fish', 'Web fish', 'Fish visit your web pages (extension)'],
   ['hints', 'question', 'Tips', 'Bubbles the toy grouper pops up with tips'],
   ['deepScares', 'eye', 'Deep scares', 'Deep-sea scares: On/Off (jump scares, floor ambushes and squid packs in the deep)'], // [deep28]
+  ['celShading', 'sparkle', 'Cel', 'Shading: Cel / Classic (toon-shaded 3D art; reloads the game)'], // [cel29]
 ];
 
 // a pixel icon at an integer zoom (2x on the bigger UI sizes), centred vertically on cy
@@ -165,16 +166,19 @@ export class SettingsPanel {
     const rows = TOGGLES.length, room = L.y + L.h - y - 4;
     const twoCol = room < rows * RH;
     const cw = twoCol ? Math.floor((L.w - 8) / 2) : L.w - 8;
+    // [cel29] rows squeeze (smaller icons) when even two columns would overflow the card
+    const TH = twoCol ? Math.max(TOGGLE_H + 2, Math.min(RH, Math.floor(room / Math.ceil(rows / 2)))) : RH;
+    const tz = TH < 12 * z + 2 ? 1 : z;
     TOGGLES.forEach(([key, ic, label, tip], i) => {
       const col = twoCol ? i % 2 : 0, rowI = twoCol ? Math.floor(i / 2) : i;
-      const row = { x: L.x + 4 + col * cw, y: y + rowI * RH, w: cw, h: RH };
-      const cy = row.y + Math.round(RH / 2);
+      const row = { x: L.x + 4 + col * cw, y: y + rowI * TH, w: cw, h: TH };
+      const cy = row.y + Math.round(TH / 2);
       const hov = ui.hover(row);
       if (hov) {
         ctx.drawImage(aeroCached(`setrow|${row.w}|${row.h}`, () => aeroSurface(row.w, row.h, { tone: 'white', r: 6, gloss: 0.5, glossH: 9, rim: 0.6, glow: 0.4, a: [0.7, 0.7] })), row.x, row.y);
         ui.tip = tip;
       }
-      const lw = icon(ctx, ic, row.x + 4, cy, z);
+      const lw = icon(ctx, ic, row.x + 4, cy, tz);
       const lf = measureText(label, F1) + lw + 14 + TOGGLE_W > cw ? 'normal' : F1;
       drawText(ctx, label, row.x + 9 + lw, cy - Math.round(capH(lf) / 2), { font: lf, color: INK });
       drawToggle(ctx, row.x + row.w - TOGGLE_W - 4, cy - Math.round(TOGGLE_H / 2), !!s[key], { hover: hov });
@@ -185,6 +189,8 @@ export class SettingsPanel {
         if (key === 'lowPower') g.lowPower = !!s.lowPower;
         g.emit?.('settings', key);
         g.save?.();
+        // [cel29] every 3D / voxel sprite is baked once: the shading switch applies on a fresh start
+        if (key === 'celShading' && typeof location !== 'undefined') setTimeout(() => location.reload(), 250);
       }
     });
 

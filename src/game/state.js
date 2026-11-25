@@ -31,6 +31,7 @@ export function defaultState() {
       showFps: false, wallpaper: 'ocean', browserFish: true, hints: true,
       voices: 'chip', // [voices23] 'chip' (8-bit character voices) | 'off'
       deepScares: true, // [deep28] Settings > Deep scares: the big eye, floor ambushes and squid packs in the deep
+      celShading: true, // [cel29] Settings > Cel: cel (toon) shading for every 3D / voxel renderer; off = classic
     },
     view: 'ocean', // 'ocean' | 'aquarium'
     tankWindow: { open: false, x: 0, y: 0 },

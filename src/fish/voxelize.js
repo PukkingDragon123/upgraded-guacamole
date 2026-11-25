@@ -186,6 +186,10 @@ export function voxelizeParts(parts, vs, o = {}) {
   const builders = [];
   const AO = [1 - 0.4 * aoK, 1 - 0.25 * aoK, 1 - 0.12 * aoK, 1];
   const col = [0, 0, 0];
+  // [cel29] smoothed surface normal per opaque surface voxel (gradient of the solid map over a radius-2 kernel,
+  // 1/r^2 weights): the cel shader lights voxel meshes with it, so light bands follow the body's form
+  const KO = kernelFor(NX, NXY), KN = KO.length, KX = KER.x, KY = KER.y, KZ = KER.z;
+  const sn = [0, 0, 1];
   const SU = [NX, NXY, 1], SV = [NXY, 1, NX]; // u x v = +d for d = x, y, z
   const ST = [1, NX, NXY];
   for (let z = 1; z < NZ - 1; z++) for (let y = 1; y < NY - 1; y++) {
@@ -205,6 +209,7 @@ export function voxelizeParts(parts, vs, o = {}) {
       if (c === 5 && al >= 0.86) kind = 6;
       if (jit) { const jj = 1 + (hash3(x + ox, y + oy, z + oz) - 0.5) * 2 * jit; col[0] *= jj; col[1] *= jj; col[2] *= jj; }
       const fb = builders[kind] || (builders[kind] = new FaceBuf());
+      let snOk = false;
       for (let d = 0; d < 3; d++) {
         const st = ST[d];
         for (let sgn = -1; sgn <= 1; sgn += 2) {
@@ -220,7 +225,18 @@ export function voxelizeParts(parts, vs, o = {}) {
             a00 = AO[um && vm ? 0 : 3 - um - vm - mm]; a10 = AO[up && vm ? 0 : 3 - up - vm - pm];
             a11 = AO[up && vp ? 0 : 3 - up - vp - pp]; a01 = AO[um && vp ? 0 : 3 - um - vp - mp];
           }
-          fb.face(x + ox, y + oy, z + oz, d, sgn, vs, col, a00, a10, a11, a01);
+          if (isOp) {
+            if (!snOk) {
+              let gx = 0, gy = 0, gz = 0;
+              for (let q = 0; q < KN; q++) if (ext[i + KO[q]] !== 1) { gx += KX[q]; gy += KY[q]; gz += KZ[q]; }
+              const l = Math.sqrt(gx * gx + gy * gy + gz * gz);
+              if (l > 1e-4) { sn[0] = gx / l; sn[1] = gy / l; sn[2] = gz / l; } else { sn[0] = d === 0 ? sgn : 0; sn[1] = d === 1 ? sgn : 0; sn[2] = d === 2 ? sgn : 0; }
+              octa(sn, SNQ, 0); // encoded once per voxel; faces it would light from behind re-encode a clamped copy
+              snOk = true;
+            }
+            // never light a face from behind: keep the smoothed normal within ~85 deg of the face normal
+            fb.face(x + ox, y + oy, z + oz, d, sgn, vs, col, a00, a10, a11, a01, sn);
+          } else fb.face(x + ox, y + oy, z + oz, d, sgn, vs, col, a00, a10, a11, a01, null);
         }
       }
     }
@@ -249,16 +265,47 @@ export function voxelizeMesh(mesh, vs, opts = {}) {
   return parts[0]?.mesh || null;
 }
 
-// Compact face list (6 int16 + 8 bytes per face: corner, axis / sign, colour, 4 AO levels) that expands into an
+// [cel29] radius-2 smoothing kernel (offsets per grid size; direction weights shared), 1/r^2 weights
+const KER = { x: null, y: null, z: null, rel: null, key: '', off: null };
+function kernelFor(NX, NXY) {
+  if (!KER.rel) {
+    const rel = [], kx = [], ky = [], kz = [];
+    // the 26-neighbourhood plus the 6 axis cells and 12 edge cells at distance 2: a radius-2 gradient at ~1/3 of the
+    // full 5x5x5 cost (normals stay smooth enough for clean band contours)
+    for (let k = -2; k <= 2; k++) for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) {
+      if (!i && !j && !k) continue;
+      const far = (Math.abs(i) === 2) + (Math.abs(j) === 2) + (Math.abs(k) === 2), zero = (!i) + (!j) + (!k);
+      if (far && !(far === 1 && zero >= 1)) continue;
+      const w = 1 / (i * i + j * j + k * k);
+      rel.push([i, j, k]); kx.push(-i * w); ky.push(-j * w); kz.push(-k * w);
+    }
+    KER.rel = rel; KER.x = Float32Array.from(kx); KER.y = Float32Array.from(ky); KER.z = Float32Array.from(kz);
+  }
+  const key = NX + 'x' + NXY;
+  if (KER.key !== key) { KER.key = key; KER.off = Int32Array.from(KER.rel.map(([i, j, k]) => i + j * NX + k * NXY)); }
+  return KER.off;
+}
+// octahedral encoding of a unit normal into two bytes
+function octa(n, out, o) {
+  const s = Math.abs(n[0]) + Math.abs(n[1]) + Math.abs(n[2]) || 1;
+  let u = n[0] / s, v = n[1] / s;
+  if (n[2] < 0) { const pu = (1 - Math.abs(v)) * (u >= 0 ? 1 : -1), pv = (1 - Math.abs(u)) * (v >= 0 ? 1 : -1); u = pu; v = pv; }
+  out[o] = Math.round((u * 0.5 + 0.5) * 255); out[o + 1] = Math.round((v * 0.5 + 0.5) * 255);
+}
+const MS = 10; // meta bytes per face
+const SNQ = new Uint8Array(2); // the current voxel's encoded smoothed normal
+const FACE_OCT = [0, 1, 2, 3, 4, 5].map((f) => { const n = [0, 0, 0]; n[f >> 1] = f & 1 ? 1 : -1; const q = [0, 0]; octa(n, q, 0); return q; });
+
+// Compact face list (6 int16 + 10 bytes per face: corner, axis / sign, colour, 4 AO levels, smoothed normal) that expands into an
 // ordinary LPMesh vertex buffer on demand. Pose caches keep only the compact form: release() drops the expanded
 // floats and the GL buffer once a sprite sheet has been rendered (they are rebuilt in ~1 ms when needed again).
 const CU = [[0, 1, 0], [0, 0, 1], [1, 0, 0]], CV = [[0, 0, 1], [1, 0, 0], [0, 1, 0]];
 const ORD_P = [0, 1, 2, 0, 2, 3], ORD_PF = [1, 2, 3, 1, 3, 0], ORD_M = [0, 3, 2, 0, 2, 1], ORD_MF = [1, 0, 3, 1, 3, 2];
-const CX = [0, 0, 0, 0], CY = [0, 0, 0, 0], CZ = [0, 0, 0, 0], CA = [0, 0, 0, 0];
+const CX = [0, 0, 0, 0], CY = [0, 0, 0, 0], CZ = [0, 0, 0, 0], CA = [0, 0, 0, 0], FN = [0, 0, 1];
 const q8 = (v) => (v <= 0 ? 0 : v >= 1 ? 255 : Math.round(v * 255));
 class FaceBuf {
-  constructor() { this.pos = new Int16Array(3 * 512); this.meta = new Uint8Array(8 * 512); this.n = 0; }
-  face(x, y, z, d, sgn, vs, col, a00, a10, a11, a01) {
+  constructor() { this.pos = new Int16Array(3 * 512); this.meta = new Uint8Array(MS * 512); this.n = 0; }
+  face(x, y, z, d, sgn, vs, col, a00, a10, a11, a01, sn) {
     if ((this.n + 1) * 3 > this.pos.length) {
       const np = new Int16Array(this.pos.length * 2); np.set(this.pos); this.pos = np;
       const nm = new Uint8Array(this.meta.length * 2); nm.set(this.meta); this.meta = nm;
@@ -266,15 +313,21 @@ class FaceBuf {
     STAT.faces++;
     const i = this.n++;
     this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z;
-    const m = this.meta, o = i * 8;
+    const m = this.meta, o = i * MS;
     m[o] = d * 2 + (sgn > 0 ? 1 : 0);
     m[o + 1] = q8(col[0] / 1.5); m[o + 2] = q8(col[1] / 1.5); m[o + 3] = q8(col[2] / 1.5); // headroom for bright tones
     m[o + 4] = q8(a00); m[o + 5] = q8(a10); m[o + 6] = q8(a11); m[o + 7] = q8(a01);
+    if (sn) {
+      // keep the lighting normal on the face's side (a sliver of a step never lights from behind)
+      const fn = sgn * sn[d];
+      if (fn < 0.1) { const k = 0.1 - fn; FN[0] = sn[0]; FN[1] = sn[1]; FN[2] = sn[2]; FN[d] += sgn * k; octa(FN, m, o + 8); }
+      else { m[o + 8] = SNQ[0]; m[o + 9] = SNQ[1]; }
+    } else { const q = FACE_OCT[d * 2 + (sgn > 0 ? 1 : 0)]; m[o + 8] = q[0]; m[o + 9] = q[1]; }
     this.vs = vs;
   }
   build() {
     const n = this.n, vs = this.vs || 1;
-    const pos = this.pos.slice(0, n * 3), meta = this.meta.slice(0, n * 8);
+    const pos = this.pos.slice(0, n * 3), meta = this.meta.slice(0, n * MS);
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
     for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) { const q = pos[i * 3 + k]; if (q < min[k]) min[k] = q; if (q + 1 > max[k]) max[k] = q + 1; }
     if (!n) { min.fill(0); max.fill(0); }
@@ -288,7 +341,7 @@ class FaceBuf {
 export class VoxMesh extends LPMesh {
   constructor(pos, meta, nFaces, vs, bounds) {
     super(null, nFaces * 6, bounds);
-    this.pos = pos; this.meta = meta; this.nFaces = nFaces; this.vs = vs; this.voxel = true;
+    this.pos = pos; this.meta = meta; this.nFaces = nFaces; this.vs = vs; this.voxel = true; this.voxN = true;
   }
   get data() { return this._d || (this._d = expandFaces(this.pos, this.meta, this.nFaces, this.vs)); }
   set data(v) { this._d = v; }
@@ -305,11 +358,11 @@ export function mergeVox(list) {
   if (!list.length) return null;
   let n = 0;
   for (const m of list) n += m.nFaces;
-  const pos = new Int16Array(n * 3), meta = new Uint8Array(n * 8);
+  const pos = new Int16Array(n * 3), meta = new Uint8Array(n * MS);
   let o = 0;
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (const m of list) {
-    pos.set(m.pos.subarray(0, m.nFaces * 3), o * 3); meta.set(m.meta.subarray(0, m.nFaces * 8), o * 8); o += m.nFaces;
+    pos.set(m.pos.subarray(0, m.nFaces * 3), o * 3); meta.set(m.meta.subarray(0, m.nFaces * MS), o * MS); o += m.nFaces;
     for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], m.bounds.min[k]); max[k] = Math.max(max[k], m.bounds.max[k]); }
   }
   const center = [0, 1, 2].map((k) => (min[k] + max[k]) / 2);
@@ -320,7 +373,8 @@ function expandFaces(pos, meta, n, vs) {
   const B = new Float32Array(n * 66);
   let o = 0;
   for (let i = 0; i < n; i++) {
-    const mo = i * 8, ds = meta[mo], d = ds >> 1, sgn = ds & 1 ? 1 : -1;
+    const mo = i * MS, ds = meta[mo], d = ds >> 1, sgn = ds & 1 ? 1 : -1;
+    const su = (meta[mo + 8] / 255) * 2 - 1, sv = (meta[mo + 9] / 255) * 2 - 1;
     let x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
     if (sgn > 0) { if (d === 0) x++; else if (d === 1) y++; else z++; }
     const u = CU[d], v = CV[d];
@@ -338,7 +392,7 @@ function expandFaces(pos, meta, n, vs) {
       B[o] = CX[k] * vs; B[o + 1] = CY[k] * vs; B[o + 2] = CZ[k] * vs;
       B[o + 3] = nx; B[o + 4] = ny; B[o + 5] = nz;
       B[o + 6] = r * a; B[o + 7] = g * a; B[o + 8] = b * a;
-      B[o + 9] = 0; B[o + 10] = 0;
+      B[o + 9] = su; B[o + 10] = sv;
       o += 11;
     }
   }

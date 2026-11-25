@@ -35,10 +35,13 @@
 //       reflection that keeps the body colour, and a rim / sheen tinted by the surface hue (0 = unchanged).
 //   render options soft (0..1) + softColor: plush subsurface-ish shading (wrapped smooth diffuse, hemisphere sky /
 //       ground ambient, a warm scatter band at the terminator, a soft velvet rim); 0 = the classic look.
+//   [cel29] render option cel (default: the global mode in toon.js): toon bands, hard specular, rim band (TOON.gl);
+//       cel: false = the classic smooth lighting. Voxel meshes (mesh.voxN) light with their smoothed normals.
 // Textures: any canvas (uploaded premultiplied, filtered without fringes); emitTex reads texture alpha 0.5..1 as
 // emissive 1..0 (opaque skins with glowing photophores). Set canvas._lpSmooth = true for linear + mipmapped filtering (painted skins), and
 // canvas._lpDirty = true after repainting it. renderSheet batches many sprite renders into one GL pass / readback.
 import { M4 } from './voxgl.js';
+import { TOON, celOn } from './toon.js';
 
 export { M4 };
 
@@ -52,24 +55,36 @@ const MAX_GL = 4096;
 
 const VS = `#version 300 es
 in vec3 aPos; in vec3 aNrm; in vec3 aCol; in vec2 aUv;
-uniform mat4 uMVP; uniform mat4 uModel;
-out vec3 vNrm; out vec3 vCol; out vec2 vUv; out vec3 vWorld;
+uniform mat4 uMVP; uniform mat4 uModel; uniform float uVoxN;
+out vec3 vNrm; out vec3 vCol; out vec2 vUv; out vec3 vWorld; out vec3 vSN;
 void main() {
   vec4 w = uModel * vec4(aPos, 1.0);
   vWorld = w.xyz;
   vNrm = mat3(uModel) * aNrm;
   vCol = aCol; vUv = aUv;
+  // [cel29] voxel meshes carry a smoothed surface normal (octahedral) in the unused uv slots
+  vec3 sn = aNrm;
+  if (uVoxN > 0.5) {
+    sn = vec3(aUv, 1.0 - abs(aUv.x) - abs(aUv.y));
+    if (sn.z < 0.0) sn.xy = (1.0 - abs(sn.yx)) * vec2(sn.x >= 0.0 ? 1.0 : -1.0, sn.y >= 0.0 ? 1.0 : -1.0);
+  }
+  vSN = mat3(uModel) * sn;
   gl_Position = uMVP * vec4(aPos, 1.0);
 }`;
 const FS = `#version 300 es
 precision highp float;
-in vec3 vNrm; in vec3 vCol; in vec2 vUv; in vec3 vWorld;
+in vec3 vNrm; in vec3 vCol; in vec2 vUv; in vec3 vWorld; in vec3 vSN;
 uniform vec3 uLight; uniform vec3 uEye; uniform float uAmb; uniform float uSpec; uniform float uShine;
 uniform float uRim; uniform vec3 uRimCol; uniform sampler2D uTex; uniform float uUseTex; uniform float uAlpha;
 uniform vec4 uTint; uniform vec3 uFogCol; uniform float uFog; uniform float uOrtho;
 uniform float uEnv; uniform float uIri; uniform float uEmit; uniform float uEmitTex; uniform vec3 uSky; uniform vec3 uGround;
 uniform float uSmoothN; uniform float uSoft; uniform vec3 uSoftCol; uniform float uVivid;
+uniform float uCel; uniform vec4 uCelB; uniform vec4 uCelK; uniform vec3 uCelK2; uniform float uVoxN;
+uniform vec3 uShTint; uniform vec3 uShAdd; uniform vec3 uDpTint; uniform vec3 uDpAdd; uniform vec3 uLtTint; uniform vec3 uLtAdd;
 out vec4 frag;
+// [cel29] toon light: clean bands (deep / shadow / mid / lit) with hue-shifted tints, edges smoothed over ~1 px
+// (a fixed width in light units: sprites are a few dozen px across, and fwidth costs too much on software GL)
+float band(float x, float t, float aa) { return smoothstep(t - aa, t + aa, x); }
 void main() {
   vec3 n = normalize(vNrm);
   vec3 l = normalize(uLight);
@@ -93,10 +108,42 @@ void main() {
   // vivid (creature sprites): a saturation lift of the painted colour before lighting
   if (uVivid > 0.0) base = max(mix(vec3(dot(base, vec3(0.299, 0.587, 0.114))), base, 1.0 + 0.3 * uVivid), 0.0);
   float d = max(dot(n, l), 0.0);
-  float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
-  vec3 col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5)) * (1.0 + 0.14 * uVivid);
   float nv = max(dot(n, v), 0.0);
-  if (uSoft > 0.0) {
+  vec3 col;
+  vec3 cL = base;
+  // cel lighting normal: voxel meshes light with their smoothed surface normal (+ a little of the face normal, so
+  // voxel steps still read); other meshes use their own normal
+  vec3 nl = n;
+  if (uCel > 0.5 && uVoxN > 0.5) {
+    vec3 sn = normalize(vSN);
+    if (dot(sn, v) < 0.02) sn = normalize(sn - v * (dot(sn, v) - 0.02));
+    nl = normalize(mix(n, sn, uCelK.w));
+  }
+  float ndl = dot(nl, l);
+  if (uCel > 0.5) {
+    // ambient lifts the shadow tints (each material's ambient keeps its meaning); vivid keeps the bright exposure
+    float hl = ndl * 0.5 + 0.5;
+    float aa = uCelB.w;
+    float ak = clamp((uAmb - 0.42) * 1.2, -0.3, 0.6);
+    vec3 shT = mix(uShTint, vec3(1.0), ak * 0.55), dpT = mix(uDpTint, uShTint, clamp(ak, 0.0, 1.0) * 0.6);
+    vec3 cD = base * dpT + uDpAdd, cS = base * shT + uShAdd;
+    // lit: brighter in the colour's own hue (dark colours keep their saturation), saturated ones also lift toward white
+    cL = mix(min(base * (1.0 + 2.0 * uCelK2.z), vec3(1.0)), vec3(1.0), uCelK2.z * 0.35) * uLtTint + uLtAdd;
+    if (uSoft > 0.0) {
+      // plush: warmer, lighter shadows (light scattering through) with a warm terminator band
+      cS = mix(cS, base * uSoftCol * 0.86 + uShAdd, uSoft * 0.6);
+      cD = mix(cD, cS * 0.82, uSoft * 0.6);
+    }
+    col = mix(cD, cS, band(hl, uCelB.x, aa));
+    col = mix(col, base, band(hl, uCelB.y, aa));
+    col = mix(col, cL, band(hl, uCelB.z, aa));
+    if (uSoft > 0.0) col += base * uSoftCol * 0.16 * uSoft * (band(hl, uCelB.y - 0.06, aa) - band(hl, uCelB.y + 0.02, aa));
+    col *= 1.0 + 0.1 * uVivid;
+  } else {
+    float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
+    col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5)) * (1.0 + 0.14 * uVivid);
+  }
+  if (uSoft > 0.0 && uCel < 0.5) {
     // plush, subsurface-ish: a wide smooth wrap, sky / ground tinted ambient, warm light bleeding into the terminator
     float ndl = dot(n, l);
     float sd = clamp((ndl + 0.6) / 1.6, 0.0, 1.0);
@@ -108,24 +155,43 @@ void main() {
     softC += uSoftCol * pow(1.0 - nv, 2.2) * 0.16 * clamp(0.65 - ndl * 0.5, 0.0, 1.0);
     col = mix(col, softC, clamp(uSoft, 0.0, 1.0));
   }
-  if (uEnv > 0.0) {
+  float envK = uEnv * (uCel > 0.5 ? (uAlpha < 0.99 ? 0.85 : uCelK.z) : 1.0);
+  if (envK > 0.0) {
     vec3 r = reflect(-v, n);
     vec3 env = mix(uGround, uSky, smoothstep(-0.25, 0.75, r.y));
     float fres = 0.12 + 0.88 * pow(1.0 - nv, 2.5);
     // vivid keeps the body colour under the glossy reflection instead of greying it toward the sky / ground
-    col = mix(col, col * (0.55 + 0.33 * uVivid) + env * (0.6 - 0.32 * uVivid), uEnv * fres * (1.0 - 0.4 * uVivid));
-    col += uSky * uEnv * 0.5 * (1.0 - 0.3 * uVivid) * pow(max(r.y, 0.0), 6.0);
+    col = mix(col, col * (0.55 + 0.33 * uVivid) + env * (0.6 - 0.32 * uVivid), envK * fres * (1.0 - 0.4 * uVivid));
+    col += uSky * envK * 0.5 * (1.0 - 0.3 * uVivid) * pow(max(r.y, 0.0), 6.0);
   }
   if (uIri > 0.0) {
     vec3 iri = 0.5 + 0.5 * cos(6.2831 * (nv * 1.4 + vec3(0.0, 0.33, 0.67)));
     col += iri * uIri * 0.35 * (1.0 - nv * 0.6) * (0.4 + 0.6 * d);
   }
   vec3 h = normalize(l + v);
-  col += vec3(1.0) * uSpec * pow(max(dot(n, h), 0.0), uShine);
-  float rim = pow(1.0 - nv, 3.0);
   // vivid: the rim / sheen takes the surface's own hue (a coloured glossy edge, not a white haze)
   vec3 rimC = mix(uRimCol, clamp(base * 1.35 + vec3(0.1), 0.0, 1.0), 0.6 * clamp(uVivid, 0.0, 1.0));
-  col += rimC * uRim * rim;
+  if (uCel > 0.5) {
+    // hard toon specular: a small crisp shape whose size follows the shine; glossier = smaller and sharper.
+    // Voxel meshes take it (and the rim) from the smoothed normal alone so the shape stays clean across steps.
+    vec3 ns = uVoxN > 0.5 ? normalize(mix(nl, normalize(vSN), 0.85)) : nl;
+    float sh = dot(ns, h);
+    float cut = 1.0 - clamp(0.55 / max(uShine, 4.0), 0.005, 0.12) * uCelK.y;
+    float sa = uCelB.w * 0.25;
+    float sm = band(sh, cut, sa) * clamp(uSpec * 1.4, 0.0, 1.0) * uCelK.x * band(ndl, 0.15, 0.05);
+    vec3 specC = mix(clamp(cL * 1.18 + vec3(0.08), 0.0, 1.0), vec3(1.0), clamp(0.3 + 0.35 * uSpec, 0.0, 0.85));
+    col = mix(col, max(col, specC), sm);
+    // thin rim band on the silhouette turned from the key light
+    float rx = 1.0 - max(dot(ns, v), 0.0);
+    float ra = uCelB.w * 2.0;
+    float rm = band(rx, 1.0 - uCelK2.y, ra) * band(-ndl, 0.0, 0.06);
+    vec3 rimT = mix(uRimCol, clamp(base * 1.35 + vec3(0.1), 0.0, 1.0), 0.35 * clamp(uVivid, 0.0, 1.0));
+    col = mix(col, max(col, rimT * (0.6 + 0.4 * base)), clamp(uRim * uCelK2.x * 2.2, 0.0, 1.0) * rm);
+  } else {
+    col += vec3(1.0) * uSpec * pow(max(dot(n, h), 0.0), uShine);
+    float rim = pow(1.0 - nv, 3.0);
+    col += rimC * uRim * rim;
+  }
   col = mix(col, base * 1.15 + vec3(0.06), clamp(emit, 0.0, 1.0));
   col = mix(col, uTint.rgb, uTint.a);
   float fogK = clamp(uFog * length(uEye - vWorld) * 0.002, 0.0, 1.0);
@@ -133,7 +199,8 @@ void main() {
   frag = vec4(col * a, a);
 }`;
 
-const UNIFORMS = ['uMVP', 'uModel', 'uLight', 'uEye', 'uAmb', 'uSpec', 'uShine', 'uRim', 'uRimCol', 'uTex', 'uUseTex', 'uAlpha', 'uTint', 'uFogCol', 'uFog', 'uOrtho', 'uEnv', 'uIri', 'uEmit', 'uEmitTex', 'uSky', 'uGround', 'uSmoothN', 'uSoft', 'uSoftCol', 'uVivid'];
+const UNIFORMS = ['uMVP', 'uModel', 'uLight', 'uEye', 'uAmb', 'uSpec', 'uShine', 'uRim', 'uRimCol', 'uTex', 'uUseTex', 'uAlpha', 'uTint', 'uFogCol', 'uFog', 'uOrtho', 'uEnv', 'uIri', 'uEmit', 'uEmitTex', 'uSky', 'uGround', 'uSmoothN', 'uSoft', 'uSoftCol', 'uVivid',
+  'uCel', 'uCelB', 'uCelK', 'uCelK2', 'uVoxN', 'uShTint', 'uShAdd', 'uDpTint', 'uDpAdd', 'uLtTint', 'uLtAdd'];
 
 function init() {
   if (gl || failed) return gl;
@@ -410,6 +477,14 @@ function setCommon(o, eye, ortho = false) {
   gl.uniform3f(u.uSky, sk[0], sk[1], sk[2]);
   gl.uniform3f(u.uGround, gr[0], gr[1], gr[2]);
   gl.uniform1i(u.uTex, 0);
+  // [cel29] toon bands + tints (src/gfx/toon.js)
+  const C = TOON.gl;
+  gl.uniform4f(u.uCelB, C.deep, C.shadow, C.lit, C.soft);
+  gl.uniform4f(u.uCelK, C.spec, C.specSize, C.env, C.voxSmooth);
+  gl.uniform3f(u.uCelK2, C.rim, C.rimWidth, C.litLift);
+  gl.uniform3fv(u.uShTint, C.shadowTint); gl.uniform3fv(u.uShAdd, C.shadowAdd);
+  gl.uniform3fv(u.uDpTint, C.deepTint); gl.uniform3fv(u.uDpAdd, C.deepAdd);
+  gl.uniform3fv(u.uLtTint, C.litTint); gl.uniform3fv(u.uLtAdd, C.litAdd);
 }
 
 function drawMesh(mesh, mvp, model, o) {
@@ -427,6 +502,8 @@ function drawMesh(mesh, mvp, model, o) {
   gl.uniform1f(u.uEmit, o.emit ?? 0);
   gl.uniform1f(u.uEmitTex, o.emitTex ? 1 : 0);
   gl.uniform1f(u.uSmoothN, mesh.smooth ? 1 : 0);
+  gl.uniform1f(u.uVoxN, mesh.voxN ? 1 : 0);
+  gl.uniform1f(u.uCel, (o.cel ?? celOn()) ? 1 : 0);
   gl.uniform1f(u.uSoft, o.soft ?? 0);
   const sc = hexRgb(o.softColor || '#ffc9b8');
   gl.uniform3f(u.uSoftCol, sc[0], sc[1], sc[2]);
@@ -774,6 +851,7 @@ export function tube(mb, pts, radius = () => 0.1, sides = 6, col = '#ffffff', o 
 // Without WebGL2, sprites are drawn with Canvas2D: flat-shaded triangles sorted back to front, the skin texture
 // sampled once per face. Slower and coarser, but creatures stay visible (results are cached by the callers).
 const texPix = new WeakMap();
+const TOON_RIM = hexRgb(TOON.rimColor);
 function texel(tex, u, v) {
   let p = texPix.get(tex);
   if (!p) {
@@ -824,10 +902,23 @@ function softRender(cells, o, colsIn) {
         if (a < 0.02) continue;
         const viv = po.vivid ?? 0;
         if (viv > 0) { const lu = col[0] * 0.299 + col[1] * 0.587 + col[2] * 0.114; col = col.map((v) => Math.max(0, lu + (v - lu) * (1 + 0.3 * viv))); }
-        const dd = Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]), wrap = Math.max(0, (nx * L[0] + ny * L[1] + nz * L[2] + 0.35) / 1.35);
-        const k = (amb + (1 - amb) * (dd + wrap) / 2) * (1 + 0.14 * viv);
-        const sp = spec * Math.pow(Math.max(0, nx * H[0] + ny * H[1] + nz * H[2]), shine), rr = rim * Math.pow(1 - nz, 3) * 0.8;
-        const lit = col.map((v) => v * k + sp + rr * 0.8);
+        const ndl = nx * L[0] + ny * L[1] + nz * L[2];
+        let lit;
+        if (po.cel ?? celOn()) {
+          // [cel29] the same bands / tints as the shader, per face
+          const C = TOON.gl, hl = ndl * 0.5 + 0.5, ak = Math.max(-0.3, Math.min(0.6, (amb - 0.42) * 1.2));
+          const band = hl >= C.lit ? 3 : hl >= C.shadow ? 2 : hl >= C.deep ? 1 : 0;
+          const shT = C.shadowTint.map((t) => t + (1 - t) * ak * 0.55);
+          lit = col.map((v, j) => (band === 3 ? (Math.min(1, v * (1 + 2 * C.litLift)) * (1 - C.litLift * 0.35) + C.litLift * 0.35) * C.litTint[j] + C.litAdd[j] : band === 2 ? v : band === 1 ? v * shT[j] + C.shadowAdd[j] : v * C.deepTint[j] + C.deepAdd[j]) * (1 + 0.1 * viv));
+          const hd = nx * H[0] + ny * H[1] + nz * H[2];
+          if (spec > 0.2 && hd > 1 - Math.min(0.12, 0.55 / Math.max(shine, 4)) * C.specSize && ndl > 0.15) lit = lit.map((v) => Math.max(v, v + (1 - v) * 0.6));
+          if (rim > 0 && nz < C.rimWidth && ndl < 0.12) lit = lit.map((v, j) => Math.max(v, (TOON_RIM[j] * 0.5 + col[j] * 0.5) * Math.min(1, rim * C.rim * 2.2)));
+        } else {
+          const dd = Math.max(0, ndl), wrap = Math.max(0, (ndl + 0.35) / 1.35);
+          const k = (amb + (1 - amb) * (dd + wrap) / 2) * (1 + 0.14 * viv);
+          const sp = spec * Math.pow(Math.max(0, nx * H[0] + ny * H[1] + nz * H[2]), shine), rr = rim * Math.pow(1 - nz, 3) * 0.8;
+          lit = col.map((v) => v * k + sp + rr * 0.8);
+        }
         const fin = lit.map((v, j) => Math.min(1, v + (col[j] * 1.15 + 0.06 - v) * emit));
         tris.push({ z: (P[0][2] + P[1][2] + P[2][2]) / 3, P, col: fin, a });
       }

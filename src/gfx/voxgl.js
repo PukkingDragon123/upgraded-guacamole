@@ -16,6 +16,8 @@
 // -> composite: depth-of-field on far layers, bloom, rays, analytic lens flares (sun + glints), zoom blur,
 // chromatic aberration, refracting water drops and bubbles on the lens, filmic tone map, grade, vignette, dither.
 
+import { TOON, celOn } from './toon.js';
+
 const DEG = Math.PI / 180;
 
 // ------------------------------------------------------------------------------------------------ mat4
@@ -321,6 +323,9 @@ uniform vec4 u_tint;   // rgb multiply, a = mix toward white (pop / flash)
 uniform vec4 u_k;      // x spec mul, y rim mul, z chrome, w alpha
 uniform vec4 u_sweep;  // x position (model x), y width, z strength, w emissive boost
 uniform vec4 u_grad;   // text gradient: x y0, y y1, z strength
+uniform float u_cel;   // [cel29] toon bands (src/gfx/toon.js)
+uniform vec4 u_celB;   // deep, shadow, lit thresholds, edge width (px)
+uniform vec3 u_celSh; uniform vec3 u_celDp; uniform vec3 u_celLt;
 out vec4 o;
 void main() {
   if (u_clip.x * (v_w.y - u_clip.y) < 0.0) discard;
@@ -337,6 +342,20 @@ void main() {
   float spec = v_mat.y * 1.5 * u_k.x;
   float gloss = mix(6.0, 140.0, v_mat.z);
   vec3 H = normalize(u_light + V);
+  if (u_cel > 0.5) {
+    // [cel29] toon: half-lambert x AO quantised into deep / shadow / mid / lit with hue-shifted tints; the cool
+    // ambient floor keeps shadows clean; hard specular glints on glossy voxels
+    float L = (dot(N, u_light) * 0.5 + 0.5) * (0.5 + 0.5 * ao);
+    float aa = max(fwidth(L), 0.003);
+    vec3 full = base * (amb * 0.6 + u_sunCol * sunK * 0.82);
+    vec3 cD = full * 0.34 * u_celDp + base * amb * 0.1, cS = full * 0.5 * u_celSh + base * amb * 0.08;
+    vec3 cM = full * 0.74, cL = full * u_celLt;
+    col = mix(cD, cS, smoothstep(u_celB.x - aa, u_celB.x + aa, L));
+    col = mix(col, cM, smoothstep(u_celB.y - aa, u_celB.y + aa, L));
+    col = mix(col, cL, smoothstep(u_celB.z - aa, u_celB.z + aa, L));
+    float sh = dot(N, H), cut = 1.0 - 1.2 / gloss;
+    col += u_sunCol * min(spec, 1.0) * 0.55 * smoothstep(cut - 0.004, cut + 0.004, sh) * sunK;
+  } else
   col += u_sunCol * spec * pow(max(dot(N, H), 0.0), gloss) * (gloss + 8.0) / 36.0 * ao * sunK;
   float nv = max(dot(N, V), 0.0);
   float fr = pow(1.0 - nv, 4.0);
@@ -1212,6 +1231,13 @@ class VoxGL {
     const gl = this.gl, pr = this.P.vox, U = pr.U;
     gl.useProgram(pr.p);
     this.sceneUniforms(pr, S, reflect);
+    // [cel29] toon bands (src/gfx/toon.js)
+    const C = TOON.gl, I = TOON.intro;
+    if (U.u_cel) gl.uniform1f(U.u_cel, celOn() ? 1 : 0);
+    if (U.u_celB) gl.uniform4f(U.u_celB, I.deep, I.shadow, I.lit, C.soft);
+    if (U.u_celSh) gl.uniform3fv(U.u_celSh, C.shadowTint);
+    if (U.u_celDp) gl.uniform3fv(U.u_celDp, C.deepTint);
+    if (U.u_celLt) gl.uniform3fv(U.u_celLt, C.litTint);
     for (const it of list) {
       if (!it.mesh) continue;
       if (reflect && !it.reflect) continue;

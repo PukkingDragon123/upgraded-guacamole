@@ -45,6 +45,7 @@ import { installProgression } from '../build/progression.js'; // [phase8:prog] W
 import { perkStats } from './rods.js'; // [phase8:prog] rod perks + tackle
 import { bindGemsGame, ensureGems } from './gems.js'; // [cur26] Byte Gems
 import { hotbarLock } from './hotbar.js'; // [hot26] hotbar buttons unlocked by building
+import { setShading } from '../gfx/toon.js'; // [cel29]
 
 export class Game {
   constructor(canvas, params) {
@@ -54,6 +55,8 @@ export class Game {
     this.screen = new Screen(canvas, { scale: Number(params.get('scale')) || 0 });
     this.input = new Input(canvas, this.screen.toLogical);
     this.state = params.has('fresh') ? resetState() : loadState();
+    // [cel29] the shading mode must be set before any sprite bakes (a ?shading= URL override wins)
+    if (!params.has('shading')) setShading(this.state.settings?.celShading === false ? 'classic' : 'cel');
     this.recomputeStats();
     this.audio = audio;
     this.particles = new Particles(900);

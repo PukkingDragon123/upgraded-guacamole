@@ -4780,6 +4780,149 @@
     }
   });
 
+  // src/gfx/toon.js
+  function setShading(m) {
+    mode = m === "classic" ? "classic" : "cel";
+  }
+  function celOn() {
+    return mode === "cel";
+  }
+  function hueToward2(h, target, amount) {
+    const d = (target - h + 540) % 360 - 180;
+    return h + Math.sign(d) * Math.min(Math.abs(d), amount);
+  }
+  function shifted(hex7, target, deg, satAdd, lMul, lAdd) {
+    const [h0, s0, l0] = hexToHsl(hex7);
+    const grey = s0 < 0.08;
+    const h = grey ? target : hueToward2(h0, target, deg);
+    const s = grey ? Math.min(0.24, s0 + Math.max(0, satAdd) * 3) : Math.min(1, s0 + (satAdd > 0 ? satAdd * (1.2 - s0) - (lMul < 1 ? Math.max(0, s0 - 0.6) * 0.4 : 0) : satAdd));
+    const l = l0 * lMul + (1 - l0) * lAdd;
+    return hslToHex(h, s, l);
+  }
+  function toonRamp7(hex7, contrast = 1) {
+    const key = hex7 + "|" + contrast;
+    let r = rampCache.get(key);
+    if (r) return r;
+    const T5 = TOON, c = contrast;
+    const l0 = hexToHsl(hex7)[2];
+    const floor = Math.min(l0 * 0.8, T5.floorL);
+    const dark = (lm, deg, sat) => {
+      const lMul = Math.max(1 - (1 - lm) * c, l0 > 0 ? floor / l0 : 0);
+      return shifted(hex7, T5.shadowHue, deg * Math.min(1.4, c), sat, lMul, 0);
+    };
+    const light = (la, deg, sat) => shifted(hex7, T5.litHue, deg * Math.min(1.4, c), sat, 1, Math.min(0.95, la * c));
+    r = [
+      dark(T5.coreL, T5.deepShift + 6, T5.shadowSat + 0.04),
+      dark(T5.deepL, T5.deepShift, T5.shadowSat + 0.03),
+      dark(T5.shadowL, T5.shadowShift, T5.shadowSat),
+      hex7,
+      light(T5.litL, T5.litShift, -0.02),
+      light(T5.hiL, T5.litShift + 6, -0.07),
+      light(T5.specL, T5.litShift + 10, -0.25)
+    ];
+    rampCache.set(key, r);
+    if (rampCache.size > 4096) rampCache.delete(rampCache.keys().next().value);
+    return r;
+  }
+  var TOON, mode, rampCache;
+  var init_toon = __esm({
+    "src/gfx/toon.js"() {
+      init_color();
+      TOON = {
+        // --- CPU voxel renderer (voxel.js): thresholds on its tone scale (ramp steps: 3 = the base colour)
+        vox: {
+          deep: 1.3,
+          // below: DEEP shadow (bottoms, deep AO)
+          shadow: 2.62,
+          // below: SHADOW (the side turned from the light: ~2.3 at the default camera)
+          lit: 3.62,
+          // at / above: LIT (top faces: ~4.3)
+          hi: 4.9,
+          // at / above: HIGHLIGHT (lit convex edges)
+          jitter: 0.4,
+          // per-voxel tone jitter multiplier (clean bands; a whisper of hand-placed texture stays)
+          ao: 0.95,
+          // AO multiplier (contact shadows still fall into the shadow band)
+          specCut: 0.55,
+          // a glint (spec * pow(n.h, specPow)) above this becomes the hard specular shape
+          specPow: 2.2,
+          // multiplies each material's specPow: higher = smaller highlight shapes
+          rim: 1,
+          // rim band on / off (1 = on)
+          smoothAdd: 0.4
+          // materials with smoothed normals get this much more smoothing (clean band contours)
+        },
+        // --- band colours (CPU ramps); hue shifts in degrees, toward the shadow / light hues
+        shadowHue: 255,
+        // shadows drift toward blue-violet ...
+        shadowShift: 22,
+        // ... by this many degrees
+        shadowL: 0.7,
+        // shadow lightness (x base)
+        shadowSat: 0.04,
+        // shadow saturation lift (grey colours get more: they have none of their own)
+        deepShift: 34,
+        deepL: 0.5,
+        coreL: 0.34,
+        floorL: 0.085,
+        // ambient floor: shadows never fall below this lightness (unless the base itself is darker)
+        litHue: 48,
+        // highlights drift warm
+        litShift: 9,
+        litL: 0.2,
+        // lit = base + (1 - base) * litL
+        hiL: 0.42,
+        specL: 0.74,
+        // --- rim (CPU: a 1-device-px band inside the outline on the side turned from the light; GPU: fresnel band)
+        rimColor: "#c8f4ff",
+        rimMix: 0.38,
+        // CPU: rim colour = lit tone mixed toward rimColor by this
+        // --- GPU (lowpoly.js sprites / scenes, voxgl.js intro): thresholds on half-lambert light (0 = back, 1 = facing)
+        gl: {
+          deep: 0.28,
+          // half-lambert (n.l * 0.5 + 0.5) below: DEEP (undersides)
+          shadow: 0.6,
+          // below: SHADOW (n.l < 0.2: the side turned from the light)
+          lit: 0.86,
+          // above: LIT (n.l > 0.72: faces turned up toward the key light)
+          soft: 0.014,
+          // band edge half-width in light units (~1 px on a sprite): crisp but never stair-stepped
+          shadowTint: [0.64, 0.6, 0.9],
+          // multiplies the colour in shadow (cool / purple)
+          shadowAdd: [0.018, 0.012, 0.05],
+          // ambient floor (cool lift so darks stay clean)
+          deepTint: [0.46, 0.41, 0.78],
+          deepAdd: [0.025, 0.015, 0.07],
+          litTint: [1.06, 1.03, 0.96],
+          // warm lit ...
+          litLift: 0.17,
+          // ... x (1 + 2 * litLift) in its own hue, then 35 % of litLift toward white
+          litAdd: [0.03, 0.02, 0],
+          rim: 0.75,
+          // rim band strength (x the material's rim)
+          rimWidth: 0.24,
+          // rim band: 1 - n.v above (1 - rimWidth)
+          spec: 0.9,
+          // hard specular strength
+          specSize: 1,
+          // highlight size multiplier
+          env: 0.35,
+          // glossy env reflection kept on opaque parts (glass keeps more)
+          voxSmooth: 0.78
+          // voxel meshes: this much of the smoothed surface normal (clean band shapes), the rest face normal
+        },
+        // --- the WebGL intro's voxel world (voxgl.js): thresholds on half-lambert x AO (shares the gl tints)
+        intro: { deep: 0.25, shadow: 0.45, lit: 0.66 }
+      };
+      mode = "cel";
+      try {
+        if (typeof location !== "undefined" && /[?&]shading=classic\b/.test(location.search)) mode = "classic";
+      } catch {
+      }
+      rampCache = /* @__PURE__ */ new Map();
+    }
+  });
+
   // src/gfx/voxgl.js
   function meshVoxels(model, o = {}) {
     const { nx, ny, nz, data } = model;
@@ -4907,6 +5050,7 @@
   var DEG, M4, hexRGB, AO_K, FACES, HEAD, SCENE_UNI, COMMON, VOX_VS, VOX_FS, SKY_VS, SKY_FS, WATER_VS, WATER_FS, BB_VS, BB_FS, PT_VS, PT_FS, LINE_VS, LINE_FS, GLASS_VS, GLASS_FS, FS_VS, DOWN_FS, UP_FS, BLUR_FS, RAYS_FS, FINAL_FS, VoxGL;
   var init_voxgl = __esm({
     "src/gfx/voxgl.js"() {
+      init_toon();
       DEG = Math.PI / 180;
       M4 = {
         ident() {
@@ -5164,6 +5308,9 @@ uniform vec4 u_tint;   // rgb multiply, a = mix toward white (pop / flash)
 uniform vec4 u_k;      // x spec mul, y rim mul, z chrome, w alpha
 uniform vec4 u_sweep;  // x position (model x), y width, z strength, w emissive boost
 uniform vec4 u_grad;   // text gradient: x y0, y y1, z strength
+uniform float u_cel;   // [cel29] toon bands (src/gfx/toon.js)
+uniform vec4 u_celB;   // deep, shadow, lit thresholds, edge width (px)
+uniform vec3 u_celSh; uniform vec3 u_celDp; uniform vec3 u_celLt;
 out vec4 o;
 void main() {
   if (u_clip.x * (v_w.y - u_clip.y) < 0.0) discard;
@@ -5180,6 +5327,20 @@ void main() {
   float spec = v_mat.y * 1.5 * u_k.x;
   float gloss = mix(6.0, 140.0, v_mat.z);
   vec3 H = normalize(u_light + V);
+  if (u_cel > 0.5) {
+    // [cel29] toon: half-lambert x AO quantised into deep / shadow / mid / lit with hue-shifted tints; the cool
+    // ambient floor keeps shadows clean; hard specular glints on glossy voxels
+    float L = (dot(N, u_light) * 0.5 + 0.5) * (0.5 + 0.5 * ao);
+    float aa = max(fwidth(L), 0.003);
+    vec3 full = base * (amb * 0.6 + u_sunCol * sunK * 0.82);
+    vec3 cD = full * 0.34 * u_celDp + base * amb * 0.1, cS = full * 0.5 * u_celSh + base * amb * 0.08;
+    vec3 cM = full * 0.74, cL = full * u_celLt;
+    col = mix(cD, cS, smoothstep(u_celB.x - aa, u_celB.x + aa, L));
+    col = mix(col, cM, smoothstep(u_celB.y - aa, u_celB.y + aa, L));
+    col = mix(col, cL, smoothstep(u_celB.z - aa, u_celB.z + aa, L));
+    float sh = dot(N, H), cut = 1.0 - 1.2 / gloss;
+    col += u_sunCol * min(spec, 1.0) * 0.55 * smoothstep(cut - 0.004, cut + 0.004, sh) * sunK;
+  } else
   col += u_sunCol * spec * pow(max(dot(N, H), 0.0), gloss) * (gloss + 8.0) / 36.0 * ao * sunK;
   float nv = max(dot(N, V), 0.0);
   float fr = pow(1.0 - nv, 4.0);
@@ -6014,6 +6175,12 @@ void main() {
           const gl2 = this.gl, pr = this.P.vox, U2 = pr.U;
           gl2.useProgram(pr.p);
           this.sceneUniforms(pr, S16, reflect);
+          const C6 = TOON.gl, I = TOON.intro;
+          if (U2.u_cel) gl2.uniform1f(U2.u_cel, celOn() ? 1 : 0);
+          if (U2.u_celB) gl2.uniform4f(U2.u_celB, I.deep, I.shadow, I.lit, C6.soft);
+          if (U2.u_celSh) gl2.uniform3fv(U2.u_celSh, C6.shadowTint);
+          if (U2.u_celDp) gl2.uniform3fv(U2.u_celDp, C6.deepTint);
+          if (U2.u_celLt) gl2.uniform3fv(U2.u_celLt, C6.litTint);
           for (const it2 of list) {
             if (!it2.mesh) continue;
             if (reflect && !it2.reflect) continue;
@@ -6568,6 +6735,16 @@ void main() {
     gl.uniform3f(u.uSky, sk[0], sk[1], sk[2]);
     gl.uniform3f(u.uGround, gr[0], gr[1], gr[2]);
     gl.uniform1i(u.uTex, 0);
+    const C6 = TOON.gl;
+    gl.uniform4f(u.uCelB, C6.deep, C6.shadow, C6.lit, C6.soft);
+    gl.uniform4f(u.uCelK, C6.spec, C6.specSize, C6.env, C6.voxSmooth);
+    gl.uniform3f(u.uCelK2, C6.rim, C6.rimWidth, C6.litLift);
+    gl.uniform3fv(u.uShTint, C6.shadowTint);
+    gl.uniform3fv(u.uShAdd, C6.shadowAdd);
+    gl.uniform3fv(u.uDpTint, C6.deepTint);
+    gl.uniform3fv(u.uDpAdd, C6.deepAdd);
+    gl.uniform3fv(u.uLtTint, C6.litTint);
+    gl.uniform3fv(u.uLtAdd, C6.litAdd);
   }
   function drawMesh(mesh, mvp, model, o) {
     const u = prog.u;
@@ -6584,6 +6761,8 @@ void main() {
     gl.uniform1f(u.uEmit, o.emit ?? 0);
     gl.uniform1f(u.uEmitTex, o.emitTex ? 1 : 0);
     gl.uniform1f(u.uSmoothN, mesh.smooth ? 1 : 0);
+    gl.uniform1f(u.uVoxN, mesh.voxN ? 1 : 0);
+    gl.uniform1f(u.uCel, o.cel ?? celOn() ? 1 : 0);
     gl.uniform1f(u.uSoft, o.soft ?? 0);
     const sc = hexRgb(o.softColor || "#ffc9b8");
     gl.uniform3f(u.uSoftCol, sc[0], sc[1], sc[2]);
@@ -6627,9 +6806,9 @@ void main() {
     gl.useProgram(prog);
   }
   function copyOut(out, W11, H8, ox = 0, oy = 0, sx2 = 0, sy2 = 0) {
-    const mode = copyMode === "pixels" ? "pixels" : "draw";
+    const mode2 = copyMode === "pixels" ? "pixels" : "draw";
     const g = out.getContext("2d");
-    if (mode === "draw") {
+    if (mode2 === "draw") {
       g.drawImage(glCanvas, sx2, sy2, W11, H8, ox, oy, W11, H8);
       return;
     }
@@ -6814,8 +6993,8 @@ void main() {
         const d = mesh.data, tex3 = po.texture;
         const alpha0 = po.alpha ?? 1, amb = po.ambient ?? 0.42, spec = po.spec ?? 0.35, shine = po.shine ?? 24, rim = po.rim ?? 0.35, emit0 = po.emit ?? 0;
         for (let i = 0; i < d.length; i += 33) {
-          const P7 = [0, 11, 22].map((k2) => {
-            const x = d[i + k2] - c[0], y = d[i + k2 + 1] - c[1], z = d[i + k2 + 2] - c[2];
+          const P7 = [0, 11, 22].map((k) => {
+            const x = d[i + k] - c[0], y = d[i + k + 1] - c[1], z = d[i + k + 2] - c[2];
             return [m[0] * x + m[4] * y + m[8] * z, m[1] * x + m[5] * y + m[9] * z, m[2] * x + m[6] * y + m[10] * z];
           });
           let nx = m[0] * d[i + 3] + m[4] * d[i + 4] + m[8] * d[i + 5], ny = m[1] * d[i + 3] + m[5] * d[i + 4] + m[9] * d[i + 5], nz = m[2] * d[i + 3] + m[6] * d[i + 4] + m[10] * d[i + 5];
@@ -6838,10 +7017,22 @@ void main() {
             const lu = col2[0] * 0.299 + col2[1] * 0.587 + col2[2] * 0.114;
             col2 = col2.map((v) => Math.max(0, lu + (v - lu) * (1 + 0.3 * viv)));
           }
-          const dd = Math.max(0, nx * L4[0] + ny * L4[1] + nz * L4[2]), wrap = Math.max(0, (nx * L4[0] + ny * L4[1] + nz * L4[2] + 0.35) / 1.35);
-          const k = (amb + (1 - amb) * (dd + wrap) / 2) * (1 + 0.14 * viv);
-          const sp = spec * Math.pow(Math.max(0, nx * H8[0] + ny * H8[1] + nz * H8[2]), shine), rr4 = rim * Math.pow(1 - nz, 3) * 0.8;
-          const lit2 = col2.map((v) => v * k + sp + rr4 * 0.8);
+          const ndl = nx * L4[0] + ny * L4[1] + nz * L4[2];
+          let lit2;
+          if (po.cel ?? celOn()) {
+            const C6 = TOON.gl, hl2 = ndl * 0.5 + 0.5, ak = Math.max(-0.3, Math.min(0.6, (amb - 0.42) * 1.2));
+            const band = hl2 >= C6.lit ? 3 : hl2 >= C6.shadow ? 2 : hl2 >= C6.deep ? 1 : 0;
+            const shT = C6.shadowTint.map((t) => t + (1 - t) * ak * 0.55);
+            lit2 = col2.map((v, j) => (band === 3 ? (Math.min(1, v * (1 + 2 * C6.litLift)) * (1 - C6.litLift * 0.35) + C6.litLift * 0.35) * C6.litTint[j] + C6.litAdd[j] : band === 2 ? v : band === 1 ? v * shT[j] + C6.shadowAdd[j] : v * C6.deepTint[j] + C6.deepAdd[j]) * (1 + 0.1 * viv));
+            const hd = nx * H8[0] + ny * H8[1] + nz * H8[2];
+            if (spec > 0.2 && hd > 1 - Math.min(0.12, 0.55 / Math.max(shine, 4)) * C6.specSize && ndl > 0.15) lit2 = lit2.map((v) => Math.max(v, v + (1 - v) * 0.6));
+            if (rim > 0 && nz < C6.rimWidth && ndl < 0.12) lit2 = lit2.map((v, j) => Math.max(v, (TOON_RIM[j] * 0.5 + col2[j] * 0.5) * Math.min(1, rim * C6.rim * 2.2)));
+          } else {
+            const dd = Math.max(0, ndl), wrap = Math.max(0, (ndl + 0.35) / 1.35);
+            const k = (amb + (1 - amb) * (dd + wrap) / 2) * (1 + 0.14 * viv);
+            const sp = spec * Math.pow(Math.max(0, nx * H8[0] + ny * H8[1] + nz * H8[2]), shine), rr4 = rim * Math.pow(1 - nz, 3) * 0.8;
+            lit2 = col2.map((v) => v * k + sp + rr4 * 0.8);
+          }
           const fin2 = lit2.map((v, j) => Math.min(1, v + (col2[j] * 1.15 + 0.06 - v) * emit2));
           tris.push({ z: (P7[0][2] + P7[1][2] + P7[2][2]) / 3, P: P7, col: fin2, a });
         }
@@ -6873,10 +7064,11 @@ void main() {
     });
     return out;
   }
-  var gl, glCanvas, prog, failed2, copyMode, GLW, GLH, T, tnow, texCache, MAX_GL, VS, FS, UNIFORMS, softOn, LPMesh, hexCache, hexRgb, MeshBuilder, Z2, T4, finish2, pixBuf, LPScene, texPix;
+  var gl, glCanvas, prog, failed2, copyMode, GLW, GLH, T, tnow, texCache, MAX_GL, VS, FS, UNIFORMS, softOn, LPMesh, hexCache, hexRgb, MeshBuilder, Z2, T4, finish2, pixBuf, LPScene, texPix, TOON_RIM;
   var init_lowpoly = __esm({
     "src/gfx/lowpoly.js"() {
       init_voxgl();
+      init_toon();
       gl = null;
       glCanvas = null;
       prog = null;
@@ -6890,24 +7082,36 @@ void main() {
       MAX_GL = 4096;
       VS = `#version 300 es
 in vec3 aPos; in vec3 aNrm; in vec3 aCol; in vec2 aUv;
-uniform mat4 uMVP; uniform mat4 uModel;
-out vec3 vNrm; out vec3 vCol; out vec2 vUv; out vec3 vWorld;
+uniform mat4 uMVP; uniform mat4 uModel; uniform float uVoxN;
+out vec3 vNrm; out vec3 vCol; out vec2 vUv; out vec3 vWorld; out vec3 vSN;
 void main() {
   vec4 w = uModel * vec4(aPos, 1.0);
   vWorld = w.xyz;
   vNrm = mat3(uModel) * aNrm;
   vCol = aCol; vUv = aUv;
+  // [cel29] voxel meshes carry a smoothed surface normal (octahedral) in the unused uv slots
+  vec3 sn = aNrm;
+  if (uVoxN > 0.5) {
+    sn = vec3(aUv, 1.0 - abs(aUv.x) - abs(aUv.y));
+    if (sn.z < 0.0) sn.xy = (1.0 - abs(sn.yx)) * vec2(sn.x >= 0.0 ? 1.0 : -1.0, sn.y >= 0.0 ? 1.0 : -1.0);
+  }
+  vSN = mat3(uModel) * sn;
   gl_Position = uMVP * vec4(aPos, 1.0);
 }`;
       FS = `#version 300 es
 precision highp float;
-in vec3 vNrm; in vec3 vCol; in vec2 vUv; in vec3 vWorld;
+in vec3 vNrm; in vec3 vCol; in vec2 vUv; in vec3 vWorld; in vec3 vSN;
 uniform vec3 uLight; uniform vec3 uEye; uniform float uAmb; uniform float uSpec; uniform float uShine;
 uniform float uRim; uniform vec3 uRimCol; uniform sampler2D uTex; uniform float uUseTex; uniform float uAlpha;
 uniform vec4 uTint; uniform vec3 uFogCol; uniform float uFog; uniform float uOrtho;
 uniform float uEnv; uniform float uIri; uniform float uEmit; uniform float uEmitTex; uniform vec3 uSky; uniform vec3 uGround;
 uniform float uSmoothN; uniform float uSoft; uniform vec3 uSoftCol; uniform float uVivid;
+uniform float uCel; uniform vec4 uCelB; uniform vec4 uCelK; uniform vec3 uCelK2; uniform float uVoxN;
+uniform vec3 uShTint; uniform vec3 uShAdd; uniform vec3 uDpTint; uniform vec3 uDpAdd; uniform vec3 uLtTint; uniform vec3 uLtAdd;
 out vec4 frag;
+// [cel29] toon light: clean bands (deep / shadow / mid / lit) with hue-shifted tints, edges smoothed over ~1 px
+// (a fixed width in light units: sprites are a few dozen px across, and fwidth costs too much on software GL)
+float band(float x, float t, float aa) { return smoothstep(t - aa, t + aa, x); }
 void main() {
   vec3 n = normalize(vNrm);
   vec3 l = normalize(uLight);
@@ -6931,10 +7135,42 @@ void main() {
   // vivid (creature sprites): a saturation lift of the painted colour before lighting
   if (uVivid > 0.0) base = max(mix(vec3(dot(base, vec3(0.299, 0.587, 0.114))), base, 1.0 + 0.3 * uVivid), 0.0);
   float d = max(dot(n, l), 0.0);
-  float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
-  vec3 col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5)) * (1.0 + 0.14 * uVivid);
   float nv = max(dot(n, v), 0.0);
-  if (uSoft > 0.0) {
+  vec3 col;
+  vec3 cL = base;
+  // cel lighting normal: voxel meshes light with their smoothed surface normal (+ a little of the face normal, so
+  // voxel steps still read); other meshes use their own normal
+  vec3 nl = n;
+  if (uCel > 0.5 && uVoxN > 0.5) {
+    vec3 sn = normalize(vSN);
+    if (dot(sn, v) < 0.02) sn = normalize(sn - v * (dot(sn, v) - 0.02));
+    nl = normalize(mix(n, sn, uCelK.w));
+  }
+  float ndl = dot(nl, l);
+  if (uCel > 0.5) {
+    // ambient lifts the shadow tints (each material's ambient keeps its meaning); vivid keeps the bright exposure
+    float hl = ndl * 0.5 + 0.5;
+    float aa = uCelB.w;
+    float ak = clamp((uAmb - 0.42) * 1.2, -0.3, 0.6);
+    vec3 shT = mix(uShTint, vec3(1.0), ak * 0.55), dpT = mix(uDpTint, uShTint, clamp(ak, 0.0, 1.0) * 0.6);
+    vec3 cD = base * dpT + uDpAdd, cS = base * shT + uShAdd;
+    // lit: brighter in the colour's own hue (dark colours keep their saturation), saturated ones also lift toward white
+    cL = mix(min(base * (1.0 + 2.0 * uCelK2.z), vec3(1.0)), vec3(1.0), uCelK2.z * 0.35) * uLtTint + uLtAdd;
+    if (uSoft > 0.0) {
+      // plush: warmer, lighter shadows (light scattering through) with a warm terminator band
+      cS = mix(cS, base * uSoftCol * 0.86 + uShAdd, uSoft * 0.6);
+      cD = mix(cD, cS * 0.82, uSoft * 0.6);
+    }
+    col = mix(cD, cS, band(hl, uCelB.x, aa));
+    col = mix(col, base, band(hl, uCelB.y, aa));
+    col = mix(col, cL, band(hl, uCelB.z, aa));
+    if (uSoft > 0.0) col += base * uSoftCol * 0.16 * uSoft * (band(hl, uCelB.y - 0.06, aa) - band(hl, uCelB.y + 0.02, aa));
+    col *= 1.0 + 0.1 * uVivid;
+  } else {
+    float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
+    col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5)) * (1.0 + 0.14 * uVivid);
+  }
+  if (uSoft > 0.0 && uCel < 0.5) {
     // plush, subsurface-ish: a wide smooth wrap, sky / ground tinted ambient, warm light bleeding into the terminator
     float ndl = dot(n, l);
     float sd = clamp((ndl + 0.6) / 1.6, 0.0, 1.0);
@@ -6946,31 +7182,88 @@ void main() {
     softC += uSoftCol * pow(1.0 - nv, 2.2) * 0.16 * clamp(0.65 - ndl * 0.5, 0.0, 1.0);
     col = mix(col, softC, clamp(uSoft, 0.0, 1.0));
   }
-  if (uEnv > 0.0) {
+  float envK = uEnv * (uCel > 0.5 ? (uAlpha < 0.99 ? 0.85 : uCelK.z) : 1.0);
+  if (envK > 0.0) {
     vec3 r = reflect(-v, n);
     vec3 env = mix(uGround, uSky, smoothstep(-0.25, 0.75, r.y));
     float fres = 0.12 + 0.88 * pow(1.0 - nv, 2.5);
     // vivid keeps the body colour under the glossy reflection instead of greying it toward the sky / ground
-    col = mix(col, col * (0.55 + 0.33 * uVivid) + env * (0.6 - 0.32 * uVivid), uEnv * fres * (1.0 - 0.4 * uVivid));
-    col += uSky * uEnv * 0.5 * (1.0 - 0.3 * uVivid) * pow(max(r.y, 0.0), 6.0);
+    col = mix(col, col * (0.55 + 0.33 * uVivid) + env * (0.6 - 0.32 * uVivid), envK * fres * (1.0 - 0.4 * uVivid));
+    col += uSky * envK * 0.5 * (1.0 - 0.3 * uVivid) * pow(max(r.y, 0.0), 6.0);
   }
   if (uIri > 0.0) {
     vec3 iri = 0.5 + 0.5 * cos(6.2831 * (nv * 1.4 + vec3(0.0, 0.33, 0.67)));
     col += iri * uIri * 0.35 * (1.0 - nv * 0.6) * (0.4 + 0.6 * d);
   }
   vec3 h = normalize(l + v);
-  col += vec3(1.0) * uSpec * pow(max(dot(n, h), 0.0), uShine);
-  float rim = pow(1.0 - nv, 3.0);
   // vivid: the rim / sheen takes the surface's own hue (a coloured glossy edge, not a white haze)
   vec3 rimC = mix(uRimCol, clamp(base * 1.35 + vec3(0.1), 0.0, 1.0), 0.6 * clamp(uVivid, 0.0, 1.0));
-  col += rimC * uRim * rim;
+  if (uCel > 0.5) {
+    // hard toon specular: a small crisp shape whose size follows the shine; glossier = smaller and sharper.
+    // Voxel meshes take it (and the rim) from the smoothed normal alone so the shape stays clean across steps.
+    vec3 ns = uVoxN > 0.5 ? normalize(mix(nl, normalize(vSN), 0.85)) : nl;
+    float sh = dot(ns, h);
+    float cut = 1.0 - clamp(0.55 / max(uShine, 4.0), 0.005, 0.12) * uCelK.y;
+    float sa = uCelB.w * 0.25;
+    float sm = band(sh, cut, sa) * clamp(uSpec * 1.4, 0.0, 1.0) * uCelK.x * band(ndl, 0.15, 0.05);
+    vec3 specC = mix(clamp(cL * 1.18 + vec3(0.08), 0.0, 1.0), vec3(1.0), clamp(0.3 + 0.35 * uSpec, 0.0, 0.85));
+    col = mix(col, max(col, specC), sm);
+    // thin rim band on the silhouette turned from the key light
+    float rx = 1.0 - max(dot(ns, v), 0.0);
+    float ra = uCelB.w * 2.0;
+    float rm = band(rx, 1.0 - uCelK2.y, ra) * band(-ndl, 0.0, 0.06);
+    vec3 rimT = mix(uRimCol, clamp(base * 1.35 + vec3(0.1), 0.0, 1.0), 0.35 * clamp(uVivid, 0.0, 1.0));
+    col = mix(col, max(col, rimT * (0.6 + 0.4 * base)), clamp(uRim * uCelK2.x * 2.2, 0.0, 1.0) * rm);
+  } else {
+    col += vec3(1.0) * uSpec * pow(max(dot(n, h), 0.0), uShine);
+    float rim = pow(1.0 - nv, 3.0);
+    col += rimC * uRim * rim;
+  }
   col = mix(col, base * 1.15 + vec3(0.06), clamp(emit, 0.0, 1.0));
   col = mix(col, uTint.rgb, uTint.a);
   float fogK = clamp(uFog * length(uEye - vWorld) * 0.002, 0.0, 1.0);
   col = mix(col, uFogCol, fogK);
   frag = vec4(col * a, a);
 }`;
-      UNIFORMS = ["uMVP", "uModel", "uLight", "uEye", "uAmb", "uSpec", "uShine", "uRim", "uRimCol", "uTex", "uUseTex", "uAlpha", "uTint", "uFogCol", "uFog", "uOrtho", "uEnv", "uIri", "uEmit", "uEmitTex", "uSky", "uGround", "uSmoothN", "uSoft", "uSoftCol", "uVivid"];
+      UNIFORMS = [
+        "uMVP",
+        "uModel",
+        "uLight",
+        "uEye",
+        "uAmb",
+        "uSpec",
+        "uShine",
+        "uRim",
+        "uRimCol",
+        "uTex",
+        "uUseTex",
+        "uAlpha",
+        "uTint",
+        "uFogCol",
+        "uFog",
+        "uOrtho",
+        "uEnv",
+        "uIri",
+        "uEmit",
+        "uEmitTex",
+        "uSky",
+        "uGround",
+        "uSmoothN",
+        "uSoft",
+        "uSoftCol",
+        "uVivid",
+        "uCel",
+        "uCelB",
+        "uCelK",
+        "uCelK2",
+        "uVoxN",
+        "uShTint",
+        "uShAdd",
+        "uDpTint",
+        "uDpAdd",
+        "uLtTint",
+        "uLtAdd"
+      ];
       softOn = true;
       LPMesh = class {
         constructor(data, count, bounds2) {
@@ -7239,6 +7532,7 @@ void main() {
         }
       };
       texPix = /* @__PURE__ */ new WeakMap();
+      TOON_RIM = hexRgb(TOON.rimColor);
     }
   });
 
@@ -12100,7 +12394,7 @@ void main() {
                 py0 = y;
               }
               shadedEllipse(buf, px0 - cr2 * 0.8, py0, cr2 * 2, cr2 * 1.4, rp(c, "#c8ccd4"));
-              const MS = c.bodyR;
+              const MS2 = c.bodyR;
               for (let y = Math.floor(cy - ry2 - 1); y <= Math.ceil(cy + ry2 * 0.62); y++) for (let x = Math.floor(cx - rx2 - 1); x <= Math.ceil(cx + rx2 + 1); x++) {
                 const nx = (x + 0.5 - cx) / rx2;
                 const ryx = ry2 * (0.8 + 0.2 * clamp(nx, -1, 1) * 0.5 + 0.1);
@@ -12109,17 +12403,17 @@ void main() {
                 const wall = ny > 0.18 + 0.05 * nx;
                 let light = wall ? 0.32 - (ny - 0.2) * 0.4 : 0.66 - ny * 0.25 - nx * 0.12;
                 const tc = -0.25;
-                let col2 = rampPick(wall ? B2 : MS, clamp012(light), x, y);
+                let col2 = rampPick(wall ? B2 : MS2, clamp012(light), x, y);
                 if (!wall) {
-                  if (nx < -0.12 && Math.abs(ny - tc) * ryx < 0.55) col2 = MS[0];
-                  if (Math.abs(nx + 0.12 + (ny - tc) * (ny - tc) * 0.25) * rx2 < 0.55 && ny > -0.85 && ny < 0.15) col2 = MS[1];
+                  if (nx < -0.12 && Math.abs(ny - tc) * ryx < 0.55) col2 = MS2[0];
+                  if (Math.abs(nx + 0.12 + (ny - tc) * (ny - tc) * 0.25) * rx2 < 0.55 && ny > -0.85 && ny < 0.15) col2 = MS2[1];
                   const wx = (nx + 0.6) * rx2, wy = (ny - tc) * ryx;
                   if (Math.abs(wx) < Math.max(1.4, rx2 * 0.11) && Math.abs(wy) < Math.max(0.9, ryx * 0.13)) {
                     col2 = (Math.floor(wx + 10) & 1) === 0 ? pk(c, "#4a4e5c") : pk(c, "#6e7484");
                     if (Math.abs(wy) > Math.max(0.9, ryx * 0.13) - 1) col2 = pk(c, "#2a2c36");
                   }
-                  if (nx > 0.05 && nx < 0.6 && ny > -0.82 && ny < -0.58 && bayer(x, y) < 0.55) col2 = MS[4];
-                } else if (Math.abs(ny - 0.2 - 0.05 * nx) * ryx < 0.6) col2 = MS[1];
+                  if (nx > 0.05 && nx < 0.6 && ny > -0.82 && ny < -0.58 && bayer(x, y) < 0.55) col2 = MS2[4];
+                } else if (Math.abs(ny - 0.2 - 0.05 * nx) * ryx < 0.6) col2 = MS2[1];
                 buf.set(x, y, col2);
               }
               if (glow2) for (let x = -2; x <= 2; x++) glow2.set(Math.round(cx + rx2 * 0.2 + x), Math.round(cy + ry2 * 0.62), pk(c, "#ff3a3a"));
@@ -13737,6 +14031,8 @@ void main() {
     const builders = [];
     const AO = [1 - 0.4 * aoK, 1 - 0.25 * aoK, 1 - 0.12 * aoK, 1];
     const col2 = [0, 0, 0];
+    const KO = kernelFor(NX2, NXY), KN = KO.length, KX = KER.x, KY = KER.y, KZ = KER.z;
+    const sn = [0, 0, 1];
     const SU = [NX2, NXY, 1], SV = [NXY, 1, NX2];
     const ST = [1, NX2, NXY];
     for (let z = 1; z < NZ2 - 1; z++) for (let y = 1; y < NY2 - 1; y++) {
@@ -13764,6 +14060,7 @@ void main() {
           col2[2] *= jj;
         }
         const fb = builders[kind2] || (builders[kind2] = new FaceBuf());
+        let snOk = false;
         for (let d = 0; d < 3; d++) {
           const st = ST[d];
           for (let sgn = -1; sgn <= 1; sgn += 2) {
@@ -13780,7 +14077,29 @@ void main() {
               a11 = AO[up && vp ? 0 : 3 - up - vp - pp];
               a01 = AO[um && vp ? 0 : 3 - um - vp - mp];
             }
-            fb.face(x + ox, y + oy, z + oz, d, sgn, vs, col2, a00, a10, a11, a01);
+            if (isOp) {
+              if (!snOk) {
+                let gx = 0, gy = 0, gz = 0;
+                for (let q = 0; q < KN; q++) if (ext[i + KO[q]] !== 1) {
+                  gx += KX[q];
+                  gy += KY[q];
+                  gz += KZ[q];
+                }
+                const l = Math.sqrt(gx * gx + gy * gy + gz * gz);
+                if (l > 1e-4) {
+                  sn[0] = gx / l;
+                  sn[1] = gy / l;
+                  sn[2] = gz / l;
+                } else {
+                  sn[0] = d === 0 ? sgn : 0;
+                  sn[1] = d === 1 ? sgn : 0;
+                  sn[2] = d === 2 ? sgn : 0;
+                }
+                octa(sn, SNQ, 0);
+                snOk = true;
+              }
+              fb.face(x + ox, y + oy, z + oz, d, sgn, vs, col2, a00, a10, a11, a01, sn);
+            } else fb.face(x + ox, y + oy, z + oz, d, sgn, vs, col2, a00, a10, a11, a01, null);
           }
         }
       }
@@ -13808,17 +14127,53 @@ void main() {
     const parts = voxelizeParts([{ key: "body", mesh, texture: opts.texture, emitTex: opts.emitTex }], vs, opts);
     return parts[0]?.mesh || null;
   }
+  function kernelFor(NX2, NXY) {
+    if (!KER.rel) {
+      const rel = [], kx = [], ky = [], kz = [];
+      for (let k = -2; k <= 2; k++) for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) {
+        if (!i && !j && !k) continue;
+        const far = (Math.abs(i) === 2) + (Math.abs(j) === 2) + (Math.abs(k) === 2), zero = !i + !j + !k;
+        if (far && !(far === 1 && zero >= 1)) continue;
+        const w = 1 / (i * i + j * j + k * k);
+        rel.push([i, j, k]);
+        kx.push(-i * w);
+        ky.push(-j * w);
+        kz.push(-k * w);
+      }
+      KER.rel = rel;
+      KER.x = Float32Array.from(kx);
+      KER.y = Float32Array.from(ky);
+      KER.z = Float32Array.from(kz);
+    }
+    const key = NX2 + "x" + NXY;
+    if (KER.key !== key) {
+      KER.key = key;
+      KER.off = Int32Array.from(KER.rel.map(([i, j, k]) => i + j * NX2 + k * NXY));
+    }
+    return KER.off;
+  }
+  function octa(n2, out, o) {
+    const s = Math.abs(n2[0]) + Math.abs(n2[1]) + Math.abs(n2[2]) || 1;
+    let u = n2[0] / s, v = n2[1] / s;
+    if (n2[2] < 0) {
+      const pu = (1 - Math.abs(v)) * (u >= 0 ? 1 : -1), pv = (1 - Math.abs(u)) * (v >= 0 ? 1 : -1);
+      u = pu;
+      v = pv;
+    }
+    out[o] = Math.round((u * 0.5 + 0.5) * 255);
+    out[o + 1] = Math.round((v * 0.5 + 0.5) * 255);
+  }
   function mergeVox(list) {
     list = list.filter(Boolean);
     if (!list.length) return null;
     let n2 = 0;
     for (const m of list) n2 += m.nFaces;
-    const pos = new Int16Array(n2 * 3), meta = new Uint8Array(n2 * 8);
+    const pos = new Int16Array(n2 * 3), meta = new Uint8Array(n2 * MS);
     let o = 0;
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
     for (const m of list) {
       pos.set(m.pos.subarray(0, m.nFaces * 3), o * 3);
-      meta.set(m.meta.subarray(0, m.nFaces * 8), o * 8);
+      meta.set(m.meta.subarray(0, m.nFaces * MS), o * MS);
       o += m.nFaces;
       for (let k = 0; k < 3; k++) {
         min[k] = Math.min(min[k], m.bounds.min[k]);
@@ -13832,7 +14187,8 @@ void main() {
     const B2 = new Float32Array(n2 * 66);
     let o = 0;
     for (let i = 0; i < n2; i++) {
-      const mo = i * 8, ds = meta[mo], d = ds >> 1, sgn = ds & 1 ? 1 : -1;
+      const mo = i * MS, ds = meta[mo], d = ds >> 1, sgn = ds & 1 ? 1 : -1;
+      const su = meta[mo + 8] / 255 * 2 - 1, sv = meta[mo + 9] / 255 * 2 - 1;
       let x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
       if (sgn > 0) {
         if (d === 0) x++;
@@ -13871,8 +14227,8 @@ void main() {
         B2[o + 6] = r * a;
         B2[o + 7] = g * a;
         B2[o + 8] = b * a;
-        B2[o + 9] = 0;
-        B2[o + 10] = 0;
+        B2[o + 9] = su;
+        B2[o + 10] = sv;
         o += 11;
       }
     }
@@ -13936,7 +14292,7 @@ void main() {
       acc[k6 + 4] = 0.35;
     }
   }
-  var STAT, now2, texPix2, CAP, cls, rnk, acc, ext, queue, hash32, CU, CV, ORD_P, ORD_PF, ORD_M, ORD_MF, CX, CY, CZ, CA, q8, FaceBuf, VoxMesh, hexRGB01;
+  var STAT, now2, texPix2, CAP, cls, rnk, acc, ext, queue, hash32, KER, MS, SNQ, FACE_OCT, CU, CV, ORD_P, ORD_PF, ORD_M, ORD_MF, CX, CY, CZ, CA, FN, q8, FaceBuf, VoxMesh, hexRGB01;
   var init_voxelize = __esm({
     "src/fish/voxelize.js"() {
       init_lowpoly();
@@ -13949,6 +14305,16 @@ void main() {
         h = Math.imul(h ^ h >>> 13, 1274126177);
         return ((h ^ h >>> 16) >>> 0) / 4294967296;
       };
+      KER = { x: null, y: null, z: null, rel: null, key: "", off: null };
+      MS = 10;
+      SNQ = new Uint8Array(2);
+      FACE_OCT = [0, 1, 2, 3, 4, 5].map((f) => {
+        const n2 = [0, 0, 0];
+        n2[f >> 1] = f & 1 ? 1 : -1;
+        const q = [0, 0];
+        octa(n2, q, 0);
+        return q;
+      });
       CU = [[0, 1, 0], [0, 0, 1], [1, 0, 0]];
       CV = [[0, 0, 1], [1, 0, 0], [0, 1, 0]];
       ORD_P = [0, 1, 2, 0, 2, 3];
@@ -13959,14 +14325,15 @@ void main() {
       CY = [0, 0, 0, 0];
       CZ = [0, 0, 0, 0];
       CA = [0, 0, 0, 0];
+      FN = [0, 0, 1];
       q8 = (v) => v <= 0 ? 0 : v >= 1 ? 255 : Math.round(v * 255);
       FaceBuf = class {
         constructor() {
           this.pos = new Int16Array(3 * 512);
-          this.meta = new Uint8Array(8 * 512);
+          this.meta = new Uint8Array(MS * 512);
           this.n = 0;
         }
-        face(x, y, z, d, sgn, vs, col2, a00, a10, a11, a01) {
+        face(x, y, z, d, sgn, vs, col2, a00, a10, a11, a01, sn) {
           if ((this.n + 1) * 3 > this.pos.length) {
             const np = new Int16Array(this.pos.length * 2);
             np.set(this.pos);
@@ -13980,7 +14347,7 @@ void main() {
           this.pos[i * 3] = x;
           this.pos[i * 3 + 1] = y;
           this.pos[i * 3 + 2] = z;
-          const m = this.meta, o = i * 8;
+          const m = this.meta, o = i * MS;
           m[o] = d * 2 + (sgn > 0 ? 1 : 0);
           m[o + 1] = q8(col2[0] / 1.5);
           m[o + 2] = q8(col2[1] / 1.5);
@@ -13989,11 +14356,29 @@ void main() {
           m[o + 5] = q8(a10);
           m[o + 6] = q8(a11);
           m[o + 7] = q8(a01);
+          if (sn) {
+            const fn = sgn * sn[d];
+            if (fn < 0.1) {
+              const k = 0.1 - fn;
+              FN[0] = sn[0];
+              FN[1] = sn[1];
+              FN[2] = sn[2];
+              FN[d] += sgn * k;
+              octa(FN, m, o + 8);
+            } else {
+              m[o + 8] = SNQ[0];
+              m[o + 9] = SNQ[1];
+            }
+          } else {
+            const q = FACE_OCT[d * 2 + (sgn > 0 ? 1 : 0)];
+            m[o + 8] = q[0];
+            m[o + 9] = q[1];
+          }
           this.vs = vs;
         }
         build() {
           const n2 = this.n, vs = this.vs || 1;
-          const pos = this.pos.slice(0, n2 * 3), meta = this.meta.slice(0, n2 * 8);
+          const pos = this.pos.slice(0, n2 * 3), meta = this.meta.slice(0, n2 * MS);
           const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
           for (let i = 0; i < n2; i++) for (let k = 0; k < 3; k++) {
             const q = pos[i * 3 + k];
@@ -14021,6 +14406,7 @@ void main() {
           this.nFaces = nFaces;
           this.vs = vs;
           this.voxel = true;
+          this.voxN = true;
         }
         get data() {
           return this._d || (this._d = expandFaces(this.pos, this.meta, this.nFaces, this.vs));
@@ -20821,7 +21207,7 @@ void main() {
     const cells = frames.map((f) => ({ parts: f.parts.map((pt) => ({ ...pt })) }));
     const cols = Math.max(1, Math.min(LP_SWIM, Math.floor(4096 / w)));
     const gcells = c.glow ? frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== "fins" && p.key !== "finrays" && p.key !== "glass").map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) })) : null;
-    const go = { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 };
+    const go = { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0, cel: false };
     const ms = now3() - t02;
     spent += ms;
     return { c, infl, mouth, hi, frames, cells, gcells, o: { ...o, cols }, go, w, h, Sb, blur, cols, i: 0, canvas: null, raw: null, ms, yawI, sb, tilt };
@@ -23483,11 +23869,11 @@ void main() {
   // src/gfx/voxel.js
   function ramp7(hex7, contrast = 1) {
     const key = hex7 + "|" + contrast;
-    let r = rampCache.get(key);
+    let r = rampCache2.get(key);
     if (!r) {
       r = RAMP_STEPS.map((a) => a === 0 ? hex7 : shade(hex7, a * contrast));
-      rampCache.set(key, r);
-      if (rampCache.size > 4096) rampCache.delete(rampCache.keys().next().value);
+      rampCache2.set(key, r);
+      if (rampCache2.size > 4096) rampCache2.delete(rampCache2.keys().next().value);
     }
     return r;
   }
@@ -23511,18 +23897,22 @@ void main() {
     const depth = pooled("depth", Float32Array, N2);
     const hitU = pooled("hitU", Float32Array, N2), hitV = pooled("hitV", Float32Array, N2);
     traceRays(model, b, cam, vol, hitVox, hitN, depth, hitU, hitV);
+    const cel = opts.cel ?? celOn();
     const tone5 = pooled("tone", Float32Array, N2), edgeMul = pooled("edgeMul", Float32Array, N2);
+    const specHit = cel ? pooled("specHit", Uint8Array, N2).fill(0) : null;
     const faceTone = faceTones(cam, opts.light);
-    shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul);
+    shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul, specHit);
     const edgeBoost = pooled("edgeBoost", Float32Array, N2).fill(0);
     const sideMark = pooled("sideMark", Uint8Array, N2).fill(0);
     edgeHighlights(cam, opts, hitN, depth, edgeMul, edgeBoost, sideMark);
-    const ramps = palette4.map((pe) => pe ? Uint32Array.from((pe.ramp || ramp7(pe.color, pe.contrast ?? 1)).map((h) => pack(h) >>> 0)) : null);
+    const ramps = palette4.map((pe) => pe ? Uint32Array.from((pe.ramp || (cel ? toonRamp7 : ramp7)(pe.color, pe.contrast ?? 1)).map((h) => pack(h) >>> 0)) : null);
     const out = new Uint32Array(N2);
     const glowBuf = cam.hasEmissive ? new Uint32Array(N2) : null;
     const ids = new Uint8Array(N2);
     const level = pooled("level", Int8Array, N2).fill(-1);
-    quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level);
+    quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level, specHit);
+    if (cel) despeckle(W11, H8, hitVox, depth, ids, level, specHit, ramps, out);
+    if (cel && TOON.vox.rim && (opts.rim ?? cam.s >= 1.5)) rimPass(palette4, W11, H8, hitVox, ids, level, ramps, out);
     if (opts.keepVoxel) {
       const { nx, ny } = model;
       for (let p = 0; p < N2; p++) {
@@ -23771,11 +24161,12 @@ void main() {
       return light.dark + (light.lit - light.dark) * ((n2[0] * hlx + n2[2] * hlz + 1) / 2);
     }));
   }
-  function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul) {
+  function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul, specHit) {
     const { nx, ny, nz, data, palette: palette4 } = model;
     const { occ, SY, SZ } = vol;
     const N2 = cam.N;
-    const aoAmt = opts.ao ?? 1.15, jitterDef = opts.jitter ?? 0.22, smoothDef = opts.smooth ?? 0;
+    const V2 = TOON.vox, jK = specHit ? V2.jitter : 1;
+    const aoAmt = (opts.ao ?? 1.15) * (specHit ? V2.ao : 1), jitterDef = opts.jitter ?? 0.22, smoothDef = opts.smooth ?? 0;
     const { R: R9, U: U2, C: C6 } = cam;
     const LV = [-0.45 * R9[0] + 0.85 * U2[0] + 0.55 * C6[0], -0.45 * R9[1] + 0.85 * U2[1] + 0.55 * C6[1], -0.45 * R9[2] + 0.85 * U2[2] + 0.55 * C6[2]];
     let hvx = LV[0] + C6[0], hvy = LV[1] + C6[1], hvz = LV[2] + C6[2];
@@ -23789,10 +24180,11 @@ void main() {
     const pJit = new Float32Array(P7), pSmooth = new Float32Array(P7), pSpec = new Float32Array(P7), pPow = new Float32Array(P7), pLight = new Float32Array(P7), pAo = new Float32Array(P7), pEdge = new Float32Array(P7);
     for (let i = 1; i < P7; i++) {
       const pe = palette4[i];
-      pJit[i] = pe.jitter ?? jitterDef;
+      pJit[i] = (pe.jitter ?? jitterDef) * jK;
       pSmooth[i] = pe.smooth ?? smoothDef;
+      if (specHit && pSmooth[i] > 0) pSmooth[i] = Math.min(1, pSmooth[i] + V2.smoothAdd);
       pSpec[i] = pe.spec || 0;
-      pPow[i] = pe.specPow ?? 24;
+      pPow[i] = (pe.specPow ?? 24) * (specHit ? V2.specPow : 1);
       pLight[i] = pe.light || 0;
       pAo[i] = (pe.aoMul ?? 1) * aoAmt;
       pEdge[i] = pe.edge ?? (pSmooth[i] >= 0.35 ? 0 : 1);
@@ -23874,7 +24266,11 @@ void main() {
         }
         if (pSpec[v] > 0) {
           const hd = smooth4 > 0 ? sx2 * hvx + sy2 * hvy + sz * hvz : NX2[nid] * hvx + NY2[nid] * hvy + NZ2[nid] * hvz;
-          if (hd > 0) ft += Math.pow(hd, pPow[v]) * pSpec[v];
+          if (hd > 0) {
+            const g = Math.pow(hd, pPow[v]) * pSpec[v];
+            if (!specHit) ft += g;
+            else if (g > V2.specCut) specHit[p] = 1;
+          }
         }
       }
       tone5[p] = ft + pLight[v] + hj - (1 - ao) * pAo[v];
@@ -23908,7 +24304,8 @@ void main() {
       }
     }
   }
-  function quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level) {
+  function quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level, specHit) {
+    const V2 = TOON.vox, tD = V2.deep, tS = V2.shadow, tL = V2.lit, tH = V2.hi;
     const { data, palette: palette4 } = model;
     const P7 = palette4.length;
     const pEm = new Float32Array(P7), pLight = new Float32Array(P7);
@@ -23929,10 +24326,67 @@ void main() {
         const et = (nid === 2 ? 5 : nid === 4 || nid === 1 ? 4.4 : 3.8) + pLight[v] + edgeBoost[p] * 0.5;
         tn += (et - tn) * em;
       }
-      const li = tn < 0 ? 0 : tn > 6 ? 6 : Math.round(tn);
+      let li;
+      if (specHit && em <= 0) {
+        li = specHit[p] ? 6 : tn >= tL ? tn >= tH ? 5 : 4 : tn >= tS ? 3 : tn >= tD ? 2 : 1;
+      } else li = tn < 0 ? 0 : tn > 6 ? 6 : Math.round(tn);
       level[p] = li;
       out[p] = ramps[v][li];
       if (em > 0 && glowBuf) glowBuf[p] = out[p];
+      if (specHit && em > 0) specHit[p] = 2;
+    }
+  }
+  function despeckle(W11, H8, hitVox, depth, ids, level, specHit, ramps, out) {
+    const src = pooled("lvSrc", Int8Array, W11 * H8);
+    src.set(level.subarray(0, W11 * H8));
+    const nb = [0, 0, 0, 0];
+    for (let py = 1; py < H8 - 1; py++) for (let px3 = 1; px3 < W11 - 1; px3++) {
+      const p = py * W11 + px3;
+      if (hitVox[p] < 0 || specHit[p]) continue;
+      const lv = src[p], d = depth[p];
+      let n2 = 0;
+      for (let k = 0; k < 4; k++) {
+        const q = k === 0 ? p - 1 : k === 1 ? p + 1 : k === 2 ? p - W11 : p + W11;
+        if (hitVox[q] < 0 || specHit[q] || Math.abs(depth[q] - d) > 1.6) continue;
+        nb[n2++] = src[q];
+      }
+      if (n2 < 3) continue;
+      let best = -1;
+      for (let i = 0; i < n2 && best < 0; i++) {
+        let c = 0;
+        for (let j = 0; j < n2; j++) if (nb[j] === nb[i]) c++;
+        if (c >= 3) best = nb[i];
+      }
+      if (best < 0 || best === lv) continue;
+      let same = 0;
+      for (let i = 0; i < n2; i++) if (nb[i] === lv) same++;
+      if (same) continue;
+      level[p] = best;
+      out[p] = ramps[ids[p]][best];
+    }
+  }
+  function rimColorOf(c) {
+    let o = rimCache.get(c);
+    if (o === void 0) {
+      const a = unpack(c), b = unpack(pack(TOON.rimColor)), k = TOON.rimMix;
+      o = ((a[3] & 255) << 24 | Math.round(a[2] + (b[2] - a[2]) * k) << 16 | Math.round(a[1] + (b[1] - a[1]) * k) << 8 | Math.round(a[0] + (b[0] - a[0]) * k)) >>> 0;
+      if (rimCache.size > 4096) rimCache.clear();
+      rimCache.set(c, o);
+    }
+    return o;
+  }
+  function rimPass(palette4, W11, H8, hitVox, ids, level, ramps, out) {
+    for (let py = 0; py < H8; py++) for (let px3 = 2; px3 < W11; px3++) {
+      const p = py * W11 + px3;
+      if (hitVox[p] < 0 || hitVox[p - 1] < 0 || hitVox[p - 2] < 0) continue;
+      const lv = level[p];
+      if (lv >= 5) continue;
+      const right = px3 + 1 >= W11 || hitVox[p + 1] < 0;
+      const below = lv <= 2 && py > 1 && hitVox[p - W11] >= 0 && hitVox[p - 2 * W11] >= 0 && (py + 1 >= H8 || hitVox[p + W11] < 0);
+      if (!right && !below) continue;
+      const v = ids[p];
+      if (palette4[v].emissive) continue;
+      out[p] = rimColorOf(ramps[v][4]);
     }
   }
   function depthLinePass(palette4, W11, H8, thr, hitVox, depth, ids, level, ramps, out) {
@@ -24106,12 +24560,13 @@ void main() {
     }
     return out;
   }
-  var DEG5, VoxelModel, RAMP_STEPS, rampCache, POOL, NRM, AO_CURVE, PD, outlineCache;
+  var DEG5, VoxelModel, RAMP_STEPS, rampCache2, POOL, NRM, AO_CURVE, PD, rimCache, outlineCache;
   var init_voxel = __esm({
     "src/gfx/voxel.js"() {
       init_canvas();
       init_color();
       init_math();
+      init_toon();
       DEG5 = Math.PI / 180;
       VoxelModel = class {
         constructor(nx, ny, nz) {
@@ -24148,20 +24603,20 @@ void main() {
           if (x < 0 || y < 0 || z < 0 || x >= this.nx || y >= this.ny || z >= this.nz) return;
           const i = x + this.nx * (y + this.ny * z);
           const prev = this.data[i];
-          const mode = this.mode;
-          if (mode === "sub") {
+          const mode2 = this.mode;
+          if (mode2 === "sub") {
             this.data[i] = 0;
             return;
           }
-          if (mode === "paint" && !prev) return;
-          if (mode === "under" && prev) return;
+          if (mode2 === "paint" && !prev) return;
+          if (mode2 === "under" && prev) return;
           const v = typeof c === "function" ? c(x, y, z, prev) : c;
           if (v === null || v === void 0 || v === false) return;
           this.data[i] = v;
         }
-        withMode(mode, fn) {
+        withMode(mode2, fn) {
           const old = this.mode;
-          this.mode = mode;
+          this.mode = mode2;
           try {
             fn(this);
           } finally {
@@ -24349,11 +24804,12 @@ void main() {
         }
       };
       RAMP_STEPS = [-0.8, -0.56, -0.3, 0, 0.24, 0.45, 0.66];
-      rampCache = /* @__PURE__ */ new Map();
+      rampCache2 = /* @__PURE__ */ new Map();
       POOL = /* @__PURE__ */ new Map();
       NRM = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
       AO_CURVE = new Float32Array([0, 0.42, 0.75, 1]);
       PD = 2;
+      rimCache = /* @__PURE__ */ new Map();
       outlineCache = /* @__PURE__ */ new Map();
     }
   });
@@ -26400,8 +26856,8 @@ void main() {
   function fmtAero(n2) {
     return Math.round(n2 || 0).toLocaleString("en-US");
   }
-  function setUiScale(mode) {
-    if (UI_SCALES[mode]) uiMode = mode;
+  function setUiScale(mode2) {
+    if (UI_SCALES[mode2]) uiMode = mode2;
     setTextBump(uiMode !== "normal");
   }
   function uiScaleMode() {
@@ -33955,10 +34411,10 @@ kmlmk..
         }
         hour() {
           if (this.override !== null) return this.override;
-          const mode = this.game.state.settings.dayCycle;
-          if (mode === "day") return 12;
-          if (mode === "night") return 23;
-          if (mode === "fast") return ((performance.now() - this.fastStart) / 1e3 / 60 % 24 + 9) % 24;
+          const mode2 = this.game.state.settings.dayCycle;
+          if (mode2 === "day") return 12;
+          if (mode2 === "night") return 23;
+          if (mode2 === "fast") return ((performance.now() - this.fastStart) / 1e3 / 60 % 24 + 9) % 24;
           const d = /* @__PURE__ */ new Date();
           return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
         }
@@ -53403,13 +53859,13 @@ kmlmk..
           }
           return fr[f % 6];
         }
-        draw(ctx3, s, mode, t, glitch = 0) {
+        draw(ctx3, s, mode2, t, glitch = 0) {
           const { x, y, w, h } = s;
           ctx3.save();
           ctx3.beginPath();
           ctx3.rect(x, y, w, h);
           ctx3.clip();
-          let m = mode;
+          let m = mode2;
           if (glitch > 0 && hash2(x, Math.floor(t * 8), 3) < glitch * 0.5) m = "static";
           const jx = glitch > 0 && hash2(y, Math.floor(t * 12), 4) < glitch * 0.3 ? Math.round((hash2(x, Math.floor(t * 12), 5) - 0.5) * 6) : 0;
           if (m === "off") {
@@ -54334,9 +54790,9 @@ kmlmk..
           const glitch = wx.static;
           for (const s of this.screens) {
             if (s.band !== b) continue;
-            const mode = s.secret ? this.secrets().crt ? "hello" : "off" : s.mode;
-            this.fx.draw(ctx3, s, mode, t + s.x * 0.01, mode === "off" ? 0 : glitch);
-            if (mode !== "off") drawGlow(ctx3, s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h) * 0.75, mode === "fish" ? "#4a8aff" : mode === "static" ? "#a8b8c8" : "#4aff8a", 0.18 * flick * s.a);
+            const mode2 = s.secret ? this.secrets().crt ? "hello" : "off" : s.mode;
+            this.fx.draw(ctx3, s, mode2, t + s.x * 0.01, mode2 === "off" ? 0 : glitch);
+            if (mode2 !== "off") drawGlow(ctx3, s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h) * 0.75, mode2 === "fish" ? "#4a8aff" : mode2 === "static" ? "#a8b8c8" : "#4aff8a", 0.18 * flick * s.a);
           }
           const lt = Math.floor(t * 6);
           for (const l of this.leds) {
@@ -58134,8 +58590,8 @@ kmlmk..
             ctx3.restore();
             return;
           }
-          const mode = Math.floor(t / 6 + sc.ad) % 3;
-          if (mode === 0) {
+          const mode2 = Math.floor(t / 6 + sc.ad) % 3;
+          if (mode2 === 0) {
             ctx3.fillStyle = "#10306a";
             ctx3.fillRect(x, y, w, h);
             ctx3.fillStyle = "#1a4a8a";
@@ -58143,7 +58599,7 @@ kmlmk..
             const fx = x + t * 14 % (w + 16) - 10, fy = y + h * 0.45 + Math.sin(t * 2) * 2;
             ctx3.drawImage(this.fishSpr[0], Math.round(fx), Math.round(fy), 14, 8);
             drawText(ctx3, ADS[sc.ad], x + w / 2, y + 2, { font: "small", align: "center", color: "#ffe27a" });
-          } else if (mode === 1) {
+          } else if (mode2 === 1) {
             ctx3.fillStyle = "#3a0a2a";
             ctx3.fillRect(x, y, w, h);
             const msg = ADS[(sc.ad + 1) % ADS.length] + "   ";
@@ -65991,9 +66447,9 @@ kmlmk..
     const make = UI3D_VOX[name] || ICON3D[name];
     if (!make) return false;
     const t = o.t ?? performance.now() / 1e3, hov = o.hover || 0, ph = o.phase || 0;
-    const mode = modelSpin("ui3d:" + name, make);
+    const mode2 = modelSpin("ui3d:" + name, make);
     let turn;
-    if (mode === "full") turn = hov > 0.5 ? t * 0.9 + ph : Math.sin(t * 0.8 + ph) * 0.05;
+    if (mode2 === "full") turn = hov > 0.5 ? t * 0.9 + ph : Math.sin(t * 0.8 + ph) * 0.05;
     else turn = hov > 0.5 ? Math.sin(t * 7 + ph) * 0.9 : Math.sin(t * 1.3 + ph) * 0.22;
     const f = modelFrame("ui3d:" + name, make, Math.round(px3), turn);
     if (!f) return false;
@@ -80772,8 +81228,10 @@ kmlmk..
         hints: true,
         voices: "chip",
         // [voices23] 'chip' (8-bit character voices) | 'off'
-        deepScares: true
+        deepScares: true,
         // [deep28] Settings > Deep scares: the big eye, floor ambushes and squid packs in the deep
+        celShading: true
+        // [cel29] Settings > Cel: cel (toon) shading for every 3D / voxel renderer; off = classic
       },
       view: "ocean",
       // 'ocean' | 'aquarium'
@@ -81991,9 +82449,9 @@ kmlmk..
         // 1 art px = p logical px (half-px steps are single device px on the 2x UI layer).
         drawWallet(ctx3) {
           const g = this.game, W11 = g.screen.W, t = this.time;
-          const mode = uiScaleMode();
-          const p = mode === "huge" ? 2.5 : mode === "normal" ? 1.5 : 2;
-          const font = mode === "big" ? "normal" : "big", sc = mode === "normal" ? 1 : 2;
+          const mode2 = uiScaleMode();
+          const p = mode2 === "huge" ? 2.5 : mode2 === "normal" ? 1.5 : 2;
+          const font = mode2 === "big" ? "normal" : "big", sc = mode2 === "normal" ? 1 : 2;
           const cap2 = capH(font) * sc;
           const rm = !!g.state?.settings?.reducedMotion;
           const fmt2 = (n2) => n2 >= 1e6 ? (n2 / 1e6).toFixed(n2 >= 1e7 ? 1 : 2) + "M" : fmtAero(n2);
@@ -82106,8 +82564,8 @@ Water-droplet money from fish and your tank.`;
         // (pre-[cur26]) The Aero counter: a glossy frosted pill top-right with a spinning 3D Aero drop and the amount (scales with the UI size).
         drawAeroPill(ctx3) {
           const W11 = this.game.screen.W;
-          const k = uiK(), mode = uiScaleMode();
-          const font = uiFont("normal"), sc = mode === "huge" ? 2 : 1;
+          const k = uiK(), mode2 = uiScaleMode();
+          const font = uiFont("normal"), sc = mode2 === "huge" ? 2 : 1;
           const txt = fmtAero(this.coinShown);
           const tw = measureText(txt, font, sc);
           const h = Math.round(22 * k), D2 = Math.round(h * 1.05);
@@ -89008,9 +89466,9 @@ Water-droplet money from fish and your tank.`;
   }
   function sailboat2() {
     const m = new VoxelModel(22, 22, 8);
-    const H8 = m.color("#ffffff"), HB = m.color("#2fb8e8"), S16 = m.color("#fff8ea"), S22 = m.color("#ff7a6a"), MS = m.color("#8a5a3a");
+    const H8 = m.color("#ffffff"), HB = m.color("#2fb8e8"), S16 = m.color("#fff8ea"), S22 = m.color("#ff7a6a"), MS2 = m.color("#8a5a3a");
     for (let y = 0; y < 4; y++) m.box(2 + (3 - y), y, 2, 19 - (3 - y) + (y > 1 ? 1 : 0), y, 5, y < 2 ? HB : H8);
-    m.box(10, 4, 3, 10, 20, 3, MS);
+    m.box(10, 4, 3, 10, 20, 3, MS2);
     for (let y = 6; y <= 19; y++) {
       const w = Math.round((19 - y) * 0.55);
       m.box(11, y, 3, 11 + w, y, 3, y % 5 === 0 ? S22 : S16);
@@ -94637,7 +95095,7 @@ Water-droplet money from fish and your tank.`;
     cv.style.width = W5 * 2 + "px";
     cv.style.height = H2 * 2 + "px";
     const g = ctxOf(cv);
-    const mode = params2.get("mode") || "grid";
+    const mode2 = params2.get("mode") || "grid";
     MAXS = Number(params2.get("maxs") || 3);
     const frozen = params2.has("frozen");
     if (frozen) setVoxelSync(true);
@@ -94651,7 +95109,7 @@ Water-droplet money from fish and your tank.`;
       mouse2 = [(e.clientX - r.left) / 2, (e.clientY - r.top) / 2];
     });
     let t = 0, last = performance.now();
-    const world = mode === "swim" ? makeWorld(list, Number(params2.get("n") || 20)) : null;
+    const world = mode2 === "swim" ? makeWorld(list, Number(params2.get("n") || 20)) : null;
     window.__fp = { world, rigStats };
     let fpsT = 0, fpsN = 0, fps = 0, worst = 0;
     function frame2() {
@@ -94672,12 +95130,12 @@ Water-droplet money from fish and your tank.`;
       }
       beginRigFrame();
       beginVoxelFishFrame();
-      if (mode === "grid") drawGrid(g, list, cols, t, frozen, mouse2);
-      else if (mode === "emo") drawEmo(g, list, t, frozen);
-      else if (mode === "wakka") drawWakkaSheet(g, t);
-      else if (mode === "icons") drawIcons(g, t);
+      if (mode2 === "grid") drawGrid(g, list, cols, t, frozen, mouse2);
+      else if (mode2 === "emo") drawEmo(g, list, t, frozen);
+      else if (mode2 === "wakka") drawWakkaSheet(g, t);
+      else if (mode2 === "icons") drawIcons(g, t);
       else drawSwim(g, world, dt, t);
-      drawText(g, `${mode} ${biome} ${list.length} species  ${fps ? fps.toFixed(0) + " fps" : ""}`, 6, 4, { font: "small", color: "#ffffff", shadow: "#0a2a4a" });
+      drawText(g, `${mode2} ${biome} ${list.length} species  ${fps ? fps.toFixed(0) + " fps" : ""}`, 6, 4, { font: "small", color: "#ffffff", shadow: "#0a2a4a" });
       if (!frozen || !window.__warm) {
         if (frozen) window.__warm = (window.__warm || 0) + 1;
         if (!frozen || window.__warm < 3) requestAnimationFrame(frame2);
@@ -94913,7 +95371,7 @@ Water-droplet money from fish and your tank.`;
     cv.style.height = "100vh";
     cv.style.imageRendering = "pixelated";
     const g = ctxOf(cv);
-    const mode = params2.get("mode") || "all";
+    const mode2 = params2.get("mode") || "all";
     const freeze = params2.has("t") ? Number(params2.get("t")) : null;
     const dark = params2.get("bg") === "dark";
     const anims = Object.keys(GROUPER_ANIMS);
@@ -94952,12 +95410,12 @@ Water-droplet money from fish and your tank.`;
       }
       g.fillStyle = bg4;
       g.fillRect(0, 0, W11, H8);
-      if (mode === "all" && warmed < anims.length) {
+      if (mode2 === "all" && warmed < anims.length) {
         warmGrouper(56, [anims[warmed]]);
         warmed++;
       }
       window.__busy = grouperBusy();
-      if (mode === "all") {
+      if (mode2 === "all") {
         const moods = { idle: "happy", swim: "happy", wiggle: "excited", wave: "happy", point: "happy", flop: "sad", spin: "excited", worried: "worried", clap: "excited", think: "think", blow: "happy", cheer: "excited", sad: "sad", sleep: "sleep", surprised: "surprised", scared: "scared", look: "happy", laugh: "happy" };
         const cols = 6;
         anims.forEach((a, i) => {
@@ -94966,7 +95424,7 @@ Water-droplet money from fish and your tank.`;
           if (a === "point") drawPointStream(g, A2.hand, [x + 90, y - 70], t, 1.2);
           label3(a, x, y + 72);
         });
-      } else if (mode === "talk") {
+      } else if (mode2 === "talk") {
         [0, 0.45, 1].forEach((tk, i) => {
           drawGrouper(g, { x: 170 + i * 300, y: 150, t: 0.4, size: 96, anim: "idle", mood: "happy", talk: tk, id: "j" + i, hover: false, phase: 0.1 });
           label3("talk " + tk, 170 + i * 300, 270);
@@ -94975,18 +95433,18 @@ Water-droplet money from fish and your tank.`;
           drawGrouper(g, { x: 170 + i * 300, y: 400, t: 0.4, size: 96, anim: "idle", mood: "excited", talk: tk, id: "jf" + i, hover: false, phase: 0.1, view: "front" });
           label3("front talk " + tk, 170 + i * 300, 525);
         });
-      } else if (mode === "close") {
+      } else if (mode2 === "close") {
         const tk = freeze != null ? 0.8 : 0.5 + 0.5 * Math.sin(t * 14);
         drawGrouper(g, { x: 300, y: 270, t, size: 128, k: 1.4, anim: params2.get("a") || "idle", mood: params2.get("m") || "happy", talk: params2.has("talk") ? tk : 0, id: "big", lookAt: [700, 200] });
         drawGrouper(g, { x: 760, y: 300, t, size: 128, anim: "idle", mood: "excited", talk: tk, id: "bigf", view: "front", facing: -1 });
-      } else if (mode === "moods") {
+      } else if (mode2 === "moods") {
         const moods = ["happy", "joy", "excited", "love", "surprised", "worried", "sad", "cry", "angry", "determined", "smug", "think", "sleepy", "sleep", "dizzy", "scared"];
         moods.forEach((m, i) => {
           const x = 70 + i % 8 * 118, y = 110 + Math.floor(i / 8) * 250;
           drawGrouper(g, { x, y, t, size: 64, anim: "idle", mood: m, id: "m" + i, view: i % 2 ? "front" : "side", lookAt: [x + 60, y + 20] });
           label3(m, x, y + 90);
         });
-      } else if (mode === "portrait") {
+      } else if (mode2 === "portrait") {
         [20, 30, 44].forEach((r, i) => {
           const cx = 160 + i * 260, cy = 200;
           g.fillStyle = "#bfefff";
@@ -95003,7 +95461,7 @@ Water-droplet money from fish and your tank.`;
         drawNPC(g, "seal", { x: 480, y: 470, t, scale: 1.35, pose: "idle", talk: 0.5 + 0.5 * Math.sin(t * 22), mood: "happy", id: "shop" });
         g.fillStyle = "#8a5a30";
         g.fillRect(380, 470, 200, 12);
-      } else if (mode === "guide") {
+      } else if (mode2 === "guide") {
         tT -= dt;
         if (tT <= 0) {
           ti = (ti + 1) % targets.length;
@@ -114933,8 +115391,10 @@ void main() {
         ["showFps", "clock", "FPS", "Frame counter (F3)"],
         ["browserFish", "fish", "Web fish", "Fish visit your web pages (extension)"],
         ["hints", "question", "Tips", "Bubbles the toy grouper pops up with tips"],
-        ["deepScares", "eye", "Deep scares", "Deep-sea scares: On/Off (jump scares, floor ambushes and squid packs in the deep)"]
+        ["deepScares", "eye", "Deep scares", "Deep-sea scares: On/Off (jump scares, floor ambushes and squid packs in the deep)"],
         // [deep28]
+        ["celShading", "sparkle", "Cel", "Shading: Cel / Classic (toon-shaded 3D art; reloads the game)"]
+        // [cel29]
       ];
       SettingsPanel = class {
         constructor() {
@@ -115057,16 +115517,18 @@ void main() {
           const rows = TOGGLES.length, room = L4.y + L4.h - y - 4;
           const twoCol = room < rows * RH;
           const cw = twoCol ? Math.floor((L4.w - 8) / 2) : L4.w - 8;
+          const TH2 = twoCol ? Math.max(TOGGLE_H + 2, Math.min(RH, Math.floor(room / Math.ceil(rows / 2)))) : RH;
+          const tz = TH2 < 12 * z + 2 ? 1 : z;
           TOGGLES.forEach(([key, ic, label3, tip], i) => {
             const col2 = twoCol ? i % 2 : 0, rowI = twoCol ? Math.floor(i / 2) : i;
-            const row3 = { x: L4.x + 4 + col2 * cw, y: y + rowI * RH, w: cw, h: RH };
-            const cy = row3.y + Math.round(RH / 2);
+            const row3 = { x: L4.x + 4 + col2 * cw, y: y + rowI * TH2, w: cw, h: TH2 };
+            const cy = row3.y + Math.round(TH2 / 2);
             const hov = ui.hover(row3);
             if (hov) {
               ctx3.drawImage(aeroCached(`setrow|${row3.w}|${row3.h}`, () => aeroSurface(row3.w, row3.h, { tone: "white", r: 6, gloss: 0.5, glossH: 9, rim: 0.6, glow: 0.4, a: [0.7, 0.7] })), row3.x, row3.y);
               ui.tip = tip;
             }
-            const lw = icon2(ctx3, ic, row3.x + 4, cy, z);
+            const lw = icon2(ctx3, ic, row3.x + 4, cy, tz);
             const lf = measureText(label3, F12) + lw + 14 + TOGGLE_W > cw ? "normal" : F12;
             drawText(ctx3, label3, row3.x + 9 + lw, cy - Math.round(capH(lf) / 2), { font: lf, color: INK14 });
             drawToggle(ctx3, row3.x + row3.w - TOGGLE_W - 4, cy - Math.round(TOGGLE_H / 2), !!s[key], { hover: hov });
@@ -115077,6 +115539,7 @@ void main() {
               if (key === "lowPower") g.lowPower = !!s.lowPower;
               g.emit?.("settings", key);
               g.save?.();
+              if (key === "celShading" && typeof location !== "undefined") setTimeout(() => location.reload(), 250);
             }
           });
           let ry2 = R9.y + (big ? 9 : 8);
@@ -119018,9 +119481,9 @@ void main() {
         update(dt, inp) {
           const g = this.game;
           this.t += dt;
-          const mode = this.mode();
-          if (mode === "off" && this.queue.some((x) => !x.replay)) this.queue = this.queue.filter((x) => x.replay);
-          if (mode !== "off" && g.state?.tutorialDone) {
+          const mode2 = this.mode();
+          if (mode2 === "off" && this.queue.some((x) => !x.replay)) this.queue = this.queue.filter((x) => x.replay);
+          if (mode2 !== "off" && g.state?.tutorialDone) {
             const S16 = ensureQuests(g.state);
             if (S16.outro && !this.has("finale", S16.outro)) this.enqueue({ kind: "finale", ch: S16.outro });
             else if (S16.intro && !S16.outro && !this.has("intro", S16.intro) && !this.skipIntro?.[S16.intro]) this.enqueue({ kind: "intro", ch: S16.intro });
@@ -119034,7 +119497,7 @@ void main() {
           const calm = this.calm();
           const needs = this.cur?.stage && !this.cur.stage.bare && !propsReady(this.cur.stage.propList(), this.H);
           if (this.prep.length && !g.fishing?.fighting && (calm && !this.cur ? true : !!this.cur && (this.cur.t < 2.5 || needs))) this.stepPrep();
-          if (calm && !this.cur && !this.queue.length && mode === "full" && g.state?.tutorialDone) {
+          if (calm && !this.cur && !this.queue.length && mode2 === "full" && g.state?.tutorialDone) {
             this.idleT = (this.idleT || 0) + dt;
             if (this.idleT > 4) {
               const S16 = ensureQuests(g.state);
@@ -131450,8 +131913,8 @@ ${hearts} ${status}
             it2.turn = 0;
             return;
           }
-          const mode = iconSpinMode(it2.icon);
-          if (mode === "full") {
+          const mode2 = iconSpinMode(it2.icon);
+          if (mode2 === "full") {
             if (hot || it2.pop > 0) it2.turn += dt * (0.55 + it2.pop * 1.6);
             else {
               const tgt = Math.round(it2.turn);
@@ -132144,6 +132607,7 @@ ${hearts} ${status}
       init_rods();
       init_gems();
       init_hotbar();
+      init_toon();
       Game = class {
         constructor(canvas, params2) {
           this.params = params2;
@@ -132152,6 +132616,7 @@ ${hearts} ${status}
           this.screen = new Screen(canvas, { scale: Number(params2.get("scale")) || 0 });
           this.input = new Input(canvas, this.screen.toLogical);
           this.state = params2.has("fresh") ? resetState() : loadState();
+          if (!params2.has("shading")) setShading(this.state.settings?.celShading === false ? "classic" : "cel");
           this.recomputeStats();
           this.audio = audio;
           this.particles = new Particles(900);
@@ -133223,7 +133688,7 @@ ${hearts} ${status}
   }
   function run19(params2) {
     const P7 = (k, d) => params2?.get?.(k) ?? d;
-    const mode = P7("mode", "gallery");
+    const mode2 = P7("mode", "gallery");
     const W11 = 1920, H8 = 1080, Z = 2;
     const cv = document.createElement("canvas");
     cv.width = W11;
@@ -133241,10 +133706,10 @@ ${hearts} ${status}
     let list = SPECIES;
     const ids = P7("ids", "");
     if (ids) list = ids.split(",").map((id2) => SPECIES.find((s) => s.id === id2)).filter(Boolean);
-    const per = Number(P7("per", mode === "big" ? 6 : 24));
+    const per = Number(P7("per", mode2 === "big" ? 6 : 24));
     const page = Number(P7("page", 0));
     if (!ids) list = list.slice(page * per, page * per + per);
-    const cols = mode === "big" ? 3 : 6;
+    const cols = mode2 === "big" ? 3 : 6;
     const items = list.map((sp) => ({ sp, c: compiled(sp.look, null, sp.id) }));
     const t02 = performance.now();
     let frameNo = 0;
@@ -133255,7 +133720,7 @@ ${hearts} ${status}
       const LW = W11 / Z, LH = H8 / Z;
       g.fillStyle = "rgba(255,255,255,0.9)";
       g.font = "bold 9px sans-serif";
-      if (mode === "gallery" || mode === "big") {
+      if (mode2 === "gallery" || mode2 === "big") {
         const rows = Math.ceil(items.length / cols);
         const cw = LW / cols, ch = (LH - 8) / Math.max(1, rows);
         items.forEach(({ sp, c }, i) => {
@@ -133266,7 +133731,7 @@ ${hearts} ${status}
           drawFishRig(g, c, { x: cx, y: cy, scale: sc, facing: 1, turn: 1, time: t, swimPhase: t * 1.1, tailPhase: t * 1.7 + i * 0.13, angle: 0, pri: 3, noCull: true, yawBase: P7("yaw", null) != null ? Number(P7("yaw")) : void 0, inflate: P7("infl", 0) * 1, mouth: P7("mouth", 0) * 1 });
           g.fillText(sp.id, cx - cw / 2 + 4, cy - ch / 2 + 10);
         });
-      } else if (mode === "turn") {
+      } else if (mode2 === "turn") {
         const { c } = items[0] || { c: compiled(SPECIES[0].look, null, SPECIES[0].id) };
         const sc = Number(P7("scale", 0)) || Math.min(150 / (c.L || 30), 3);
         for (let i = 0; i < 9; i++) {
@@ -133275,7 +133740,7 @@ ${hearts} ${status}
         }
         for (let i = 0; i < 8; i++) drawFishRig(g, c, { x: 60 + i * 115, y: 300, scale: sc, facing: 1, turn: 1, time: 0, tailPhase: i / 8, pri: 3, noCull: true, angle: i === 7 ? 0.4 : 0 });
         for (let i = 0; i < 4; i++) drawFishRig(g, c, { x: 120 + i * 220, y: 450, scale: sc, facing: i % 2 ? -1 : 1, turn: 1, time: 0, tailPhase: 0.3, pri: 3, noCull: true, inflate: i === 2 ? 1 : 0, mouth: i === 3 ? 1 : 0, emotion: "neutral" });
-      } else if (mode === "giants") {
+      } else if (mode2 === "giants") {
         const kinds = ["dolphin", "whale", "beluga", "orca", "seal", "turtle", "shark", "hammerhead", "manta", "stingray", "crab", "jelly", "octopus", "squid", "seahorse", "starfish"];
         kinds.forEach((k, i) => {
           const cx = i % 4 * (LW / 4) + LW / 8, cy = Math.floor(i / 4) * (LH / 4) + LH / 8 + 6;
@@ -133283,7 +133748,7 @@ ${hearts} ${status}
           if (f) g.drawImage(f.canvas, f.sx, f.sy, f.w, f.h, cx - f.ax * f.k / Z, cy - f.ay * f.k / Z, f.w * f.k / Z, f.h * f.k / Z);
           g.fillText(k, cx - LW / 8 + 4, cy - LH / 8 + 6);
         });
-      } else if (mode === "turtle") {
+      } else if (mode2 === "turtle") {
         const kind2 = P7("kind", "turtle");
         const put2 = (f, x, y, s = 1) => {
           if (f) g.drawImage(f.canvas, f.sx, f.sy, f.w, f.h, x - f.ax * f.k * s / Z, y - f.ay * f.k * s / Z, f.w * f.k * s / Z, f.h * f.k * s / Z);
@@ -133312,7 +133777,7 @@ ${hearts} ${status}
           const f = G.frame(time / 300 + i * 2, d);
           g.drawImage(f.canvas, Math.round(60 + i * 220 + 40 - f.ox), Math.round(320 - f.oy), f.w, f.h);
         });
-      } else if (mode === "vg") {
+      } else if (mode2 === "vg") {
         g.restore();
         g.save();
         g.scale(3, 3);
@@ -133329,7 +133794,7 @@ ${hearts} ${status}
         [cr2, cr22].forEach((F3, j) => F3.forEach((spr4, i) => g.drawImage(spr4.canvas, Math.round(120 + i * 60 + j * 220 - spr4.ox), 330 - spr4.oy + 1, spr4.w, spr4.h)));
         [...lpPenguinFrames(1), ...lpPenguinFrames(-1).slice(0, 2)].forEach((q, i) => g.drawImage(q, 40 + i * 30, 270, q.w, q.h));
         lpRestSealFrames().forEach((q, i) => g.drawImage(q, 340 + i * 45, 270, q.w, q.h));
-      } else if (mode === "seal") {
+      } else if (mode2 === "seal") {
         const anims = Object.keys(GROUPER_ANIMS);
         const moods = ["happy", "happy", "excited", "happy", "happy", "excited", "love", "worried", "excited", "think", "happy"];
         if (!window.__sw) {
@@ -133351,14 +133816,14 @@ ${hearts} ${status}
           g.fillText(a, x - 40, y + 50);
         });
         drawGrouper(g, { x: 800, y: 380, t, size: 128, k: 1.1, anim: "idle", mood: "happy", talk: anim ? 0.5 + 0.5 * Math.sin(t * 9) : 0, id: "big", view: "front", noseBubble: 1 });
-      } else if (mode === "icons") {
+      } else if (mode2 === "icons") {
         (ids ? list : SPECIES.slice(0, 60)).forEach((sp, i) => {
           const ic = lpFishIcon(sp, 64, 40);
           if (ic) g.drawImage(ic, i % 12 * 78 + 10, Math.floor(i / 12) * 60 + 20, 64, 40);
         });
       }
       g.restore();
-      if (mode === "perf") {
+      if (mode2 === "perf") {
         if (!window.__swim) {
           const pool = SPECIES.filter((s) => s.look?.kind !== "chain");
           window.__swim = Array.from({ length: Number(P7("n", 25)) }, (_, i) => {
@@ -133396,7 +133861,7 @@ ${hearts} ${status}
           }
         }
       }
-      if (mode === "scene") {
+      if (mode2 === "scene") {
         const sc = new LPScene(W11, H8);
         const ph = anim ? time / 1e3 : 0.2;
         const show = ids ? list : SPECIES.filter((s) => ["pixel", "koi", "clown", "bruce", "puffer", "lionfish", "betta", "angel", "thief", "manyeyes"].includes(s.id));
@@ -133417,8 +133882,8 @@ ${hearts} ${status}
       window.__stats = { rig: rigStats(), lp: lowpolyStats(), gl: lpStats(), vox: voxStats(), ms: performance.now() - t02 };
       frameNo++;
     };
-    if (mode === "perf") setLowpolySync(false);
-    if (anim || mode === "perf") {
+    if (mode2 === "perf") setLowpolySync(false);
+    if (anim || mode2 === "perf") {
       const loop2 = (t) => {
         draw(t);
         requestAnimationFrame(loop2);

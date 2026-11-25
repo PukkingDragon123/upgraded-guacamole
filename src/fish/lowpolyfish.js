@@ -2031,7 +2031,7 @@ function sheetStart(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
   const cells = frames.map((f) => ({ parts: f.parts.map((pt) => ({ ...pt })) }));
   const cols = Math.max(1, Math.min(LP_SWIM, Math.floor(4096 / w)));
   const gcells = c.glow ? frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== 'fins' && p.key !== 'finrays' && p.key !== 'glass').map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) })) : null;
-  const go = { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 };
+  const go = { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0, cel: false }; // glow mask: unlit
   const ms = now() - t0;
   spent += ms;
   return { c, infl, mouth, hi, frames, cells, gcells, o: { ...o, cols }, go, w, h, Sb, blur, cols, i: 0, canvas: null, raw: null, ms, yawI, sb, tilt };

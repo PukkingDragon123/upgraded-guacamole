@@ -4409,14 +4409,154 @@
     }
   });
 
+  // src/gfx/toon.js
+  function celOn() {
+    return mode === "cel";
+  }
+  function hueToward2(h, target, amount) {
+    const d = (target - h + 540) % 360 - 180;
+    return h + Math.sign(d) * Math.min(Math.abs(d), amount);
+  }
+  function shifted(hex4, target, deg, satAdd, lMul, lAdd) {
+    const [h0, s0, l0] = hexToHsl(hex4);
+    const grey = s0 < 0.08;
+    const h = grey ? target : hueToward2(h0, target, deg);
+    const s = grey ? Math.min(0.24, s0 + Math.max(0, satAdd) * 3) : Math.min(1, s0 + (satAdd > 0 ? satAdd * (1.2 - s0) - (lMul < 1 ? Math.max(0, s0 - 0.6) * 0.4 : 0) : satAdd));
+    const l = l0 * lMul + (1 - l0) * lAdd;
+    return hslToHex(h, s, l);
+  }
+  function toonRamp7(hex4, contrast = 1) {
+    const key = hex4 + "|" + contrast;
+    let r = rampCache.get(key);
+    if (r) return r;
+    const T3 = TOON, c = contrast;
+    const l0 = hexToHsl(hex4)[2];
+    const floor = Math.min(l0 * 0.8, T3.floorL);
+    const dark = (lm, deg, sat) => {
+      const lMul = Math.max(1 - (1 - lm) * c, l0 > 0 ? floor / l0 : 0);
+      return shifted(hex4, T3.shadowHue, deg * Math.min(1.4, c), sat, lMul, 0);
+    };
+    const light = (la, deg, sat) => shifted(hex4, T3.litHue, deg * Math.min(1.4, c), sat, 1, Math.min(0.95, la * c));
+    r = [
+      dark(T3.coreL, T3.deepShift + 6, T3.shadowSat + 0.04),
+      dark(T3.deepL, T3.deepShift, T3.shadowSat + 0.03),
+      dark(T3.shadowL, T3.shadowShift, T3.shadowSat),
+      hex4,
+      light(T3.litL, T3.litShift, -0.02),
+      light(T3.hiL, T3.litShift + 6, -0.07),
+      light(T3.specL, T3.litShift + 10, -0.25)
+    ];
+    rampCache.set(key, r);
+    if (rampCache.size > 4096) rampCache.delete(rampCache.keys().next().value);
+    return r;
+  }
+  var TOON, mode, rampCache;
+  var init_toon = __esm({
+    "src/gfx/toon.js"() {
+      init_color();
+      TOON = {
+        // --- CPU voxel renderer (voxel.js): thresholds on its tone scale (ramp steps: 3 = the base colour)
+        vox: {
+          deep: 1.3,
+          // below: DEEP shadow (bottoms, deep AO)
+          shadow: 2.62,
+          // below: SHADOW (the side turned from the light: ~2.3 at the default camera)
+          lit: 3.62,
+          // at / above: LIT (top faces: ~4.3)
+          hi: 4.9,
+          // at / above: HIGHLIGHT (lit convex edges)
+          jitter: 0.4,
+          // per-voxel tone jitter multiplier (clean bands; a whisper of hand-placed texture stays)
+          ao: 0.95,
+          // AO multiplier (contact shadows still fall into the shadow band)
+          specCut: 0.55,
+          // a glint (spec * pow(n.h, specPow)) above this becomes the hard specular shape
+          specPow: 2.2,
+          // multiplies each material's specPow: higher = smaller highlight shapes
+          rim: 1,
+          // rim band on / off (1 = on)
+          smoothAdd: 0.4
+          // materials with smoothed normals get this much more smoothing (clean band contours)
+        },
+        // --- band colours (CPU ramps); hue shifts in degrees, toward the shadow / light hues
+        shadowHue: 255,
+        // shadows drift toward blue-violet ...
+        shadowShift: 22,
+        // ... by this many degrees
+        shadowL: 0.7,
+        // shadow lightness (x base)
+        shadowSat: 0.04,
+        // shadow saturation lift (grey colours get more: they have none of their own)
+        deepShift: 34,
+        deepL: 0.5,
+        coreL: 0.34,
+        floorL: 0.085,
+        // ambient floor: shadows never fall below this lightness (unless the base itself is darker)
+        litHue: 48,
+        // highlights drift warm
+        litShift: 9,
+        litL: 0.2,
+        // lit = base + (1 - base) * litL
+        hiL: 0.42,
+        specL: 0.74,
+        // --- rim (CPU: a 1-device-px band inside the outline on the side turned from the light; GPU: fresnel band)
+        rimColor: "#c8f4ff",
+        rimMix: 0.38,
+        // CPU: rim colour = lit tone mixed toward rimColor by this
+        // --- GPU (lowpoly.js sprites / scenes, voxgl.js intro): thresholds on half-lambert light (0 = back, 1 = facing)
+        gl: {
+          deep: 0.28,
+          // half-lambert (n.l * 0.5 + 0.5) below: DEEP (undersides)
+          shadow: 0.6,
+          // below: SHADOW (n.l < 0.2: the side turned from the light)
+          lit: 0.86,
+          // above: LIT (n.l > 0.72: faces turned up toward the key light)
+          soft: 0.014,
+          // band edge half-width in light units (~1 px on a sprite): crisp but never stair-stepped
+          shadowTint: [0.64, 0.6, 0.9],
+          // multiplies the colour in shadow (cool / purple)
+          shadowAdd: [0.018, 0.012, 0.05],
+          // ambient floor (cool lift so darks stay clean)
+          deepTint: [0.46, 0.41, 0.78],
+          deepAdd: [0.025, 0.015, 0.07],
+          litTint: [1.06, 1.03, 0.96],
+          // warm lit ...
+          litLift: 0.17,
+          // ... x (1 + 2 * litLift) in its own hue, then 35 % of litLift toward white
+          litAdd: [0.03, 0.02, 0],
+          rim: 0.75,
+          // rim band strength (x the material's rim)
+          rimWidth: 0.24,
+          // rim band: 1 - n.v above (1 - rimWidth)
+          spec: 0.9,
+          // hard specular strength
+          specSize: 1,
+          // highlight size multiplier
+          env: 0.35,
+          // glossy env reflection kept on opaque parts (glass keeps more)
+          voxSmooth: 0.78
+          // voxel meshes: this much of the smoothed surface normal (clean band shapes), the rest face normal
+        },
+        // --- the WebGL intro's voxel world (voxgl.js): thresholds on half-lambert x AO (shares the gl tints)
+        intro: { deep: 0.25, shadow: 0.45, lit: 0.66 }
+      };
+      mode = "cel";
+      try {
+        if (typeof location !== "undefined" && /[?&]shading=classic\b/.test(location.search)) mode = "classic";
+      } catch {
+      }
+      rampCache = /* @__PURE__ */ new Map();
+    }
+  });
+
   // src/gfx/voxel.js
   function ramp7(hex4, contrast = 1) {
     const key = hex4 + "|" + contrast;
-    let r = rampCache.get(key);
+    let r = rampCache2.get(key);
     if (!r) {
       r = RAMP_STEPS.map((a) => a === 0 ? hex4 : shade(hex4, a * contrast));
-      rampCache.set(key, r);
-      if (rampCache.size > 4096) rampCache.delete(rampCache.keys().next().value);
+      rampCache2.set(key, r);
+      if (rampCache2.size > 4096) rampCache2.delete(rampCache2.keys().next().value);
     }
     return r;
   }
@@ -4440,18 +4580,22 @@
     const depth = pooled("depth", Float32Array, N2);
     const hitU = pooled("hitU", Float32Array, N2), hitV = pooled("hitV", Float32Array, N2);
     traceRays(model, b, cam, vol, hitVox, hitN, depth, hitU, hitV);
+    const cel = opts.cel ?? celOn();
     const tone5 = pooled("tone", Float32Array, N2), edgeMul = pooled("edgeMul", Float32Array, N2);
+    const specHit = cel ? pooled("specHit", Uint8Array, N2).fill(0) : null;
     const faceTone = faceTones(cam, opts.light);
-    shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul);
+    shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul, specHit);
     const edgeBoost = pooled("edgeBoost", Float32Array, N2).fill(0);
     const sideMark = pooled("sideMark", Uint8Array, N2).fill(0);
     edgeHighlights(cam, opts, hitN, depth, edgeMul, edgeBoost, sideMark);
-    const ramps = palette2.map((pe) => pe ? Uint32Array.from((pe.ramp || ramp7(pe.color, pe.contrast ?? 1)).map((h) => pack(h) >>> 0)) : null);
+    const ramps = palette2.map((pe) => pe ? Uint32Array.from((pe.ramp || (cel ? toonRamp7 : ramp7)(pe.color, pe.contrast ?? 1)).map((h) => pack(h) >>> 0)) : null);
     const out = new Uint32Array(N2);
     const glowBuf = cam.hasEmissive ? new Uint32Array(N2) : null;
     const ids = new Uint8Array(N2);
     const level = pooled("level", Int8Array, N2).fill(-1);
-    quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level);
+    quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level, specHit);
+    if (cel) despeckle(W4, H, hitVox, depth, ids, level, specHit, ramps, out);
+    if (cel && TOON.vox.rim && (opts.rim ?? cam.s >= 1.5)) rimPass(palette2, W4, H, hitVox, ids, level, ramps, out);
     if (opts.keepVoxel) {
       const { nx, ny } = model;
       for (let p = 0; p < N2; p++) {
@@ -4700,11 +4844,12 @@
       return light.dark + (light.lit - light.dark) * ((n2[0] * hlx + n2[2] * hlz + 1) / 2);
     }));
   }
-  function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul) {
+  function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul, specHit) {
     const { nx, ny, nz, data, palette: palette2 } = model;
     const { occ, SY, SZ } = vol;
     const N2 = cam.N;
-    const aoAmt = opts.ao ?? 1.15, jitterDef = opts.jitter ?? 0.22, smoothDef = opts.smooth ?? 0;
+    const V2 = TOON.vox, jK = specHit ? V2.jitter : 1;
+    const aoAmt = (opts.ao ?? 1.15) * (specHit ? V2.ao : 1), jitterDef = opts.jitter ?? 0.22, smoothDef = opts.smooth ?? 0;
     const { R: R3, U: U2, C: C4 } = cam;
     const LV = [-0.45 * R3[0] + 0.85 * U2[0] + 0.55 * C4[0], -0.45 * R3[1] + 0.85 * U2[1] + 0.55 * C4[1], -0.45 * R3[2] + 0.85 * U2[2] + 0.55 * C4[2]];
     let hvx = LV[0] + C4[0], hvy = LV[1] + C4[1], hvz = LV[2] + C4[2];
@@ -4718,10 +4863,11 @@
     const pJit = new Float32Array(P6), pSmooth = new Float32Array(P6), pSpec = new Float32Array(P6), pPow = new Float32Array(P6), pLight = new Float32Array(P6), pAo = new Float32Array(P6), pEdge = new Float32Array(P6);
     for (let i = 1; i < P6; i++) {
       const pe = palette2[i];
-      pJit[i] = pe.jitter ?? jitterDef;
+      pJit[i] = (pe.jitter ?? jitterDef) * jK;
       pSmooth[i] = pe.smooth ?? smoothDef;
+      if (specHit && pSmooth[i] > 0) pSmooth[i] = Math.min(1, pSmooth[i] + V2.smoothAdd);
       pSpec[i] = pe.spec || 0;
-      pPow[i] = pe.specPow ?? 24;
+      pPow[i] = (pe.specPow ?? 24) * (specHit ? V2.specPow : 1);
       pLight[i] = pe.light || 0;
       pAo[i] = (pe.aoMul ?? 1) * aoAmt;
       pEdge[i] = pe.edge ?? (pSmooth[i] >= 0.35 ? 0 : 1);
@@ -4803,7 +4949,11 @@
         }
         if (pSpec[v] > 0) {
           const hd = smooth3 > 0 ? sx * hvx + sy * hvy + sz * hvz : NX[nid] * hvx + NY[nid] * hvy + NZ[nid] * hvz;
-          if (hd > 0) ft += Math.pow(hd, pPow[v]) * pSpec[v];
+          if (hd > 0) {
+            const g = Math.pow(hd, pPow[v]) * pSpec[v];
+            if (!specHit) ft += g;
+            else if (g > V2.specCut) specHit[p] = 1;
+          }
         }
       }
       tone5[p] = ft + pLight[v] + hj - (1 - ao) * pAo[v];
@@ -4837,7 +4987,8 @@
       }
     }
   }
-  function quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level) {
+  function quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level, specHit) {
+    const V2 = TOON.vox, tD = V2.deep, tS = V2.shadow, tL = V2.lit, tH = V2.hi;
     const { data, palette: palette2 } = model;
     const P6 = palette2.length;
     const pEm = new Float32Array(P6), pLight = new Float32Array(P6);
@@ -4858,10 +5009,67 @@
         const et = (nid === 2 ? 5 : nid === 4 || nid === 1 ? 4.4 : 3.8) + pLight[v] + edgeBoost[p] * 0.5;
         tn += (et - tn) * em;
       }
-      const li = tn < 0 ? 0 : tn > 6 ? 6 : Math.round(tn);
+      let li;
+      if (specHit && em <= 0) {
+        li = specHit[p] ? 6 : tn >= tL ? tn >= tH ? 5 : 4 : tn >= tS ? 3 : tn >= tD ? 2 : 1;
+      } else li = tn < 0 ? 0 : tn > 6 ? 6 : Math.round(tn);
       level[p] = li;
       out[p] = ramps[v][li];
       if (em > 0 && glowBuf) glowBuf[p] = out[p];
+      if (specHit && em > 0) specHit[p] = 2;
+    }
+  }
+  function despeckle(W4, H, hitVox, depth, ids, level, specHit, ramps, out) {
+    const src = pooled("lvSrc", Int8Array, W4 * H);
+    src.set(level.subarray(0, W4 * H));
+    const nb = [0, 0, 0, 0];
+    for (let py = 1; py < H - 1; py++) for (let px2 = 1; px2 < W4 - 1; px2++) {
+      const p = py * W4 + px2;
+      if (hitVox[p] < 0 || specHit[p]) continue;
+      const lv = src[p], d = depth[p];
+      let n2 = 0;
+      for (let k = 0; k < 4; k++) {
+        const q = k === 0 ? p - 1 : k === 1 ? p + 1 : k === 2 ? p - W4 : p + W4;
+        if (hitVox[q] < 0 || specHit[q] || Math.abs(depth[q] - d) > 1.6) continue;
+        nb[n2++] = src[q];
+      }
+      if (n2 < 3) continue;
+      let best = -1;
+      for (let i = 0; i < n2 && best < 0; i++) {
+        let c = 0;
+        for (let j = 0; j < n2; j++) if (nb[j] === nb[i]) c++;
+        if (c >= 3) best = nb[i];
+      }
+      if (best < 0 || best === lv) continue;
+      let same = 0;
+      for (let i = 0; i < n2; i++) if (nb[i] === lv) same++;
+      if (same) continue;
+      level[p] = best;
+      out[p] = ramps[ids[p]][best];
+    }
+  }
+  function rimColorOf(c) {
+    let o = rimCache.get(c);
+    if (o === void 0) {
+      const a = unpack(c), b = unpack(pack(TOON.rimColor)), k = TOON.rimMix;
+      o = ((a[3] & 255) << 24 | Math.round(a[2] + (b[2] - a[2]) * k) << 16 | Math.round(a[1] + (b[1] - a[1]) * k) << 8 | Math.round(a[0] + (b[0] - a[0]) * k)) >>> 0;
+      if (rimCache.size > 4096) rimCache.clear();
+      rimCache.set(c, o);
+    }
+    return o;
+  }
+  function rimPass(palette2, W4, H, hitVox, ids, level, ramps, out) {
+    for (let py = 0; py < H; py++) for (let px2 = 2; px2 < W4; px2++) {
+      const p = py * W4 + px2;
+      if (hitVox[p] < 0 || hitVox[p - 1] < 0 || hitVox[p - 2] < 0) continue;
+      const lv = level[p];
+      if (lv >= 5) continue;
+      const right = px2 + 1 >= W4 || hitVox[p + 1] < 0;
+      const below = lv <= 2 && py > 1 && hitVox[p - W4] >= 0 && hitVox[p - 2 * W4] >= 0 && (py + 1 >= H || hitVox[p + W4] < 0);
+      if (!right && !below) continue;
+      const v = ids[p];
+      if (palette2[v].emissive) continue;
+      out[p] = rimColorOf(ramps[v][4]);
     }
   }
   function depthLinePass(palette2, W4, H, thr, hitVox, depth, ids, level, ramps, out) {
@@ -5035,12 +5243,13 @@
     }
     return out;
   }
-  var DEG, VoxelModel, RAMP_STEPS, rampCache, POOL, NRM, AO_CURVE, PD, outlineCache;
+  var DEG, VoxelModel, RAMP_STEPS, rampCache2, POOL, NRM, AO_CURVE, PD, rimCache, outlineCache;
   var init_voxel = __esm({
     "src/gfx/voxel.js"() {
       init_canvas();
       init_color();
       init_math();
+      init_toon();
       DEG = Math.PI / 180;
       VoxelModel = class {
         constructor(nx, ny, nz) {
@@ -5077,20 +5286,20 @@
           if (x < 0 || y < 0 || z < 0 || x >= this.nx || y >= this.ny || z >= this.nz) return;
           const i = x + this.nx * (y + this.ny * z);
           const prev = this.data[i];
-          const mode = this.mode;
-          if (mode === "sub") {
+          const mode2 = this.mode;
+          if (mode2 === "sub") {
             this.data[i] = 0;
             return;
           }
-          if (mode === "paint" && !prev) return;
-          if (mode === "under" && prev) return;
+          if (mode2 === "paint" && !prev) return;
+          if (mode2 === "under" && prev) return;
           const v = typeof c === "function" ? c(x, y, z, prev) : c;
           if (v === null || v === void 0 || v === false) return;
           this.data[i] = v;
         }
-        withMode(mode, fn) {
+        withMode(mode2, fn) {
           const old = this.mode;
-          this.mode = mode;
+          this.mode = mode2;
           try {
             fn(this);
           } finally {
@@ -5278,11 +5487,12 @@
         }
       };
       RAMP_STEPS = [-0.8, -0.56, -0.3, 0, 0.24, 0.45, 0.66];
-      rampCache = /* @__PURE__ */ new Map();
+      rampCache2 = /* @__PURE__ */ new Map();
       POOL = /* @__PURE__ */ new Map();
       NRM = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
       AO_CURVE = new Float32Array([0, 0.42, 0.75, 1]);
       PD = 2;
+      rimCache = /* @__PURE__ */ new Map();
       outlineCache = /* @__PURE__ */ new Map();
     }
   });
@@ -6938,6 +7148,7 @@
   var DEG2, M4, FACES, HEAD, SCENE_UNI, COMMON, VOX_VS, VOX_FS, SKY_VS, SKY_FS, WATER_VS, WATER_FS, BB_VS, BB_FS, PT_VS, PT_FS, LINE_VS, LINE_FS, GLASS_VS, GLASS_FS, DOWN_FS, UP_FS, BLUR_FS, RAYS_FS, FINAL_FS;
   var init_voxgl = __esm({
     "src/gfx/voxgl.js"() {
+      init_toon();
       DEG2 = Math.PI / 180;
       M4 = {
         ident() {
@@ -7189,6 +7400,9 @@ uniform vec4 u_tint;   // rgb multiply, a = mix toward white (pop / flash)
 uniform vec4 u_k;      // x spec mul, y rim mul, z chrome, w alpha
 uniform vec4 u_sweep;  // x position (model x), y width, z strength, w emissive boost
 uniform vec4 u_grad;   // text gradient: x y0, y y1, z strength
+uniform float u_cel;   // [cel29] toon bands (src/gfx/toon.js)
+uniform vec4 u_celB;   // deep, shadow, lit thresholds, edge width (px)
+uniform vec3 u_celSh; uniform vec3 u_celDp; uniform vec3 u_celLt;
 out vec4 o;
 void main() {
   if (u_clip.x * (v_w.y - u_clip.y) < 0.0) discard;
@@ -7205,6 +7419,20 @@ void main() {
   float spec = v_mat.y * 1.5 * u_k.x;
   float gloss = mix(6.0, 140.0, v_mat.z);
   vec3 H = normalize(u_light + V);
+  if (u_cel > 0.5) {
+    // [cel29] toon: half-lambert x AO quantised into deep / shadow / mid / lit with hue-shifted tints; the cool
+    // ambient floor keeps shadows clean; hard specular glints on glossy voxels
+    float L = (dot(N, u_light) * 0.5 + 0.5) * (0.5 + 0.5 * ao);
+    float aa = max(fwidth(L), 0.003);
+    vec3 full = base * (amb * 0.6 + u_sunCol * sunK * 0.82);
+    vec3 cD = full * 0.34 * u_celDp + base * amb * 0.1, cS = full * 0.5 * u_celSh + base * amb * 0.08;
+    vec3 cM = full * 0.74, cL = full * u_celLt;
+    col = mix(cD, cS, smoothstep(u_celB.x - aa, u_celB.x + aa, L));
+    col = mix(col, cM, smoothstep(u_celB.y - aa, u_celB.y + aa, L));
+    col = mix(col, cL, smoothstep(u_celB.z - aa, u_celB.z + aa, L));
+    float sh = dot(N, H), cut = 1.0 - 1.2 / gloss;
+    col += u_sunCol * min(spec, 1.0) * 0.55 * smoothstep(cut - 0.004, cut + 0.004, sh) * sunK;
+  } else
   col += u_sunCol * spec * pow(max(dot(N, H), 0.0), gloss) * (gloss + 8.0) / 36.0 * ao * sunK;
   float nv = max(dot(N, V), 0.0);
   float fr = pow(1.0 - nv, 4.0);
@@ -7908,6 +8136,16 @@ void main() {
     gl.uniform3f(u.uSky, sk[0], sk[1], sk[2]);
     gl.uniform3f(u.uGround, gr[0], gr[1], gr[2]);
     gl.uniform1i(u.uTex, 0);
+    const C4 = TOON.gl;
+    gl.uniform4f(u.uCelB, C4.deep, C4.shadow, C4.lit, C4.soft);
+    gl.uniform4f(u.uCelK, C4.spec, C4.specSize, C4.env, C4.voxSmooth);
+    gl.uniform3f(u.uCelK2, C4.rim, C4.rimWidth, C4.litLift);
+    gl.uniform3fv(u.uShTint, C4.shadowTint);
+    gl.uniform3fv(u.uShAdd, C4.shadowAdd);
+    gl.uniform3fv(u.uDpTint, C4.deepTint);
+    gl.uniform3fv(u.uDpAdd, C4.deepAdd);
+    gl.uniform3fv(u.uLtTint, C4.litTint);
+    gl.uniform3fv(u.uLtAdd, C4.litAdd);
   }
   function drawMesh(mesh, mvp, model, o) {
     const u = prog.u;
@@ -7924,6 +8162,8 @@ void main() {
     gl.uniform1f(u.uEmit, o.emit ?? 0);
     gl.uniform1f(u.uEmitTex, o.emitTex ? 1 : 0);
     gl.uniform1f(u.uSmoothN, mesh.smooth ? 1 : 0);
+    gl.uniform1f(u.uVoxN, mesh.voxN ? 1 : 0);
+    gl.uniform1f(u.uCel, o.cel ?? celOn() ? 1 : 0);
     gl.uniform1f(u.uSoft, o.soft ?? 0);
     const sc = hexRgb(o.softColor || "#ffc9b8");
     gl.uniform3f(u.uSoftCol, sc[0], sc[1], sc[2]);
@@ -7967,9 +8207,9 @@ void main() {
     gl.useProgram(prog);
   }
   function copyOut(out, W4, H, ox = 0, oy = 0, sx = 0, sy = 0) {
-    const mode = copyMode === "pixels" ? "pixels" : "draw";
+    const mode2 = copyMode === "pixels" ? "pixels" : "draw";
     const g = out.getContext("2d");
-    if (mode === "draw") {
+    if (mode2 === "draw") {
       g.drawImage(glCanvas, sx, sy, W4, H, ox, oy, W4, H);
       return;
     }
@@ -8154,8 +8394,8 @@ void main() {
         const d = mesh.data, tex2 = po.texture;
         const alpha0 = po.alpha ?? 1, amb = po.ambient ?? 0.42, spec = po.spec ?? 0.35, shine = po.shine ?? 24, rim = po.rim ?? 0.35, emit0 = po.emit ?? 0;
         for (let i = 0; i < d.length; i += 33) {
-          const P6 = [0, 11, 22].map((k2) => {
-            const x = d[i + k2] - c[0], y = d[i + k2 + 1] - c[1], z = d[i + k2 + 2] - c[2];
+          const P6 = [0, 11, 22].map((k) => {
+            const x = d[i + k] - c[0], y = d[i + k + 1] - c[1], z = d[i + k + 2] - c[2];
             return [m[0] * x + m[4] * y + m[8] * z, m[1] * x + m[5] * y + m[9] * z, m[2] * x + m[6] * y + m[10] * z];
           });
           let nx = m[0] * d[i + 3] + m[4] * d[i + 4] + m[8] * d[i + 5], ny = m[1] * d[i + 3] + m[5] * d[i + 4] + m[9] * d[i + 5], nz = m[2] * d[i + 3] + m[6] * d[i + 4] + m[10] * d[i + 5];
@@ -8178,10 +8418,22 @@ void main() {
             const lu = col2[0] * 0.299 + col2[1] * 0.587 + col2[2] * 0.114;
             col2 = col2.map((v) => Math.max(0, lu + (v - lu) * (1 + 0.3 * viv)));
           }
-          const dd = Math.max(0, nx * L2[0] + ny * L2[1] + nz * L2[2]), wrap = Math.max(0, (nx * L2[0] + ny * L2[1] + nz * L2[2] + 0.35) / 1.35);
-          const k = (amb + (1 - amb) * (dd + wrap) / 2) * (1 + 0.14 * viv);
-          const sp = spec * Math.pow(Math.max(0, nx * H[0] + ny * H[1] + nz * H[2]), shine), rr2 = rim * Math.pow(1 - nz, 3) * 0.8;
-          const lit2 = col2.map((v) => v * k + sp + rr2 * 0.8);
+          const ndl = nx * L2[0] + ny * L2[1] + nz * L2[2];
+          let lit2;
+          if (po.cel ?? celOn()) {
+            const C4 = TOON.gl, hl2 = ndl * 0.5 + 0.5, ak = Math.max(-0.3, Math.min(0.6, (amb - 0.42) * 1.2));
+            const band = hl2 >= C4.lit ? 3 : hl2 >= C4.shadow ? 2 : hl2 >= C4.deep ? 1 : 0;
+            const shT = C4.shadowTint.map((t) => t + (1 - t) * ak * 0.55);
+            lit2 = col2.map((v, j) => (band === 3 ? (Math.min(1, v * (1 + 2 * C4.litLift)) * (1 - C4.litLift * 0.35) + C4.litLift * 0.35) * C4.litTint[j] + C4.litAdd[j] : band === 2 ? v : band === 1 ? v * shT[j] + C4.shadowAdd[j] : v * C4.deepTint[j] + C4.deepAdd[j]) * (1 + 0.1 * viv));
+            const hd = nx * H[0] + ny * H[1] + nz * H[2];
+            if (spec > 0.2 && hd > 1 - Math.min(0.12, 0.55 / Math.max(shine, 4)) * C4.specSize && ndl > 0.15) lit2 = lit2.map((v) => Math.max(v, v + (1 - v) * 0.6));
+            if (rim > 0 && nz < C4.rimWidth && ndl < 0.12) lit2 = lit2.map((v, j) => Math.max(v, (TOON_RIM[j] * 0.5 + col2[j] * 0.5) * Math.min(1, rim * C4.rim * 2.2)));
+          } else {
+            const dd = Math.max(0, ndl), wrap = Math.max(0, (ndl + 0.35) / 1.35);
+            const k = (amb + (1 - amb) * (dd + wrap) / 2) * (1 + 0.14 * viv);
+            const sp = spec * Math.pow(Math.max(0, nx * H[0] + ny * H[1] + nz * H[2]), shine), rr2 = rim * Math.pow(1 - nz, 3) * 0.8;
+            lit2 = col2.map((v) => v * k + sp + rr2 * 0.8);
+          }
           const fin2 = lit2.map((v, j) => Math.min(1, v + (col2[j] * 1.15 + 0.06 - v) * emit));
           tris.push({ z: (P6[0][2] + P6[1][2] + P6[2][2]) / 3, P: P6, col: fin2, a });
         }
@@ -8213,10 +8465,11 @@ void main() {
     });
     return out;
   }
-  var gl, glCanvas, prog, failed2, copyMode, GLW, GLH, T, tnow, texCache, MAX_GL, VS, FS, UNIFORMS, softOn, LPMesh, hexCache, hexRgb, MeshBuilder, Z2, T4, finish2, pixBuf, texPix;
+  var gl, glCanvas, prog, failed2, copyMode, GLW, GLH, T, tnow, texCache, MAX_GL, VS, FS, UNIFORMS, softOn, LPMesh, hexCache, hexRgb, MeshBuilder, Z2, T4, finish2, pixBuf, texPix, TOON_RIM;
   var init_lowpoly = __esm({
     "src/gfx/lowpoly.js"() {
       init_voxgl();
+      init_toon();
       gl = null;
       glCanvas = null;
       prog = null;
@@ -8230,24 +8483,36 @@ void main() {
       MAX_GL = 4096;
       VS = `#version 300 es
 in vec3 aPos; in vec3 aNrm; in vec3 aCol; in vec2 aUv;
-uniform mat4 uMVP; uniform mat4 uModel;
-out vec3 vNrm; out vec3 vCol; out vec2 vUv; out vec3 vWorld;
+uniform mat4 uMVP; uniform mat4 uModel; uniform float uVoxN;
+out vec3 vNrm; out vec3 vCol; out vec2 vUv; out vec3 vWorld; out vec3 vSN;
 void main() {
   vec4 w = uModel * vec4(aPos, 1.0);
   vWorld = w.xyz;
   vNrm = mat3(uModel) * aNrm;
   vCol = aCol; vUv = aUv;
+  // [cel29] voxel meshes carry a smoothed surface normal (octahedral) in the unused uv slots
+  vec3 sn = aNrm;
+  if (uVoxN > 0.5) {
+    sn = vec3(aUv, 1.0 - abs(aUv.x) - abs(aUv.y));
+    if (sn.z < 0.0) sn.xy = (1.0 - abs(sn.yx)) * vec2(sn.x >= 0.0 ? 1.0 : -1.0, sn.y >= 0.0 ? 1.0 : -1.0);
+  }
+  vSN = mat3(uModel) * sn;
   gl_Position = uMVP * vec4(aPos, 1.0);
 }`;
       FS = `#version 300 es
 precision highp float;
-in vec3 vNrm; in vec3 vCol; in vec2 vUv; in vec3 vWorld;
+in vec3 vNrm; in vec3 vCol; in vec2 vUv; in vec3 vWorld; in vec3 vSN;
 uniform vec3 uLight; uniform vec3 uEye; uniform float uAmb; uniform float uSpec; uniform float uShine;
 uniform float uRim; uniform vec3 uRimCol; uniform sampler2D uTex; uniform float uUseTex; uniform float uAlpha;
 uniform vec4 uTint; uniform vec3 uFogCol; uniform float uFog; uniform float uOrtho;
 uniform float uEnv; uniform float uIri; uniform float uEmit; uniform float uEmitTex; uniform vec3 uSky; uniform vec3 uGround;
 uniform float uSmoothN; uniform float uSoft; uniform vec3 uSoftCol; uniform float uVivid;
+uniform float uCel; uniform vec4 uCelB; uniform vec4 uCelK; uniform vec3 uCelK2; uniform float uVoxN;
+uniform vec3 uShTint; uniform vec3 uShAdd; uniform vec3 uDpTint; uniform vec3 uDpAdd; uniform vec3 uLtTint; uniform vec3 uLtAdd;
 out vec4 frag;
+// [cel29] toon light: clean bands (deep / shadow / mid / lit) with hue-shifted tints, edges smoothed over ~1 px
+// (a fixed width in light units: sprites are a few dozen px across, and fwidth costs too much on software GL)
+float band(float x, float t, float aa) { return smoothstep(t - aa, t + aa, x); }
 void main() {
   vec3 n = normalize(vNrm);
   vec3 l = normalize(uLight);
@@ -8271,10 +8536,42 @@ void main() {
   // vivid (creature sprites): a saturation lift of the painted colour before lighting
   if (uVivid > 0.0) base = max(mix(vec3(dot(base, vec3(0.299, 0.587, 0.114))), base, 1.0 + 0.3 * uVivid), 0.0);
   float d = max(dot(n, l), 0.0);
-  float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
-  vec3 col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5)) * (1.0 + 0.14 * uVivid);
   float nv = max(dot(n, v), 0.0);
-  if (uSoft > 0.0) {
+  vec3 col;
+  vec3 cL = base;
+  // cel lighting normal: voxel meshes light with their smoothed surface normal (+ a little of the face normal, so
+  // voxel steps still read); other meshes use their own normal
+  vec3 nl = n;
+  if (uCel > 0.5 && uVoxN > 0.5) {
+    vec3 sn = normalize(vSN);
+    if (dot(sn, v) < 0.02) sn = normalize(sn - v * (dot(sn, v) - 0.02));
+    nl = normalize(mix(n, sn, uCelK.w));
+  }
+  float ndl = dot(nl, l);
+  if (uCel > 0.5) {
+    // ambient lifts the shadow tints (each material's ambient keeps its meaning); vivid keeps the bright exposure
+    float hl = ndl * 0.5 + 0.5;
+    float aa = uCelB.w;
+    float ak = clamp((uAmb - 0.42) * 1.2, -0.3, 0.6);
+    vec3 shT = mix(uShTint, vec3(1.0), ak * 0.55), dpT = mix(uDpTint, uShTint, clamp(ak, 0.0, 1.0) * 0.6);
+    vec3 cD = base * dpT + uDpAdd, cS = base * shT + uShAdd;
+    // lit: brighter in the colour's own hue (dark colours keep their saturation), saturated ones also lift toward white
+    cL = mix(min(base * (1.0 + 2.0 * uCelK2.z), vec3(1.0)), vec3(1.0), uCelK2.z * 0.35) * uLtTint + uLtAdd;
+    if (uSoft > 0.0) {
+      // plush: warmer, lighter shadows (light scattering through) with a warm terminator band
+      cS = mix(cS, base * uSoftCol * 0.86 + uShAdd, uSoft * 0.6);
+      cD = mix(cD, cS * 0.82, uSoft * 0.6);
+    }
+    col = mix(cD, cS, band(hl, uCelB.x, aa));
+    col = mix(col, base, band(hl, uCelB.y, aa));
+    col = mix(col, cL, band(hl, uCelB.z, aa));
+    if (uSoft > 0.0) col += base * uSoftCol * 0.16 * uSoft * (band(hl, uCelB.y - 0.06, aa) - band(hl, uCelB.y + 0.02, aa));
+    col *= 1.0 + 0.1 * uVivid;
+  } else {
+    float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
+    col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5)) * (1.0 + 0.14 * uVivid);
+  }
+  if (uSoft > 0.0 && uCel < 0.5) {
     // plush, subsurface-ish: a wide smooth wrap, sky / ground tinted ambient, warm light bleeding into the terminator
     float ndl = dot(n, l);
     float sd = clamp((ndl + 0.6) / 1.6, 0.0, 1.0);
@@ -8286,31 +8583,88 @@ void main() {
     softC += uSoftCol * pow(1.0 - nv, 2.2) * 0.16 * clamp(0.65 - ndl * 0.5, 0.0, 1.0);
     col = mix(col, softC, clamp(uSoft, 0.0, 1.0));
   }
-  if (uEnv > 0.0) {
+  float envK = uEnv * (uCel > 0.5 ? (uAlpha < 0.99 ? 0.85 : uCelK.z) : 1.0);
+  if (envK > 0.0) {
     vec3 r = reflect(-v, n);
     vec3 env = mix(uGround, uSky, smoothstep(-0.25, 0.75, r.y));
     float fres = 0.12 + 0.88 * pow(1.0 - nv, 2.5);
     // vivid keeps the body colour under the glossy reflection instead of greying it toward the sky / ground
-    col = mix(col, col * (0.55 + 0.33 * uVivid) + env * (0.6 - 0.32 * uVivid), uEnv * fres * (1.0 - 0.4 * uVivid));
-    col += uSky * uEnv * 0.5 * (1.0 - 0.3 * uVivid) * pow(max(r.y, 0.0), 6.0);
+    col = mix(col, col * (0.55 + 0.33 * uVivid) + env * (0.6 - 0.32 * uVivid), envK * fres * (1.0 - 0.4 * uVivid));
+    col += uSky * envK * 0.5 * (1.0 - 0.3 * uVivid) * pow(max(r.y, 0.0), 6.0);
   }
   if (uIri > 0.0) {
     vec3 iri = 0.5 + 0.5 * cos(6.2831 * (nv * 1.4 + vec3(0.0, 0.33, 0.67)));
     col += iri * uIri * 0.35 * (1.0 - nv * 0.6) * (0.4 + 0.6 * d);
   }
   vec3 h = normalize(l + v);
-  col += vec3(1.0) * uSpec * pow(max(dot(n, h), 0.0), uShine);
-  float rim = pow(1.0 - nv, 3.0);
   // vivid: the rim / sheen takes the surface's own hue (a coloured glossy edge, not a white haze)
   vec3 rimC = mix(uRimCol, clamp(base * 1.35 + vec3(0.1), 0.0, 1.0), 0.6 * clamp(uVivid, 0.0, 1.0));
-  col += rimC * uRim * rim;
+  if (uCel > 0.5) {
+    // hard toon specular: a small crisp shape whose size follows the shine; glossier = smaller and sharper.
+    // Voxel meshes take it (and the rim) from the smoothed normal alone so the shape stays clean across steps.
+    vec3 ns = uVoxN > 0.5 ? normalize(mix(nl, normalize(vSN), 0.85)) : nl;
+    float sh = dot(ns, h);
+    float cut = 1.0 - clamp(0.55 / max(uShine, 4.0), 0.005, 0.12) * uCelK.y;
+    float sa = uCelB.w * 0.25;
+    float sm = band(sh, cut, sa) * clamp(uSpec * 1.4, 0.0, 1.0) * uCelK.x * band(ndl, 0.15, 0.05);
+    vec3 specC = mix(clamp(cL * 1.18 + vec3(0.08), 0.0, 1.0), vec3(1.0), clamp(0.3 + 0.35 * uSpec, 0.0, 0.85));
+    col = mix(col, max(col, specC), sm);
+    // thin rim band on the silhouette turned from the key light
+    float rx = 1.0 - max(dot(ns, v), 0.0);
+    float ra = uCelB.w * 2.0;
+    float rm = band(rx, 1.0 - uCelK2.y, ra) * band(-ndl, 0.0, 0.06);
+    vec3 rimT = mix(uRimCol, clamp(base * 1.35 + vec3(0.1), 0.0, 1.0), 0.35 * clamp(uVivid, 0.0, 1.0));
+    col = mix(col, max(col, rimT * (0.6 + 0.4 * base)), clamp(uRim * uCelK2.x * 2.2, 0.0, 1.0) * rm);
+  } else {
+    col += vec3(1.0) * uSpec * pow(max(dot(n, h), 0.0), uShine);
+    float rim = pow(1.0 - nv, 3.0);
+    col += rimC * uRim * rim;
+  }
   col = mix(col, base * 1.15 + vec3(0.06), clamp(emit, 0.0, 1.0));
   col = mix(col, uTint.rgb, uTint.a);
   float fogK = clamp(uFog * length(uEye - vWorld) * 0.002, 0.0, 1.0);
   col = mix(col, uFogCol, fogK);
   frag = vec4(col * a, a);
 }`;
-      UNIFORMS = ["uMVP", "uModel", "uLight", "uEye", "uAmb", "uSpec", "uShine", "uRim", "uRimCol", "uTex", "uUseTex", "uAlpha", "uTint", "uFogCol", "uFog", "uOrtho", "uEnv", "uIri", "uEmit", "uEmitTex", "uSky", "uGround", "uSmoothN", "uSoft", "uSoftCol", "uVivid"];
+      UNIFORMS = [
+        "uMVP",
+        "uModel",
+        "uLight",
+        "uEye",
+        "uAmb",
+        "uSpec",
+        "uShine",
+        "uRim",
+        "uRimCol",
+        "uTex",
+        "uUseTex",
+        "uAlpha",
+        "uTint",
+        "uFogCol",
+        "uFog",
+        "uOrtho",
+        "uEnv",
+        "uIri",
+        "uEmit",
+        "uEmitTex",
+        "uSky",
+        "uGround",
+        "uSmoothN",
+        "uSoft",
+        "uSoftCol",
+        "uVivid",
+        "uCel",
+        "uCelB",
+        "uCelK",
+        "uCelK2",
+        "uVoxN",
+        "uShTint",
+        "uShAdd",
+        "uDpTint",
+        "uDpAdd",
+        "uLtTint",
+        "uLtAdd"
+      ];
       softOn = true;
       LPMesh = class {
         constructor(data, count, bounds2) {
@@ -8523,6 +8877,7 @@ void main() {
       finish2 = () => gl.disable(gl.SCISSOR_TEST);
       pixBuf = null;
       texPix = /* @__PURE__ */ new WeakMap();
+      TOON_RIM = hexRgb(TOON.rimColor);
     }
   });
 
@@ -13369,7 +13724,7 @@ void main() {
                 py0 = y;
               }
               shadedEllipse(buf, px0 - cr2 * 0.8, py0, cr2 * 2, cr2 * 1.4, rp(c, "#c8ccd4"));
-              const MS = c.bodyR;
+              const MS2 = c.bodyR;
               for (let y = Math.floor(cy - ry2 - 1); y <= Math.ceil(cy + ry2 * 0.62); y++) for (let x = Math.floor(cx - rx2 - 1); x <= Math.ceil(cx + rx2 + 1); x++) {
                 const nx = (x + 0.5 - cx) / rx2;
                 const ryx = ry2 * (0.8 + 0.2 * clamp(nx, -1, 1) * 0.5 + 0.1);
@@ -13378,17 +13733,17 @@ void main() {
                 const wall = ny > 0.18 + 0.05 * nx;
                 let light = wall ? 0.32 - (ny - 0.2) * 0.4 : 0.66 - ny * 0.25 - nx * 0.12;
                 const tc = -0.25;
-                let col2 = rampPick(wall ? B2 : MS, clamp01(light), x, y);
+                let col2 = rampPick(wall ? B2 : MS2, clamp01(light), x, y);
                 if (!wall) {
-                  if (nx < -0.12 && Math.abs(ny - tc) * ryx < 0.55) col2 = MS[0];
-                  if (Math.abs(nx + 0.12 + (ny - tc) * (ny - tc) * 0.25) * rx2 < 0.55 && ny > -0.85 && ny < 0.15) col2 = MS[1];
+                  if (nx < -0.12 && Math.abs(ny - tc) * ryx < 0.55) col2 = MS2[0];
+                  if (Math.abs(nx + 0.12 + (ny - tc) * (ny - tc) * 0.25) * rx2 < 0.55 && ny > -0.85 && ny < 0.15) col2 = MS2[1];
                   const wx = (nx + 0.6) * rx2, wy = (ny - tc) * ryx;
                   if (Math.abs(wx) < Math.max(1.4, rx2 * 0.11) && Math.abs(wy) < Math.max(0.9, ryx * 0.13)) {
                     col2 = (Math.floor(wx + 10) & 1) === 0 ? pk(c, "#4a4e5c") : pk(c, "#6e7484");
                     if (Math.abs(wy) > Math.max(0.9, ryx * 0.13) - 1) col2 = pk(c, "#2a2c36");
                   }
-                  if (nx > 0.05 && nx < 0.6 && ny > -0.82 && ny < -0.58 && bayer(x, y) < 0.55) col2 = MS[4];
-                } else if (Math.abs(ny - 0.2 - 0.05 * nx) * ryx < 0.6) col2 = MS[1];
+                  if (nx > 0.05 && nx < 0.6 && ny > -0.82 && ny < -0.58 && bayer(x, y) < 0.55) col2 = MS2[4];
+                } else if (Math.abs(ny - 0.2 - 0.05 * nx) * ryx < 0.6) col2 = MS2[1];
                 buf.set(x, y, col2);
               }
               if (glow2) for (let x = -2; x <= 2; x++) glow2.set(Math.round(cx + rx2 * 0.2 + x), Math.round(cy + ry2 * 0.62), pk(c, "#ff3a3a"));
@@ -14964,6 +15319,8 @@ void main() {
     const builders = [];
     const AO = [1 - 0.4 * aoK, 1 - 0.25 * aoK, 1 - 0.12 * aoK, 1];
     const col2 = [0, 0, 0];
+    const KO = kernelFor(NX, NXY), KN = KO.length, KX = KER.x, KY = KER.y, KZ = KER.z;
+    const sn = [0, 0, 1];
     const SU = [NX, NXY, 1], SV = [NXY, 1, NX];
     const ST = [1, NX, NXY];
     for (let z = 1; z < NZ - 1; z++) for (let y = 1; y < NY - 1; y++) {
@@ -14991,6 +15348,7 @@ void main() {
           col2[2] *= jj;
         }
         const fb = builders[kind] || (builders[kind] = new FaceBuf());
+        let snOk = false;
         for (let d = 0; d < 3; d++) {
           const st = ST[d];
           for (let sgn = -1; sgn <= 1; sgn += 2) {
@@ -15007,7 +15365,29 @@ void main() {
               a11 = AO[up && vp ? 0 : 3 - up - vp - pp];
               a01 = AO[um && vp ? 0 : 3 - um - vp - mp];
             }
-            fb.face(x + ox, y + oy, z + oz, d, sgn, vs, col2, a00, a10, a11, a01);
+            if (isOp) {
+              if (!snOk) {
+                let gx = 0, gy = 0, gz = 0;
+                for (let q = 0; q < KN; q++) if (ext[i + KO[q]] !== 1) {
+                  gx += KX[q];
+                  gy += KY[q];
+                  gz += KZ[q];
+                }
+                const l = Math.sqrt(gx * gx + gy * gy + gz * gz);
+                if (l > 1e-4) {
+                  sn[0] = gx / l;
+                  sn[1] = gy / l;
+                  sn[2] = gz / l;
+                } else {
+                  sn[0] = d === 0 ? sgn : 0;
+                  sn[1] = d === 1 ? sgn : 0;
+                  sn[2] = d === 2 ? sgn : 0;
+                }
+                octa(sn, SNQ, 0);
+                snOk = true;
+              }
+              fb.face(x + ox, y + oy, z + oz, d, sgn, vs, col2, a00, a10, a11, a01, sn);
+            } else fb.face(x + ox, y + oy, z + oz, d, sgn, vs, col2, a00, a10, a11, a01, null);
           }
         }
       }
@@ -15035,11 +15415,48 @@ void main() {
     const parts = voxelizeParts([{ key: "body", mesh, texture: opts.texture, emitTex: opts.emitTex }], vs, opts);
     return parts[0]?.mesh || null;
   }
+  function kernelFor(NX, NXY) {
+    if (!KER.rel) {
+      const rel = [], kx = [], ky = [], kz = [];
+      for (let k = -2; k <= 2; k++) for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) {
+        if (!i && !j && !k) continue;
+        const far = (Math.abs(i) === 2) + (Math.abs(j) === 2) + (Math.abs(k) === 2), zero = !i + !j + !k;
+        if (far && !(far === 1 && zero >= 1)) continue;
+        const w = 1 / (i * i + j * j + k * k);
+        rel.push([i, j, k]);
+        kx.push(-i * w);
+        ky.push(-j * w);
+        kz.push(-k * w);
+      }
+      KER.rel = rel;
+      KER.x = Float32Array.from(kx);
+      KER.y = Float32Array.from(ky);
+      KER.z = Float32Array.from(kz);
+    }
+    const key = NX + "x" + NXY;
+    if (KER.key !== key) {
+      KER.key = key;
+      KER.off = Int32Array.from(KER.rel.map(([i, j, k]) => i + j * NX + k * NXY));
+    }
+    return KER.off;
+  }
+  function octa(n2, out, o) {
+    const s = Math.abs(n2[0]) + Math.abs(n2[1]) + Math.abs(n2[2]) || 1;
+    let u = n2[0] / s, v = n2[1] / s;
+    if (n2[2] < 0) {
+      const pu = (1 - Math.abs(v)) * (u >= 0 ? 1 : -1), pv = (1 - Math.abs(u)) * (v >= 0 ? 1 : -1);
+      u = pu;
+      v = pv;
+    }
+    out[o] = Math.round((u * 0.5 + 0.5) * 255);
+    out[o + 1] = Math.round((v * 0.5 + 0.5) * 255);
+  }
   function expandFaces(pos, meta, n2, vs) {
     const B2 = new Float32Array(n2 * 66);
     let o = 0;
     for (let i = 0; i < n2; i++) {
-      const mo = i * 8, ds = meta[mo], d = ds >> 1, sgn = ds & 1 ? 1 : -1;
+      const mo = i * MS, ds = meta[mo], d = ds >> 1, sgn = ds & 1 ? 1 : -1;
+      const su = meta[mo + 8] / 255 * 2 - 1, sv = meta[mo + 9] / 255 * 2 - 1;
       let x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
       if (sgn > 0) {
         if (d === 0) x++;
@@ -15078,8 +15495,8 @@ void main() {
         B2[o + 6] = r * a;
         B2[o + 7] = g * a;
         B2[o + 8] = b * a;
-        B2[o + 9] = 0;
-        B2[o + 10] = 0;
+        B2[o + 9] = su;
+        B2[o + 10] = sv;
         o += 11;
       }
     }
@@ -15143,7 +15560,7 @@ void main() {
       acc[k6 + 4] = 0.35;
     }
   }
-  var STAT, now2, texPix2, CAP, cls, rnk, acc, ext, queue, hash32, CU, CV, ORD_P, ORD_PF, ORD_M, ORD_MF, CX, CY, CZ, CA, q8, FaceBuf, VoxMesh, hexRGB01;
+  var STAT, now2, texPix2, CAP, cls, rnk, acc, ext, queue, hash32, KER, MS, SNQ, FACE_OCT, CU, CV, ORD_P, ORD_PF, ORD_M, ORD_MF, CX, CY, CZ, CA, FN, q8, FaceBuf, VoxMesh, hexRGB01;
   var init_voxelize = __esm({
     "src/fish/voxelize.js"() {
       init_lowpoly();
@@ -15156,6 +15573,16 @@ void main() {
         h = Math.imul(h ^ h >>> 13, 1274126177);
         return ((h ^ h >>> 16) >>> 0) / 4294967296;
       };
+      KER = { x: null, y: null, z: null, rel: null, key: "", off: null };
+      MS = 10;
+      SNQ = new Uint8Array(2);
+      FACE_OCT = [0, 1, 2, 3, 4, 5].map((f) => {
+        const n2 = [0, 0, 0];
+        n2[f >> 1] = f & 1 ? 1 : -1;
+        const q = [0, 0];
+        octa(n2, q, 0);
+        return q;
+      });
       CU = [[0, 1, 0], [0, 0, 1], [1, 0, 0]];
       CV = [[0, 0, 1], [1, 0, 0], [0, 1, 0]];
       ORD_P = [0, 1, 2, 0, 2, 3];
@@ -15166,14 +15593,15 @@ void main() {
       CY = [0, 0, 0, 0];
       CZ = [0, 0, 0, 0];
       CA = [0, 0, 0, 0];
+      FN = [0, 0, 1];
       q8 = (v) => v <= 0 ? 0 : v >= 1 ? 255 : Math.round(v * 255);
       FaceBuf = class {
         constructor() {
           this.pos = new Int16Array(3 * 512);
-          this.meta = new Uint8Array(8 * 512);
+          this.meta = new Uint8Array(MS * 512);
           this.n = 0;
         }
-        face(x, y, z, d, sgn, vs, col2, a00, a10, a11, a01) {
+        face(x, y, z, d, sgn, vs, col2, a00, a10, a11, a01, sn) {
           if ((this.n + 1) * 3 > this.pos.length) {
             const np = new Int16Array(this.pos.length * 2);
             np.set(this.pos);
@@ -15187,7 +15615,7 @@ void main() {
           this.pos[i * 3] = x;
           this.pos[i * 3 + 1] = y;
           this.pos[i * 3 + 2] = z;
-          const m = this.meta, o = i * 8;
+          const m = this.meta, o = i * MS;
           m[o] = d * 2 + (sgn > 0 ? 1 : 0);
           m[o + 1] = q8(col2[0] / 1.5);
           m[o + 2] = q8(col2[1] / 1.5);
@@ -15196,11 +15624,29 @@ void main() {
           m[o + 5] = q8(a10);
           m[o + 6] = q8(a11);
           m[o + 7] = q8(a01);
+          if (sn) {
+            const fn = sgn * sn[d];
+            if (fn < 0.1) {
+              const k = 0.1 - fn;
+              FN[0] = sn[0];
+              FN[1] = sn[1];
+              FN[2] = sn[2];
+              FN[d] += sgn * k;
+              octa(FN, m, o + 8);
+            } else {
+              m[o + 8] = SNQ[0];
+              m[o + 9] = SNQ[1];
+            }
+          } else {
+            const q = FACE_OCT[d * 2 + (sgn > 0 ? 1 : 0)];
+            m[o + 8] = q[0];
+            m[o + 9] = q[1];
+          }
           this.vs = vs;
         }
         build() {
           const n2 = this.n, vs = this.vs || 1;
-          const pos = this.pos.slice(0, n2 * 3), meta = this.meta.slice(0, n2 * 8);
+          const pos = this.pos.slice(0, n2 * 3), meta = this.meta.slice(0, n2 * MS);
           const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
           for (let i = 0; i < n2; i++) for (let k = 0; k < 3; k++) {
             const q = pos[i * 3 + k];
@@ -15228,6 +15674,7 @@ void main() {
           this.nFaces = nFaces;
           this.vs = vs;
           this.voxel = true;
+          this.voxN = true;
         }
         get data() {
           return this._d || (this._d = expandFaces(this.pos, this.meta, this.nFaces, this.vs));
@@ -22025,7 +22472,7 @@ void main() {
     const cells = frames.map((f) => ({ parts: f.parts.map((pt) => ({ ...pt })) }));
     const cols = Math.max(1, Math.min(LP_SWIM, Math.floor(4096 / w)));
     const gcells = c.glow ? frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== "fins" && p.key !== "finrays" && p.key !== "glass").map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) })) : null;
-    const go = { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 };
+    const go = { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0, cel: false };
     const ms = now3() - t0;
     spent += ms;
     return { c, infl, mouth, hi, frames, cells, gcells, o: { ...o, cols }, go, w, h, Sb, blur, cols, i: 0, canvas: null, raw: null, ms, yawI, sb, tilt };
@@ -28120,9 +28567,9 @@ void main() {
     const make = UI3D_VOX[name] || ICON3D[name];
     if (!make) return false;
     const t = o.t ?? performance.now() / 1e3, hov = o.hover || 0, ph = o.phase || 0;
-    const mode = modelSpin("ui3d:" + name, make);
+    const mode2 = modelSpin("ui3d:" + name, make);
     let turn;
-    if (mode === "full") turn = hov > 0.5 ? t * 0.9 + ph : Math.sin(t * 0.8 + ph) * 0.05;
+    if (mode2 === "full") turn = hov > 0.5 ? t * 0.9 + ph : Math.sin(t * 0.8 + ph) * 0.05;
     else turn = hov > 0.5 ? Math.sin(t * 7 + ph) * 0.9 : Math.sin(t * 1.3 + ph) * 0.22;
     const f = modelFrame("ui3d:" + name, make, Math.round(px2), turn);
     if (!f) return false;
@@ -52696,13 +53143,13 @@ kmlmk..
           }
           return fr[f % 6];
         }
-        draw(ctx2, s, mode, t, glitch = 0) {
+        draw(ctx2, s, mode2, t, glitch = 0) {
           const { x, y, w, h } = s;
           ctx2.save();
           ctx2.beginPath();
           ctx2.rect(x, y, w, h);
           ctx2.clip();
-          let m = mode;
+          let m = mode2;
           if (glitch > 0 && hash2(x, Math.floor(t * 8), 3) < glitch * 0.5) m = "static";
           const jx = glitch > 0 && hash2(y, Math.floor(t * 12), 4) < glitch * 0.3 ? Math.round((hash2(x, Math.floor(t * 12), 5) - 0.5) * 6) : 0;
           if (m === "off") {
@@ -53627,9 +54074,9 @@ kmlmk..
           const glitch = wx.static;
           for (const s of this.screens) {
             if (s.band !== b) continue;
-            const mode = s.secret ? this.secrets().crt ? "hello" : "off" : s.mode;
-            this.fx.draw(ctx2, s, mode, t + s.x * 0.01, mode === "off" ? 0 : glitch);
-            if (mode !== "off") drawGlow2(ctx2, s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h) * 0.75, mode === "fish" ? "#4a8aff" : mode === "static" ? "#a8b8c8" : "#4aff8a", 0.18 * flick * s.a);
+            const mode2 = s.secret ? this.secrets().crt ? "hello" : "off" : s.mode;
+            this.fx.draw(ctx2, s, mode2, t + s.x * 0.01, mode2 === "off" ? 0 : glitch);
+            if (mode2 !== "off") drawGlow2(ctx2, s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h) * 0.75, mode2 === "fish" ? "#4a8aff" : mode2 === "static" ? "#a8b8c8" : "#4aff8a", 0.18 * flick * s.a);
           }
           const lt = Math.floor(t * 6);
           for (const l of this.leds) {
@@ -57427,8 +57874,8 @@ kmlmk..
             ctx2.restore();
             return;
           }
-          const mode = Math.floor(t / 6 + sc.ad) % 3;
-          if (mode === 0) {
+          const mode2 = Math.floor(t / 6 + sc.ad) % 3;
+          if (mode2 === 0) {
             ctx2.fillStyle = "#10306a";
             ctx2.fillRect(x, y, w, h);
             ctx2.fillStyle = "#1a4a8a";
@@ -57436,7 +57883,7 @@ kmlmk..
             const fx = x + t * 14 % (w + 16) - 10, fy = y + h * 0.45 + Math.sin(t * 2) * 2;
             ctx2.drawImage(this.fishSpr[0], Math.round(fx), Math.round(fy), 14, 8);
             drawText(ctx2, ADS[sc.ad], x + w / 2, y + 2, { font: "small", align: "center", color: "#ffe27a" });
-          } else if (mode === 1) {
+          } else if (mode2 === 1) {
             ctx2.fillStyle = "#3a0a2a";
             ctx2.fillRect(x, y, w, h);
             const msg = ADS[(sc.ad + 1) % ADS.length] + "   ";
