@@ -13,7 +13,7 @@ import { RARITY } from '../core/color.js';
 import { clamp, clamp01, dist } from '../core/math.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { drawGlossOrb, drawSparkle } from '../ui/aero.js';
+import { drawGlossOrb, drawSparkle, pixelGradient } from '../ui/aero.js';
 import { pill, rrect } from '../store/aerokit.js';
 import { HOOK } from '../fishing/baitart.js';
 import { EMOTE_BY_ID } from './protocol.js';
@@ -297,11 +297,10 @@ export function drawPeerTags(ctx, net, peers) {
 function speechBubble(ctx, cx, cy, w, h, color) {
   const x = cx - w / 2, y = cy - h / 2;
   ctx.save();
-  rrect(ctx, x, y, w, h, 6);
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#dff4ff');
-  ctx.fillStyle = g; ctx.fill();
-  ctx.beginPath(); ctx.moveTo(x + 4, y + h - 1); ctx.lineTo(x - 2, y + h + 4); ctx.lineTo(x + 9, y + h - 1); ctx.closePath(); ctx.fill();
+  rrect(ctx, x, y, w, h, 6); // [pixui30] stepped bubble, banded fill, pixel tail
+  ctx.fillStyle = pixelGradient(ctx, 0, y, 0, y + h, [[0, '#ffffff'], [1, '#dff4ff']], 3); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 4; i++) ctx.fillRect(Math.round(x + 4 - i * 1.5), Math.round(y + h - 1 + i), Math.max(1, 6 - i * 2), 1);
   rrect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 6); ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(Math.round(x + 4), Math.round(y + 2), Math.round(w - 8), 2);
   ctx.restore();

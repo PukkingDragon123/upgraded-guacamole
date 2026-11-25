@@ -413,8 +413,22 @@ that feels hand-made."
     (`faceOf`, `setTextBump` in font.js); measure with measureText / lineHeight rather than hard-coded 7 px rows.
 
 ## Phase 10 UI (detailed voxel icons + voxel chrome) [phase10:ui] [icons15]
-- [pixicons26] SUPERSEDED for icons: every icon below is now 2D pixel art (see "Hand-drawn 2D pixel-art icons"); the
-  voxel pipeline described here is only the fallback for keys without a sprite. The voxel chrome is unchanged.
+- [vicons30] CURRENT AGAIN: the user hated the 2D pixel-art icons ("Bring voxel UI back, I hate 2D pixel art"), so
+  [pixicons26] is REVERTED: src/gfx/pixicons.js + src/gfx/pixart.js and icongallery page 9 are deleted and every icon
+  API below routes straight to this voxel pipeline again (renders now carry the [cel29] cel shading). Additions:
+  - The generic FISH is a GROUPER (Bubbles' kind): `grouperInto(m, p, cx, cy, cz, k, dir, {lite, short, noFar})` in
+    iconvox.js (olive-gold body with round dark spots and back saddles, pale belly, gold head freckles, spiny dorsal with
+    gold-tipped spines, soft rear dorsal, gold-rimmed fan tail, big pink pouty lips, googly eye with an off-centre pupil).
+    `ICON_VOX` / `UI3D_VOX` `fish` / `grouper` (so `getUiIcon('fish')`, `{fish}`, labIcon('fish') draw it); the
+    fishbowl and cube tank hold one (no goldfish anywhere); the FishDex book's emblem is a gold grouper (painted 2 voxels
+    thick so it survives the small-size downsample); the multiplayer icon is two chibi groupers tilted nose to nose under
+    a voxel heart (`heartInto`, `tiltInto` = build in a scratch layer and stamp it turned about z).
+  - Currencies: `aerobuck` / `aerobucks` (the glossy drop, aliases of `coin` / `aero`) and `gem` / `bytegem` (the faceted
+    violet Byte Gem: octagonal crown + pavilion, alternating facet tones, cyan emissive "byte" pixels, white glint).
+    `has3D(name)` also answers true for every `UI3D_VOX` name. src/ui/gemui.js (the wallet, quest rewards, the gem Skip
+    button, `{abdrop}` / `{bytegem}`) draws these voxel frames (`icon3dFrame`, the gem turns once per shine sweep, the
+    drop squashes about its foot); its own pixel sprites only stand in until a frame is built.
+  - Lab: `labIcon('fish')` / `fish:` (no id) = the grouper; `fish:<species>` keeps the species' voxel fish.
 - Icons [icons15] (replaces the low-res toy-block icons): every model icon (bigicons.modelFrame / iconFrame / getBigIcon /
   rodIcon / gemIcon / decorFrame / cutGemFrame / voxelModelFrame, icons3d / getUiIcon, fishing icons3d, items via `itemSprite` /
   `itemIcon`, bait via `baitIcon`, Lab icons) is DETAILED VOXEL PIXEL ART in the bait-art style: `src/gfx/voxicon.js`
@@ -436,8 +450,8 @@ that feels hand-made."
   angle); new frames are built within ~7 ms per frame (`voxMisses()` counts deferred builds for callers that cache);
   `iconFrame` / `getBigIcon` / `rodIcon` / `gemIcon` build their `.hi` twin lazily (~5 ms a frame), `modelFrame` eagerly.
   Item VoxelModels keep their authored yaw / pitch (`voxelModelFrame(key, () => ({m, yaw, pitch}))`).
-- Dev preview: `node tools/build.mjs --dev icongallery` (`?page=0` menu icons at 44 / 32 / 22 px + rods, gems, decor;
-  `1` icons3d; `2` items + fishing icons; `3` Lab icons; `&spin=1` turns them, `&bench=1` -> `window.__bench` ms per frame).
+- Dev preview: `node tools/build.mjs --dev icongallery` (`?page=0` menu icons + fish + gem at 44 / 32 / 22 px + rods, gems, decor;
+  `1` icons3d (UI3D_VOX names first); `2` items + fishing icons; `3` Lab icons; `&spin=1` turns them, `&bench=1` -> `window.__bench` ms per frame).
 - Chrome: the `.hi` twin of every `aeroSurface` is a voxel slab (`voxelSlab` in src/ui/aero.js: block grid, stepped
   corners, bevelled frame ring, side band `depth`, outline; `ring: n` = frame only). `drawAeroFrame` adds a voxel
   frame ring, a title plaque and voxel ornaments (`drawVoxDecor(ctx, name, cx, cy, px)`); toasts sit on voxel plates.
@@ -467,43 +481,10 @@ that feels hand-made."
   highlight band: white = selected, gold = sailing, with two twinkling glints). The tree's fog of war (labtree.js)
   is a dark-sea tint. No light rays / spotlights / ring effects / text pop-ups in the Lab.
 
-## Hand-drawn 2D pixel-art icons [pixicons26] (replaces the [icons15] voxel icons below the chrome)
-User direction: "make icons actually 2D pixel art, lower resolution, hand-drawn and detailed; the fish icon is a grouper".
-- Sprites: `src/gfx/pixart.js` holds HAND-AUTHORED pixel maps (string rows over one shared palette `PAL`: 4-step
-  hue-shifted ramps per material, shadows drift purple / blue, highlights warm, a few hand-placed white glints, light
-  from the top-left, dithering only on the glass / scale details). Rows are drawn WITHOUT the outer outline: objects
-  18 x 18 (20 x 20 final), glyphs 10 x 10 (12 x 12 final); `<name>_s` = a small twin used when the big art would fall
-  below 2 device px per art pixel. `'_'` = empty and never outlined, `'k'` = an ink line inside the art, `~ ^ * +`
-  = translucent glass / glint / water. Derived sprites `{base, map, rot, flip}` (arrows, palette swaps), `ALIAS`
-  (old model ids / icons3d names -> sprites), `FAMILY` parametric sprites: `gem:<hex>[_s]`, `cut:<hex>|<cut>` (Lab cut
-  gems: round diamond square drop heart clover oval hex), `globe:<biome>`, `orb:<hex>`, `rod:<id>` (`rodDef(look)`:
-  grip, reel, 2 px blank with guides, line + bobber, kind tips wand / crystal / trident / coil / carbon), `item_<id>`
-  (the src/build/itempix.js 24 x 24 material art, trimmed), `baitpix:<shape>` / `baitSpriteName(shape)`.
-- Engine `src/gfx/pixicons.js`: compiles rows, adds the 1 px SELECTIVE COLOURED outline (the wrapped material pushed
-  toward ink `#170e22`, darkest under / right of the art), an optional 1-art-px soft drop shadow (only when shown at >= 3
-  device px per art pixel), scales with INTEGER nearest-neighbour only (`pickScale(native, devicePx)`), builds the
-  `.hi` twin for the 2x UI layer plus a crisp round(k / 2) logical twin, caches every scaled canvas.
-  `pixFrame(name, px, turn, {shadow, state})`, `pixStill(name, w, h, {shadow})` (never below 1 logical px per art px),
-  `pixKeyName(key)` (maps model keys `ui3d:` `fish3d:` `vm:` `lab:` `item:` `bait:` `decor:` `pkg_` to sprites),
-  `pixRegister`, `hasPix`, `pixSpin`, `pixName`, `PIX_NAMES`. Hover / spin = a 2-frame pixel animation: frame 1 hops
-  the art up one art pixel (wobble icons when |turn| > 0.35, 'full' icons on alternate quarter turns). No 3D spin.
-- Wiring (same APIs, call sites unchanged): bigicons `iconFrame` / `getBigIcon` (bottom anchor from the art, hover
-  tint) / `iconSpinMode` / `modelFrame` / `modelSpin` / `voxelModelFrame` / `rodIcon` / `gemIcon` / `cutGemFrame` /
-  `decorFrame` (shell, starfish, bubbles, pearl, coral, orb:; the rotated chrome leaves stay voxel) and `setCoinRenderer` (drawAeroCoin), icons3d
-  `has3D` / `icon3d` / `icon3dFrame` / `drawIcon3D` (so `getUiIcon`, inline `{name}` text icons, toasts, buttons, the
-  tank rail, the Satchel tabs, quest rows ...), fishing icons3d (via modelFrame `fish3d:`), labicons (`labPixName`:
-  boats, tanks, biome globes, bait, materials, critters, glyphs; buildings and tank foods keep their own art), itemart
-  `itemSprite` (every item with pixel art; packages -> pixel chests) and `packageParts(.., full = true)` (whole-package
-  previews; the chest minigame's body / lid split stays voxel), baitart's small voxel bait icon (via `vm:bait:`).
-  The voxel pipeline (voxicon / iconvox / iconmeshes) remains only as the fallback for keys without a sprite.
-- The generic FISH symbol is a GROUPER (`grouper` 20 x 12 + `grouper_s`; alias `fish`): chunky olive-gold body with dark
-  blotches, spiny dorsal, gold-rimmed fan tail, googly eye, big pink pouty lips (Bubbles' colours). The aquarium bowl,
-  My Fish cube tank, FishDex emblem, tank sprites and the multiplayer icon (two groupers kissing under a heart) use it.
-- Named currency icons for the currency UI: `getUiIcon('aerobuck')` (glossy water-droplet Aero Buck; aliases coin /
-  aero / coins / coin_big / aero_big) and `getUiIcon('gem')` (faceted digital cyan gem; `gem:<hex>` for any colour,
-  `gem_common` .. `gem_legendary` rarity gems).
-- Dev: `node tools/build.mjs --dev icongallery` (`?page=9&off=0|120` every sprite at 44 / 22 / 11 px; pages 0-3 the
-  menu icons + rods + gems + cut gems + ornaments, icons3d names, items + fishing icons, Lab icons via the real APIs).
+## Hand-drawn 2D pixel-art icons [pixicons26] - REVERTED by [vicons30]
+The user disliked them; src/gfx/pixicons.js, src/gfx/pixart.js and icongallery page 9 were deleted and every icon is
+the detailed voxel art of "Phase 10 UI" again (see [vicons30] there). (src/build/pixart.js / itempix.js, the Workshop's
+own phase 8 pixel item art, are unrelated and stay.)
 
 ## Phase 10 tank (2D side-scrolling voxel tank, build only in the tank) [phase10:tank]
 - `src/aquarium/scene2d.js` + `tankart.js` draw the tank as a side-on voxel scene (back / mid / front layers), the
@@ -989,3 +970,54 @@ User direction: "the 3D stuff more cel-shaded and the shading very good".
   normal encoded once per voxel), i.e. ~+10-15 % on a fish sheet build, still spread over frames by [perf27]'s
   sheetStep budget; the sprite shader adds a few smoothsteps (no fwidth). tools/perf.mjs frame numbers are unchanged
   within its run-to-run noise.
+
+## Pixel-art UI chrome, no rounded shapes [pixui30]
+User direction: "UI all is 100 percent pixel art, no round" and "no ugly UI". Supersedes the glossy-glass / voxel-slab
+chrome of [phase8:ui] / [phase9:ui] / [phase10:ui] (icons, voxel ornaments and 3D pop-up text are unchanged).
+- Central rasteriser (`src/ui/aero.js` `pixelSurface`, behind the unchanged `aeroSurface` / `drawAeroSurface` /
+  `drawAeroPanel` / `drawAeroButton` / `drawAeroCard` / `drawAeroFrame` APIs): STEPPED corners (`notchOf(r, w, h)`:
+  r <= 0 square, <= 2 -> 1 px notch, <= 9 -> [2,1], larger -> [3,2,1]; `'pill'` by height: < 10 -> 1, < 24 -> 2,
+  else 3; `NOTCHES`), a crisp 1 px DARK outline (a white / pale `edge` is turned into a deep shade of the body unless
+  `lightEdge: true`), a 1 px light bevel top-left / shade bottom-right (`inset` flips it and drops a shadow row under the
+  top edge), flat colour bands: a two-tone sheen band (`gloss`, `glossH`), 1-4 body bands top -> mid -> bot with one
+  checker-dithered row at each seam, a glow band along the bottom (`glow`), optional diagonal pixel streaks, pixel
+  twinkles (`bubbles`), a pixel star (`sparkle`), a frame-only `ring: n` (2n px band, transparent hole, inner edge
+  bevelled like a raised frame) and `depth` (darker lip rows). Everything is drawn at the LOGICAL resolution; the `.hi`
+  twin for the 2x UI layer is the same art scaled by nearest neighbour (`pixelArt(canvas)`), so chrome pixels match the
+  pixel fonts at 1280x720 and 1920x1080. `curve`, `smooth`, `voxel`, `block` are accepted and ignored.
+- Shared widgets converted centrally: buttons (`r: 'pill'` -> [2,1] notches, 1 px hover ring, solid 2 px base),
+  `drawAeroBar` (recessed 1 px-notch track, flat fill with a light top row / shade rows / glint dashes, square ends,
+  dark leading-edge pixel, segment ticks), `drawGlossOrb` / `pixelOrbCanvas` (stepped OCTAGON knob, no circle; the
+  voxel 'orb:' decor is no longer used), `drawAeroBadge` (small stepped square), `drawAeroLabel` / tooltips / tabs /
+  title plaques / toasts (plates no longer squash; the toast text has no dark glow), `drawAeroGlow` (three flat-alpha
+  stepped-octagon bands with ordered dithering, alpha quantised to 1/8; no radial falloff), `drawSparkle` (logical
+  pixels on the 2x layer too), `drawTitle` (cached composite is pixel art: square 8-way outline, hard drop, flat top
+  highlight; no round outline / hairline), `ecoBackdrop` (window wallpaper: banded sky, pixel clouds, stepped grass
+  terraces, plus marks; no sun bloom, no round bubbles), `drawAeroFrame` (hard stepped drop shadow, 8 px pixel frame
+  ring, plaque), panels.js slider (stepped 9x13 thumb with grip lines), toggle (square knob), speech bubbles ([3,2,1]
+  max notch, square thought puffs). Panels open / close by sliding whole pixels (no scaling) in `UI.drawPanels` /
+  `drawGhosts`.
+- PIXEL KIT (exported from aero.js, documented at the bottom of the file; use these for new UI, e.g. the fishing HUD):
+  `pixelPanel(ctx, x, y, w, h, {tone, r, shadow, inset, gloss, glow, title})`, `pixelButton` (= drawAeroButton),
+  `pixelBar` (= drawAeroBar), `pixelBadge` (= drawAeroBadge), `pixelChip(ctx, x, y, w, h, {tone, r, inset})`,
+  `pixelRectPath(ctx, x, y, w, h, r)` (a stepped path for fill / clip / stroke; pass x + 0.5, w - 1 for crisp 1 px
+  strokes), `pixelRect(ctx, x, y, w, h, r, fill, {outline, hi, lo})`, `pixelHalo(ctx, x, y, w, h, n, color, alpha)`,
+  `pixelShadow(ctx, x, y, w, h, dx, dy, {n, alpha, color})`, `pixelGradient(ctx, x0, y0, x1, y1, [[t, color]...], bands)`
+  (a BANDED linear gradient: hard colour stops, accepts '#hex' and 'rgba()'), `pixelGlassPlate(ctx, cx, cy, size,
+  {tint, rim})` (stepped-octagon glass plate for items 'in a bubble'), `notchOf`, `NOTCHES`, `pixelArt`.
+- Shared paths: `roundRectPath` (labart.js), `roundRect` (game/dialogue.js) and `rrect` (store/aerokit.js) now build
+  stepped pixel paths, so every clip / fill that used them is stepped.
+- Call sites converted: the dialogue panel / speech bubble / response choices (pixel plates, stepped portrait well,
+  pixel triangle arrow and stepped tail, no scaling pops), Quest Log (stepped portrait wells, emblem plate, square mini
+  bars, stepped lock plate), Lab (emblem plate, tree-node orbs = pixel octagons, giver wells, labkit glass cards / cost
+  tiles / chips / stat bars / pedestal, labviews tiles + check marks, research widget = stepped plate + square bar, no
+  sparkle ring), Bait Shop / Bait panel / Satchel bait (`drawBaitGloss(..., {bubble: false})` on a `pixelGlassPlate`;
+  stepped awning scallops), aerokit pills / glass cards / tags / toggles / stat bars / sale sticker (stepped square, no
+  star rays or rotation) / orb close X, ecoart sky / globe / splash buttons (no curved splash), catch card (stepped clip,
+  banded sky), crate-open stage and build diorama (banded), letterbox bars (banded), tutorial crank glyph (stepped
+  track), Settings (no glow halo), the World Map sky (no arc rings), multiplayer emote bubble, the overlay card.
+- Left as is (not UI chrome): in-world art (fish, water bubbles, particles, voxel scenery, the Lab fog-of-war light
+  pools, wardrobe room floor, map sun), icons (owned by the icon agent: bigicons / icons3d / iconvox / voxicon /
+  labicons / itemart, the labrows vector padlocks / chains, the labtree padlock sprite), the fishing HUD (src/fishing/*,
+  owned by the fishing agent: it can switch to the PIXEL KIT), pixel leaves / voxel ornaments on the window frames, and
+  the 3D voxel pop-up text. Sub-pixel (0.5 logical) stamps in the Lab tree land on whole device pixels on the 2x layer.

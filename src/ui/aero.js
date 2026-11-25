@@ -1,8 +1,11 @@
 // Frutiger Aero UI kit (phase 3). OWNER: UI agent (signatures below are the contract).
-// Everyone draws Aero chrome through these helpers so the whole game shares one glossy look:
-// pixel-crisp glass (hard rounded edges, no anti-aliasing) with smooth gradients, a specular sheen,
-// an inner white rim, a soft reflected glow at the bottom, bubbles and lens-flare sparkles.
-// Every surface is rasterised once per size/look and cached (LRU), so drawing is a single drawImage.
+// Everyone draws Aero chrome through these helpers so the whole game shares one look.
+// [pixui30] The look is 100% PIXEL ART now (user: "UI all is 100 percent pixel art, no round"): every surface has
+// STEPPED corners (1-3 px notches, never arcs), a crisp 1 px dark outline, a 1 px light bevel top-left / shade
+// bottom-right, flat colour bands with checker-dithered seams (no smooth gradients) and hard pixel shadows, in the
+// Aero palette. Art is rasterised once at the logical resolution and cached (LRU); the `.hi` twin for the 2x UI layer
+// is the same pixels scaled by nearest neighbour, so chrome pixels match the pixel fonts. 'pill' / radius options
+// map to notches (notchOf). Orbs, badges and glows are stepped octagons / squares. See the PIXEL KIT at the bottom.
 //
 //   AERO                         palette tokens (sky, aqua, grass, glass, ink, gloss ...)
 //   AERO_TONES                   named surface tones ('aqua','green','orange','red','purple','glass','white','clear','sky','grass','dark','deep')
@@ -131,314 +134,150 @@ function rgbOf(hex) {
 // ---------------------------------------------------------------- surface rasteriser
 // SURFACE OPTIONS (o):
 //   tone (name or object) | top, mid, bot, a:[a0,a1], edge, edgeA
-//   r: corner radius px ('pill' = h/2), shape: 'rect' | 'tab' (rounded top only) | 'bottom' (rounded bottom only)
-//   gloss 0..1 (specular sheen over the top), glossH (px; default ~45% of h, max 26), curve (px the sheen edge bows)
-//   rim 0..1 (inner white highlight line), glow 0..1 (reflected light along the bottom), streak (diagonal reflections)
-//   inset (recessed: inner shadow at the top), bubbles (n decorative bubbles), sparkle (lens flare top-left)
-//   seed (decor placement)
-// [phase9:ui] surfaceTex(w, h, o) -> logical canvas with a lazy `.hi` twin rasterised at 2x (device pixels): a 1 px
-// outer line with a soft inner line, a finer bevel/rim, finer bayer dither and smoother rounded corners.
-function surfaceTex(w, h, o) {
-  if (o.ring) return withHi(voxelSlab(w, h, o, 1), () => voxelSlab(w, h, o, HI));
-  return withHi(surfaceRaster(w, h, o, 1), () => (o.smooth || o.voxel === false ? surfaceRaster(w, h, o, HI) : voxelSlab(w, h, o, HI)));
+//   r: corner size ('pill' = by height) -> a STEPPED pixel notch (see notchOf), shape: 'rect' | 'tab' (notched top only) |
+//      'bottom' (notched bottom only)
+//   gloss 0..1 (flat sheen band over the top), glossH (px), rim 0..1 (inner bevel: light top-left, shade bottom-right),
+//   glow 0..1 (reflected light band along the bottom), streak (diagonal pixel reflections), inset (recessed: the bevel
+//   flips and a shadow row falls under the top edge), bubbles (n tiny pixel twinkles), sparkle (pixel star top-left),
+//   ring: n (frame only: a 2n px band, the hole is transparent), depth (rows of a darker lip along the bottom), seed
+// [pixui30] Everything is PIXEL ART at the logical resolution: stepped corners (no arcs), a crisp 1 px dark outline,
+// a 1 px light/dark bevel, flat colour bands with a checker-dithered row between them (no smooth gradients). The `.hi`
+// twin for the 2x UI layer is the same art scaled up by nearest neighbour, so chrome pixels match the pixel fonts.
+// (`curve`, `smooth`, `voxel` and `block` are accepted and ignored.)
+export const NOTCHES = [[], [1], [2, 1], [3, 2, 1]];
+// corner radius (logical px or 'pill') -> notch depth 0..3
+export function notchOf(r, w, h) {
+  let n;
+  if (r === 'pill') n = h < 10 ? 1 : h < 24 ? 2 : 3;
+  else { r = r ?? 6; n = r <= 0 ? 0 : r <= 2 ? 1 : r <= 9 ? 2 : 3; }
+  while (n > 0 && (n * 2 + 1 > w || n * 2 + 1 > h)) n--;
+  return n;
 }
+function nearestHi(c) {
+  return withHi(c, () => {
+    const hc = makeCanvas(c.width * HI, c.height * HI);
+    const g = ctxOf(hc);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(c, 0, 0, hc.width, hc.height);
+    return hc;
+  });
+}
+// a logical-res pixel canvas with the nearest-neighbour `.hi` twin (exported for callers that bake their own art)
+export function pixelArt(c) { return nearestHi(c); }
 
-// [phase10:ui] VOXEL SLAB chrome (the full-res `.hi` twin of every Aero surface): the shape is built from chunky
-// voxel blocks (B device px; stepped corners), seen as a thick slab from slightly above: a bevelled frame ring of
-// blocks (lit top-left, shaded bottom-right, each block with its own lit top / shaded bottom pixel row), a face of
-// blocks with whisper tone jitter, the extruded side band under the face (o.depth blocks, AO under the lip),
-// a 1 px dark outline, the stepped gloss band / glow / streaks quantised per block, and voxel bubbles.
-//   extra options: block (device px per voxel), depth (side band rows; default 1-2 for plain rects)
-const vhash = (i, j, s) => { let h = (i * 374761393 + j * 668265263 + s * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-function voxelSlab(lw, lh, o, S) {
-  const w = lw * S, h = lh * S;
+function surfaceTex(w, h, o) { return nearestHi(pixelSurface(w, h, o)); }
+
+const mixC = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+const WHITE = [255, 255, 255];
+function pixelSurface(w, h, o) {
   const T = typeof o.tone === 'object' ? o.tone : o.tone ? toneOf(o.tone) : {};
   const top = rgbOf(o.top || T.top || '#ffffff'), mid = rgbOf(o.mid || T.mid || o.top || '#d8f0ff'), bot = rgbOf(o.bot || T.bot || '#8cc8ec');
   const A = o.a || T.a || [1, 1];
-  const edge = rgbOf(o.edge || T.edge || '#0b4a8a'), edgeA = o.edgeA ?? T.edgeA ?? 1;
+  let edge = rgbOf(o.edge || T.edge || '#0b4a8a'), edgeA = o.edgeA ?? T.edgeA ?? 1;
+  // the outline is always DARK: a white / pale edge becomes a deep shade of the body colour
+  if (!o.lightEdge && edge[0] * 0.3 + edge[1] * 0.59 + edge[2] * 0.11 > 170) { edge = mixC(bot, [4, 20, 50], 0.66); edgeA = Math.max(edgeA, 0.9); }
   const glowC = rgbOf(o.glowColor || T.glow || '#ffffff');
   const shape = o.shape || 'rect';
   const gloss = o.gloss ?? 0.6, rim = o.rim ?? 0.8, glow = o.glow ?? 0.5;
-  const B = Math.max(1, Math.round(((o.block || (lh >= 20 && lw >= 20 ? 4 : 2)) * S) / 2));
-  const GW = Math.max(1, Math.round(w / B)), GH = Math.max(1, Math.round(h / B));
-  const bx0 = (i) => Math.floor((i * w) / GW), by0 = (j) => Math.floor((j * h) / GH);
-  const dep = Math.min(Math.floor(GH / 4), o.depth ?? (shape === 'rect' && !o.inset && o.r !== 'pill' && lh >= 16 ? (lh >= 90 ? 2 : 1) : 0));
-  const FH = GH - dep; // face rows
-  const Rb = (o.r === 'pill' ? (FH * B) / 2 : Math.max(0, Math.min(o.r ?? 6, lw / 2, lh / 2)) * S) / B;
-  const roundTop = shape !== 'bottom', roundBot = shape !== 'tab';
-  // ---- block masks: 1 face, 2 side band
-  const M = new Uint8Array(GW * GH);
-  for (let j = 0; j < FH; j++) for (let i = 0; i < GW; i++) {
-    let inn = true;
-    if (Rb > 0.5) {
-      let cx = null, cy = null;
-      if (i + 0.5 < Rb) cx = Rb; else if (i + 0.5 > GW - Rb) cx = GW - Rb;
-      if (j + 0.5 < Rb && roundTop) cy = Rb; else if (j + 0.5 > FH - Rb && roundBot) cy = FH - Rb;
-      if (cx !== null && cy !== null) { const dx = i + 0.5 - cx, dy = j + 0.5 - cy; inn = dx * dx + dy * dy <= Rb * Rb + 0.25; }
+  const N = NOTCHES[notchOf(o.r, w, h)];
+  const ringW = o.ring ? Math.min(Math.floor(Math.min(w, h) / 2) - 1, (o.ring | 0) * 2) : 0;
+  const rowIns = (y) => {
+    if (shape !== 'bottom' && y < N.length) return N[y];
+    if (shape !== 'tab' && h - 1 - y < N.length) return N[h - 1 - y];
+    return 0;
+  };
+  const M = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) { const k = rowIns(y); for (let x = k; x < w - k; x++) M[y * w + x] = 1; }
+  if (ringW > 0) {
+    const hx0 = ringW, hy0 = ringW, hx1 = w - ringW, hy1 = h - ringW;
+    for (let y = hy0; y < hy1; y++) {
+      const k = y === hy0 || y === hy1 - 1 ? 1 : 0;
+      for (let x = hx0 + k; x < hx1 - k; x++) M[y * w + x] = 0;
     }
-    if (inn) M[j * GW + i] = 1;
   }
-  for (let j = FH; j < GH; j++) for (let i = 0; i < GW; i++) for (let k = 1; k <= dep; k++) if (j - k >= 0 && M[(j - k) * GW + i] === 1) { M[j * GW + i] = 2; break; }
-  for (let j = FH - 1; j >= 0; j--) for (let i = 0; i < GW; i++) if (!M[j * GW + i]) for (let k = 1; k <= dep; k++) if (j - k >= 0 && M[(j - k) * GW + i] === 1) { M[j * GW + i] = 2; break; }
-  const face = (i, j) => i >= 0 && j >= 0 && i < GW && j < GH && M[j * GW + i] === 1;
-  // block distance from the face edge (1 = border ring)
-  const D = new Uint8Array(GW * GH);
-  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) if (M[j * GW + i] === 1) D[j * GW + i] = 9;
-  for (let pass = 1; pass <= 4; pass++) for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
-    const q = j * GW + i;
-    if (D[q] !== 9) continue;
-    const nb = (a, b2) => (a < 0 || b2 < 0 || a >= GW || b2 >= GH ? 0 : D[b2 * GW + a]);
-    if (nb(i - 1, j) === pass - 1 || nb(i + 1, j) === pass - 1 || nb(i, j - 1) === pass - 1 || nb(i, j + 1) === pass - 1) D[q] = pass;
+  const inside = (x, y) => x >= 0 && y >= 0 && x < w && y < h && M[y * w + x] === 1;
+  // 4-neighbour distance to the outside (1 = outline, 2 = bevel), capped at 4
+  const D = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) D[i] = M[i] ? 9 : 0;
+  for (let pass = 1; pass <= 4; pass++) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (D[i] !== 9) continue;
+    const nb = (xx, yy) => (xx < 0 || yy < 0 || xx >= w || yy >= h ? 0 : D[yy * w + xx]);
+    if (nb(x - 1, y) === pass - 1 || nb(x + 1, y) === pass - 1 || nb(x, y - 1) === pass - 1 || nb(x, y + 1) === pass - 1) D[i] = pass;
   }
-  // ring mode (window frames): only the outer `ring` blocks stay; the hole reads as 'outside' for the bevel, so the
-  // inner edge is lit along the bottom / shaded along the top like a raised frame; a soft AO falls into the hole
-  const ringN = o.ring | 0;
-  const hole = new Uint8Array(ringN ? GW * GH : 0);
-  if (ringN) for (let q = 0; q < GW * GH; q++) if (M[q] === 1 && D[q] > ringN) { M[q] = 0; hole[q] = 1; }
-  // ---- block colours
-  const seed = o.seed ?? (lw * 7 + lh * 13);
-  const glossRows = ((o.glossH ?? Math.min(26, Math.round(lh * 0.46))) * S) / B;
-  const curveB = ((o.curve ?? Math.min(6, (glossRows * B) / S * 0.35)) * S) / B;
-  const sideC = [mid[0] * 0.45 + edge[0] * 0.55, mid[1] * 0.45 + edge[1] * 0.55, mid[2] * 0.45 + edge[2] * 0.55];
-  const BC = new Float32Array(GW * GH * 4);
-  const bevelK = rim > 0 ? 0.5 + rim * 0.5 : 0.35;
-  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
-    const q = j * GW + i, m = M[q];
-    if (!m) continue;
-    let r, g, bl, a;
-    const jit = 1 + (vhash(i, j, seed) - 0.5) * 0.05;
-    if (m === 2) {
-      const k = dep > 1 ? (j - (FH - 1)) / dep : 1;
-      r = sideC[0] * (1.06 - 0.12 * k) * jit; g = sideC[1] * (1.06 - 0.12 * k) * jit; bl = sideC[2] * (1.06 - 0.12 * k) * jit; a = Math.max(A[1], 0.75);
-    } else {
-      const t = FH > 1 ? j / (FH - 1) : 0;
-      if (t < 0.52) { const k = t / 0.52; r = top[0] + (mid[0] - top[0]) * k; g = top[1] + (mid[1] - top[1]) * k; bl = top[2] + (mid[2] - top[2]) * k; }
-      else { const k = (t - 0.52) / 0.48; r = mid[0] + (bot[0] - mid[0]) * k; g = mid[1] + (bot[1] - mid[1]) * k; bl = mid[2] + (bot[2] - mid[2]) * k; }
-      r *= jit; g *= jit; bl *= jit;
-      a = A[0] + (A[1] - A[0]) * t;
-      const ov = (sr, sg, sb, sa) => { if (sa <= 0) return; const na = sa + a * (1 - sa); r = (sr * sa + r * a * (1 - sa)) / na; g = (sg * sa + g * a * (1 - sa)) / na; bl = (sb * sa + bl * a * (1 - sa)) / na; a = na; };
-      const dd = D[q];
-      if (glow > 0 && t > 0.55) { const k = (t - 0.55) / 0.45, cx = Math.abs(i + 0.5 - GW / 2) / (GW / 2); ov(glowC[0], glowC[1], glowC[2], glow * Math.floor(k * k * (1 - cx * cx * 0.7) * 4 + 0.5) / 4 * 0.55); }
-      if (o.inset) { const ly = (j * B) / S, lx = (i * B) / S; if (ly < 5) ov(4, 20, 40, (5 - ly) * 0.07); if (lx < 3) ov(4, 20, 40, (3 - lx) * 0.05); }
-      if (o.streak) { const s2 = ((i * B) / S + ((j * B) / S) * 0.75 + seed * 3) % Math.max(60, lw * 0.9); if (s2 > 0 && s2 < 14) ov(255, 255, 255, 0.07); else if (s2 > 20 && s2 < 24) ov(255, 255, 255, 0.05); }
-      if (gloss > 0) {
-        const nx = (i + 0.5 - GW / 2) / (GW / 2);
-        const edgeY = glossRows - curveB * (1 - nx * nx);
-        if (j + 0.5 < edgeY) { const k = (j + 0.5) / Math.max(1, edgeY); ov(255, 255, 255, gloss * (k < 0.3 ? 0.62 : k < 0.6 ? 0.44 : k < 0.86 ? 0.3 : 0.2)); }
-        else if (j + 0.5 < edgeY + 1 && ((i + j) & 1) === 0) ov(255, 255, 255, gloss * 0.12);
+  // vertical colour regions: sheen band (2 tones), body bands, glow band; a checker row dithers each seam
+  const gH = gloss > 0 && !o.inset ? Math.max(2, Math.min(Math.round(h * 0.6), Math.round(o.glossH ?? Math.min(26, h * 0.42)))) : 0;
+  const bodyH = h - gH;
+  const nb = bodyH < 10 ? 1 : bodyH < 34 ? 2 : bodyH < 120 ? 3 : 4;
+  const glowH = glow > 0 && h >= 8 ? Math.max(1, Math.round(Math.min(10, h * 0.16))) : 0;
+  const dep = Math.max(0, Math.min(Math.floor(h / 4), o.depth | 0));
+  const sideC = mixC(mid, edge, 0.55);
+  // sheen: two flat tones between the light top colour and the body (kept dark enough for white labels)
+  const gTop = mixC(mixC(top, mid, 0.18), WHITE, gloss * 0.22), gLow = mixC(mixC(top, mid, 0.55), WHITE, gloss * 0.08);
+  const bandCol = (i) => {
+    const t = gH ? (i + 0.5) / nb : (i + 0.5) / nb * 0.999;
+    const s = gH ? 0.35 + t * 0.65 : t; // top -> mid -> bot position
+    return s < 0.5 ? mixC(top, mid, s / 0.5) : mixC(mid, bot, (s - 0.5) / 0.5);
+  };
+  const BANDS = []; for (let i = 0; i < nb; i++) BANDS.push(bandCol(i));
+  const seed = o.seed ?? (w * 7 + h * 13);
+  const period = Math.max(60, Math.round(w * 0.9));
+  const b = new PixelBuffer(w, h);
+  const d = b.data;
+  const put = (i, c, a) => { d[i] = ((Math.round(Math.max(0, Math.min(1, a)) * 255) & 255) << 24 | (Math.max(0, Math.min(255, Math.round(c[2]))) << 16) | (Math.max(0, Math.min(255, Math.round(c[1]))) << 8) | Math.max(0, Math.min(255, Math.round(c[0])))) >>> 0; };
+  const colAt = (x, y) => {
+    const chk = ((x + y) & 1) === 0;
+    if (y < gH) {
+      const half = gH >= 6 ? Math.ceil(gH / 2) : gH;
+      if (y < half) return y === half - 1 && half < gH && chk ? gLow : gTop;
+      return y === gH - 1 && chk ? BANDS[0] : gLow;
+    }
+    const by = y - gH;
+    let i = Math.min(nb - 1, Math.floor((by / Math.max(1, bodyH)) * nb));
+    // dither the first row of each band with the band above
+    if (i > 0 && Math.floor(((by - 1) / Math.max(1, bodyH)) * nb) < i && chk) i--;
+    let c = BANDS[i];
+    if (glowH && y >= h - 1 - glowH - dep) {
+      const first = y === h - 1 - glowH - dep;
+      if (!first || chk) c = mixC(c, glowC, glow * 0.4);
+    }
+    return c;
+  };
+  for (let y = 0; y < h; y++) {
+    const t = h > 1 ? y / (h - 1) : 0;
+    const a0 = A[0] + (A[1] - A[0]) * (Math.round(t * 3) / 3);
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!M[i]) continue;
+      const dd = D[i];
+      if (dd === 1) { put(i, edge, Math.max(a0 * 0.6, edgeA)); continue; }
+      let c, a = a0;
+      if (dep && y >= h - 1 - dep) { c = y === h - 1 - dep ? mixC(sideC, edge, 0.35) : sideC; a = Math.max(a, 0.85); }
+      else c = colAt(x, y);
+      if (o.inset && dd <= 4) {
+        if (!inside(x, y - (dd - 1)) || !inside(x, y - dd)) c = mixC(c, [4, 20, 40], dd === 2 ? 0.34 : dd === 3 ? 0.18 : 0.08);
+        else if (dd === 2 && !inside(x - 2, y)) c = mixC(c, [4, 20, 40], 0.2);
+        else if (dd === 2 && (!inside(x, y + 2) || !inside(x + 2, y))) c = mixC(c, WHITE, 0.35 * Math.max(0.4, rim));
+      } else if (dd === 2 && rim > 0) {
+        const up = !inside(x, y - 2), dn = !inside(x, y + 2), lf = !inside(x - 2, y), rt = !inside(x + 2, y);
+        if (up || (lf && !dn)) c = mixC(c, WHITE, 0.25 + rim * 0.45);
+        else if (dn || rt) c = mixC(c, edge, 0.12 + rim * 0.22);
+      } else if (o.streak && dd >= 3 && y >= gH * 0.6) {
+        const s = (x + y + seed * 3) % period;
+        if (s >= 0 && s < 9) c = mixC(c, WHITE, 0.09); else if (s >= 14 && s < 16) c = mixC(c, WHITE, 0.07);
       }
-      // bevel: the frame ring of blocks is raised, lit from the top-left, shaded toward the bottom-right
-      if (ringN) {
-        // raised frame ring: per-block bevel toward the outside and toward the hole
-        const lit = (!face(i - 1, j) ? 1 : 0) + (!face(i, j - 1) ? 1.2 : 0);
-        const shd = (!face(i + 1, j) ? 1 : 0) + (!face(i, j + 1) ? 1.2 : 0);
-        const inner = dd === ringN, outer = dd === 1;
-        if (outer) ov(edge[0], edge[1], edge[2], 0.28);
-        if (outer && lit > shd) ov(255, 255, 255, 0.5);
-        else if (outer && shd > lit) ov(edge[0], edge[1], edge[2], 0.32);
-        else if (inner && lit > shd) ov(255, 255, 255, 0.32);
-        else if (inner && shd > lit) ov(edge[0], edge[1], edge[2], 0.4);
-        if (!outer && !inner && ((i + j * 3 + seed) % 7 === 0)) ov(255, 255, 255, 0.14); // glints along the band
-      } else if (dd <= 2) {
-        const s1 = dd === 1 ? 1 : 0.45;
-        const lit = (!face(i - dd, j) ? 1 : 0) + (!face(i, j - dd) ? 1.2 : 0) + (!face(i - dd, j - dd) && dd === 1 ? 0.3 : 0);
-        const shd = (!face(i + dd, j) ? 1 : 0) + (!face(i, j + dd) ? 1.2 : 0);
-        if (lit > shd) ov(255, 255, 255, Math.min(0.7, 0.34 * s1 * lit * bevelK));
-        else if (shd > lit) ov(edge[0], edge[1], edge[2], Math.min(0.5, 0.2 * s1 * shd * bevelK));
-      } else if (dd === 3 && (!face(i, j - 3))) ov(4, 24, 50, 0.07); // AO under the raised top rim
+      put(i, c, a);
     }
-    BC[q * 4] = r; BC[q * 4 + 1] = g; BC[q * 4 + 2] = bl; BC[q * 4 + 3] = a;
   }
-  // voxel bubbles on the face
   const nbub = o.bubbles | 0;
-  const bub = [];
   for (let k = 0; k < nbub; k++) {
-    const rr = 1.3 + Math.floor(hash1(k, seed) * 3) * 0.6;
-    bub.push([Math.round(GW * (0.08 + 0.84 * hash1(k + 7, seed + 1))), Math.round(FH * (0.55 + 0.38 * hash1(k + 3, seed + 2))), rr]);
+    const rr = 2 + Math.floor(hash1(k, seed) * 3);
+    const bx = Math.round(w * (0.08 + 0.84 * hash1(k + 7, seed + 1))), by = Math.round(h * (0.55 + 0.38 * hash1(k + 3, seed + 2)));
+    ringInto(b, D, w, h, bx, by, rr);
   }
-  for (const [cx, cy, rr] of bub) {
-    for (let j = Math.floor(cy - rr - 1); j <= cy + rr + 1; j++) for (let i = Math.floor(cx - rr - 1); i <= cx + rr + 1; i++) {
-      if (!face(i, j) || D[j * GW + i] <= 2) continue;
-      const dd = Math.hypot(i + 0.5 - cx, j + 0.5 - cy);
-      let al = 0;
-      if (dd <= rr && dd > rr - 1) al = 0.5; else if (dd <= rr - 1) al = 0.1;
-      if (Math.abs(i + 0.5 - (cx - rr * 0.4)) < 0.6 && Math.abs(j + 0.5 - (cy - rr * 0.4)) < 0.6) al = 0.85;
-      if (!al) continue;
-      const q = (j * GW + i) * 4, a0 = BC[q + 3], na = al + a0 * (1 - al);
-      BC[q] = (255 * al + BC[q] * a0 * (1 - al)) / na; BC[q + 1] = (255 * al + BC[q + 1] * a0 * (1 - al)) / na; BC[q + 2] = (255 * al + BC[q + 2] * a0 * (1 - al)) / na; BC[q + 3] = na;
-    }
-  }
-  // ---- pixels: each block filled with its colour, ring / side blocks get their own lit top + shaded bottom rows
-  const b = new PixelBuffer(w, h);
-  const d = b.data;
-  const put = (x, y, r, g, bl, a) => { d[y * w + x] = ((Math.round(Math.max(0, Math.min(1, a)) * 255) & 255) << 24 | (Math.max(0, Math.min(255, Math.round(bl))) << 16) | (Math.max(0, Math.min(255, Math.round(g))) << 8) | Math.max(0, Math.min(255, Math.round(r)))) >>> 0; };
-  const inside = (i, j) => i >= 0 && j >= 0 && i < GW && j < GH && M[j * GW + i] > 0;
-  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
-    const q = j * GW + i, m = M[q];
-    if (!m) continue;
-    const x0 = bx0(i), x1 = bx0(i + 1), y0 = by0(j), y1 = by0(j + 1);
-    const r = BC[q * 4], g = BC[q * 4 + 1], bl = BC[q * 4 + 2], a = BC[q * 4 + 3];
-    const cube = m === 2 || D[q] <= 2; // frame / side blocks read as separate little cubes
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-      let k = 1;
-      if (cube) {
-        if (y === y0) k = m === 2 && j === FH ? 0.72 : 1.16; else if (y === y1 - 1) k = 0.86;
-        if (x === x0 && y !== y1 - 1) k *= 1.06; else if (x === x1 - 1) k *= 0.94;
-      }
-      // dark outline on the silhouette (lit along the top edge)
-      const ol = (x === x0 && !inside(i - 1, j)) || (x === x1 - 1 && !inside(i + 1, j)) || (y === y0 && !inside(i, j - 1)) || (y === y1 - 1 && !inside(i, j + 1));
-      if (ol) {
-        const lit = y === y0 && !inside(i, j - 1) && m === 1 ? 0.3 : 0;
-        put(x, y, edge[0] + (255 - edge[0]) * lit, edge[1] + (255 - edge[1]) * lit, edge[2] + (255 - edge[2]) * lit, Math.max(a * 0.6, edgeA));
-        continue;
-      }
-      put(x, y, r * k, g * k, bl * k, a);
-    }
-  }
-  if (ringN) {
-    // ambient occlusion cast by the frame into the hole (top and left inner edges)
-    for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
-      const q = j * GW + i;
-      if (!hole[q]) continue;
-      const nearT = j > 0 && M[(j - 1) * GW + i] === 1, nearL = i > 0 && M[j * GW + i - 1] === 1;
-      const near2 = j > 1 && M[(j - 2) * GW + i] === 1;
-      const al = nearT ? 0.26 : nearL ? 0.16 : near2 ? 0.1 : 0;
-      if (!al) continue;
-      for (let y = by0(j); y < by0(j + 1); y++) for (let x = bx0(i); x < bx0(i + 1); x++) put(x, y, 4, 24, 58, al);
-    }
-  }
-  if (o.sparkle) sparkleInto(b, (() => { const mk = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) mk[i] = d[i] >>> 24 ? 1 : 0; return mk; })(), w, Math.round(Math.min(lw * 0.12, Rb * B / S + 6) * S) + 2 * S, 3 * S + 2, (o.sparkle === true ? 2 : o.sparkle) * S);
+  if (o.sparkle) sparkleInto(b, D, w, Math.round(Math.min(w * 0.12, 8)) + 3, 4, o.sparkle === true ? 2 : Math.min(2, o.sparkle));
   return b.toCanvas();
 }
-
-function surfaceRaster(lw, lh, o, S) {
-  const w = lw * S, h = lh * S;
-  const T = typeof o.tone === 'object' ? o.tone : o.tone ? toneOf(o.tone) : {};
-  const top = rgbOf(o.top || T.top || '#ffffff'), mid = rgbOf(o.mid || T.mid || o.top || '#d8f0ff'), bot = rgbOf(o.bot || T.bot || '#8cc8ec');
-  const A = o.a || T.a || [1, 1];
-  const edge = rgbOf(o.edge || T.edge || '#0b4a8a'), edgeA = o.edgeA ?? T.edgeA ?? 1;
-  const glowC = rgbOf(o.glowColor || T.glow || '#ffffff');
-  const R = (o.r === 'pill' ? lh / 2 : Math.max(0, Math.min(o.r ?? 6, lw / 2, lh / 2))) * S;
-  const shape = o.shape || 'rect';
-  const gloss = o.gloss ?? 0.6, rim = o.rim ?? 0.8, glow = o.glow ?? 0.5;
-  const glossH = (o.glossH ?? Math.min(26, Math.round(lh * 0.46))) * S;
-  const curve = (o.curve ?? Math.min(6, (glossH / S) * 0.35)) * S;
-  const roundTop = shape !== 'bottom', roundBot = shape !== 'tab';
-  const mask = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let inn = true;
-      if (R > 0) {
-        let cx = null, cy = null;
-        if (x < R) cx = R; else if (x >= w - R) cx = w - R;
-        if (y < R && roundTop) cy = R; else if (y >= h - R && roundBot) cy = h - R;
-        if (cx !== null && cy !== null) { const dx = x + 0.5 - cx, dy = y + 0.5 - cy; inn = dx * dx + dy * dy <= R * R + R * (S > 1 ? 0.15 : 0.35); }
-      }
-      if (inn) mask[y * w + x] = 1;
-    }
-  }
-  // distance (in device px, 4-neighbour) to the outside, capped at 4: rings for the outline / inner line / rim
-  const dist = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) dist[i] = mask[i] ? 9 : 0;
-  for (let pass = 1; pass <= 4; pass++) {
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      if (dist[i] !== 9) continue;
-      const n = (x === 0 ? 0 : dist[i - 1]) === pass - 1 || (x === w - 1 ? 0 : dist[i + 1]) === pass - 1 || (y === 0 ? 0 : dist[i - w]) === pass - 1 || (y === h - 1 ? 0 : dist[i + w]) === pass - 1
-        || (x === 0 || y === 0 ? 0 : dist[i - w - 1]) === pass - 1 && pass > 1 || (x === w - 1 || y === h - 1 ? 0 : dist[i + w + 1]) === pass - 1 && pass > 1;
-      if (n) dist[i] = pass;
-    }
-  }
-  const b = new PixelBuffer(w, h);
-  const d = b.data;
-  const midY = 0.52;
-  const seed = o.seed ?? (lw * 7 + lh * 13);
-  // [phase8:ui] pixel-art look: the body gradient is quantised into a few bands with ordered (bayer) dithering, the
-  // sheen is a hard two-step band with a dithered edge, the rim is a bevel (light top-left, shade bottom-right).
-  const px = o.smooth ? 0 : 1;
-  const bands = Math.max(3, Math.min(7, Math.round(lh / 12))) * (S > 1 ? 2 : 1);
-  const rimRing = S > 1 ? 3 : 2;
-  for (let y = 0; y < h; y++) {
-    const t0 = h > 1 ? y / (h - 1) : 0;
-    const ly = y / S;
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      if (!mask[i]) continue;
-      const t = px ? Math.min(1, Math.floor(t0 * bands + bayer(x, y) * 0.999) / bands) : t0;
-      let r, g, bl;
-      if (t < midY) { const k = t / midY; r = top[0] + (mid[0] - top[0]) * k; g = top[1] + (mid[1] - top[1]) * k; bl = top[2] + (mid[2] - top[2]) * k; }
-      else { const k = (t - midY) / (1 - midY); r = mid[0] + (bot[0] - mid[0]) * k; g = mid[1] + (bot[1] - mid[1]) * k; bl = mid[2] + (bot[2] - mid[2]) * k; }
-      let a = A[0] + (A[1] - A[0]) * t;
-      const over = (sr, sg, sb, sa) => {
-        if (sa <= 0) return;
-        const na = sa + a * (1 - sa);
-        r = (sr * sa + r * a * (1 - sa)) / na; g = (sg * sa + g * a * (1 - sa)) / na; bl = (sb * sa + bl * a * (1 - sa)) / na;
-        a = na;
-      };
-      const dd = dist[i];
-      if (glow > 0 && t > 0.55) {
-        const k = (t - 0.55) / 0.45;
-        const cx = Math.abs(x + 0.5 - w / 2) / (w / 2);
-        let gk = k * k * (1 - cx * cx * 0.7);
-        if (px) gk = Math.floor(gk * (S > 1 ? 5 : 3) + bayer(x + 1, y) * 0.999) / (S > 1 ? 5 : 3);
-        over(glowC[0], glowC[1], glowC[2], glow * gk * 0.55);
-      }
-      if (o.inset) {
-        if (ly < 5) over(4, 20, 40, (5 - ly) * 0.07);
-        const lx = x / S;
-        if (lx < 3) over(4, 20, 40, (3 - lx) * 0.05);
-      }
-      if (o.streak) {
-        const s = (x / S + ly * 0.75 + seed * 3) % Math.max(60, lw * 0.9);
-        if (s > 0 && s < 14) over(255, 255, 255, 0.07);
-        else if (s > 20 && s < 24) over(255, 255, 255, 0.05);
-        if (S > 1 && ((s > 14 && s < 14.6) || (s > 24 && s < 24.5))) over(255, 255, 255, 0.12);
-      }
-      if (gloss > 0) {
-        const nx = (x + 0.5 - w / 2) / (w / 2);
-        const edgeY = glossH - curve * (1 - nx * nx);
-        if (y < edgeY) {
-          const k = y / Math.max(1, edgeY);
-          if (!px) over(255, 255, 255, gloss * (0.62 - 0.42 * k));
-          else {
-            const q = k + (bayer(x, y) - 0.5) * (S > 1 ? 0.22 : 0.34);
-            over(255, 255, 255, gloss * (q < 0.3 ? 0.66 : q < 0.6 ? 0.46 : q < 0.86 ? 0.32 : 0.2));
-          }
-          // a bright specular lip right under the top edge (hi-res only)
-          if (S > 1 && dd >= 3 && dd <= 4 && y < h * 0.4) over(255, 255, 255, gloss * 0.5);
-        } else if (px && y < edgeY + 2 * S && ((x + y) & 1) === 0) over(255, 255, 255, gloss * 0.14);
-        else if (S > 1 && y < edgeY + 1) over(255, 255, 255, gloss * 0.22);
-      }
-      if (dd === rimRing && rim > 0) {
-        if (!px) over(255, 255, 255, rim * (y < h * 0.5 ? 0.9 : 0.45));
-        else if (y < h * 0.5 && (x < w * 0.85 || ly < 3)) over(255, 255, 255, rim * 0.95);
-        else if (y > h * 0.5) over(edge[0], edge[1], edge[2], rim * 0.22);
-        else over(255, 255, 255, rim * 0.5);
-      }
-      if (S > 1 && dd === rimRing + 1 && rim > 0 && y < h * 0.45) over(255, 255, 255, rim * 0.25);
-      if (dd === 2 && S > 1) {
-        // inner line: the edge colour blended into the body (the 2x outline reads as 1 dark + 1 soft pixel)
-        const lift = y < 2 * S ? 0.45 : 0;
-        over(edge[0] + (255 - edge[0]) * lift, edge[1] + (255 - edge[1]) * lift, edge[2] + (255 - edge[2]) * lift, 0.42 * Math.max(edgeA, 0.6));
-      }
-      if (dd === 1) {
-        const lit = y < 2 * S ? 0.25 : 0;
-        r = edge[0] + (255 - edge[0]) * lit; g = edge[1] + (255 - edge[1]) * lit; bl = edge[2] + (255 - edge[2]) * lit;
-        a = Math.max(a * 0.5, edgeA);
-      }
-      d[i] = ((Math.round(a * 255) & 255) << 24 | (Math.round(bl) & 255) << 16 | (Math.round(g) & 255) << 8 | (Math.round(r) & 255)) >>> 0;
-    }
-  }
-  const nb = o.bubbles | 0;
-  for (let k = 0; k < nb; k++) {
-    const rr = (2 + Math.floor(hash1(k, seed) * 4)) * S;
-    const bx = Math.round(w * (0.08 + 0.84 * hash1(k + 7, seed + 1))), by = Math.round(h * (0.55 + 0.4 * hash1(k + 3, seed + 2)));
-    ringInto(b, mask, w, h, bx, by, rr);
-  }
-  if (o.sparkle) sparkleInto(b, mask, w, Math.round(Math.min(lw * 0.12, R / S + 6) * S) + 2 * S, 3 * S, (o.sparkle === true ? 2 : o.sparkle) * S);
-  return b.toCanvas();
-}
-
 function blend(d, i, r, g, bl, sa) {
   const c = d[i], a = (c >>> 24) / 255;
   const na = sa + a * (1 - sa);
@@ -455,8 +294,8 @@ function ringInto(b, mask, w, h, cx, cy, r) {
   for (let i = 1; i <= L; i++) { const a = 0.75 * (1 - i / (L + 1)); pts.push([i, 0, a], [-i, 0, a], [0, i, a], [0, -i, a]); }
   for (const [dx, dy, a] of pts) {
     const x = cx + dx, y = cy + dy;
-    if (x < 0 || y < 0 || x >= w || y >= h || !mask[y * w + x]) continue;
-    blend(b.data, y * w + x, 255, 255, 255, a * 0.7);
+    if (x < 0 || y < 0 || x >= w || y >= h || mask[y * w + x] < 3) continue;
+    blend(b.data, y * w + x, 255, 255, 255, a >= 0.5 ? 0.6 : 0.3);
   }
 }
 
@@ -466,14 +305,14 @@ function sparkleInto(b, mask, w, cx, cy, s) {
   pts.push([1, 1, 0.35], [-1, -1, 0.35], [1, -1, 0.35], [-1, 1, 0.35]);
   for (const [dx, dy, a] of pts) {
     const x = cx + dx, y = cy + dy;
-    if (x < 0 || y < 0 || x >= w || y >= b.h || !mask[y * w + x]) continue;
-    blend(b.data, y * w + x, 255, 255, 255, a);
+    if (x < 0 || y < 0 || x >= w || y >= b.h || mask[y * w + x] < 3) continue;
+    blend(b.data, y * w + x, 255, 255, 255, a >= 0.6 ? 1 : a >= 0.3 ? 0.6 : 0.3);
   }
 }
 
 function surfKey(w, h, o) {
   const t = typeof o.tone === 'object' ? JSON.stringify(o.tone) : o.tone || '';
-  return `s|${w}|${h}|${t}|${o.top || ''}|${o.mid || ''}|${o.bot || ''}|${o.a || ''}|${o.edge || ''}|${o.edgeA ?? ''}|${o.r ?? ''}|${o.shape || ''}|${o.gloss ?? ''}|${o.glossH ?? ''}|${o.curve ?? ''}|${o.rim ?? ''}|${o.glow ?? ''}|${o.glowColor || ''}|${o.streak ? 1 : 0}|${o.inset ? 1 : 0}|${o.bubbles | 0}|${o.sparkle || 0}|${o.seed ?? ''}|${o.smooth ? 1 : 0}`;
+  return `s|${w}|${h}|${t}|${o.top || ''}|${o.mid || ''}|${o.bot || ''}|${o.a || ''}|${o.edge || ''}|${o.edgeA ?? ''}|${o.r ?? ''}|${o.shape || ''}|${o.gloss ?? ''}|${o.glossH ?? ''}|${o.curve ?? ''}|${o.rim ?? ''}|${o.glow ?? ''}|${o.glowColor || ''}|${o.streak ? 1 : 0}|${o.inset ? 1 : 0}|${o.bubbles | 0}|${o.sparkle || 0}|${o.seed ?? ''}|${o.ring | 0}|${o.depth | 0}|${o.lightEdge ? 1 : 0}`;
 }
 
 export function aeroSurface(w, h, o = {}) {
@@ -564,29 +403,25 @@ export function titleSize(text, o = {}) {
   return { w: (t.w + 1) * sc, h: t.cap * sc };
 }
 
+// [pixui30] the cached title composite is pixel art at the logical resolution (a square 8-way outline one font pixel
+// wide, a hard drop, a flat highlight on the top third of the letters) with a nearest-neighbour `.hi` twin
 function titleComposite(text, size, sc, color, outline, shadow, shadowA, gloss, glossColor) {
-  return aeroCached(`ttl9|${text}|${size}|${sc}|${color}|${outline}|${shadow}|${shadowA}|${gloss}|${glossColor}`, () => {
+  return aeroCached(`ttl30|${text}|${size}|${sc}|${color}|${outline}|${shadow}|${shadowA}|${gloss}|${glossColor}`, () => {
     const t = trimmed(text, size, color);
-    const bw = t.canvas.width * sc, bh = t.canvas.height * sc, pad = sc * 2 + 1;
-    const c = hiArt(bw + pad * 2, bh + pad * 2 + sc * 2, (g) => {
-      const D = HI, ox = pad * D, oy = pad * D, w = bw * D, h = bh * D;
-      if (shadow) { g.globalAlpha = shadowA; g.drawImage(trimmed(text, size, shadow).canvas, ox, oy + sc * 2 * D, w, h); g.globalAlpha = 1; }
-      if (outline) {
-        const oc = trimmed(text, size, outline).canvas, R = sc * D;
-        for (let yy = -R; yy <= R; yy++) for (let xx = -R; xx <= R; xx++) if (xx * xx + yy * yy <= R * R + 1) g.drawImage(oc, ox + xx, oy + yy, w, h);
-      }
-      g.drawImage(t.canvas, ox, oy, w, h);
-      if (gloss) {
-        const hl = trimmed(text, size, glossColor).canvas, rows = Math.max(1, Math.round(t.cap * 0.3));
-        g.drawImage(hl, 0, t.top, hl.width, rows, ox, oy + t.top * sc * D, w, rows * sc * D);
-        // a 1 device-px white hairline along the very top of each letter
-        const tmp = makeCanvas(w + 2, h + 2), tg = ctxOf(tmp);
-        tg.drawImage(trimmed(text, size, '#ffffff').canvas, 1, 1, w, h);
-        tg.globalCompositeOperation = 'destination-out';
-        tg.drawImage(trimmed(text, size, '#ffffff').canvas, 1, 2, w, h);
-        g.globalAlpha = 0.9; g.drawImage(tmp, ox - 1, oy - 1); g.globalAlpha = 1;
-      }
-    });
+    const bw = t.canvas.width * sc, bh = t.canvas.height * sc, pad = sc + 1;
+    const c = makeCanvas(bw + pad * 2, bh + pad * 2 + sc * 2), g = ctxOf(c);
+    const ox = pad, oy = pad;
+    if (shadow) { g.globalAlpha = shadowA; g.drawImage(trimmed(text, size, shadow).canvas, ox, oy + sc * 2, bw, bh); g.globalAlpha = 1; }
+    if (outline) {
+      const oc = trimmed(text, size, outline).canvas;
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, 1], [1, 1], [-1, -1], [1, -1]]) g.drawImage(oc, ox + dx * sc, oy + dy * sc, bw, bh);
+    }
+    g.drawImage(t.canvas, ox, oy, bw, bh);
+    if (gloss) {
+      const hl = trimmed(text, size, glossColor).canvas, rows = Math.max(1, Math.round(t.cap * 0.3));
+      g.drawImage(hl, 0, t.top, hl.width, rows, ox, oy + t.top * sc, bw, rows * sc);
+    }
+    nearestHi(c);
     c.pad = pad;
     return c;
   }, 300);
@@ -607,8 +442,7 @@ export function drawTitle(ctx, text, x, y, o = {}) {
   const dy = Math.round(y) - t.top * sc;
   const bw = t.canvas.width * sc, bh = t.canvas.height * sc;
   if (ctx.__hi && sc >= 1) {
-    // [phase9:ui] full-res title: one cached composite with a round outline traced per device pixel, a soft drop and
-    // a hairline gloss on the top of the letters
+    // full-res layer: one cached pixel composite (same art as the plain path, see titleComposite)
     const c = titleComposite(text, size, sc, color, outline, shadow, o.shadowA ?? 0.45, o.gloss !== false && sc >= 2, o.glossColor || '#e8fbff');
     ctx.drawImage(c, ax - c.pad, dy - c.pad);
     return { w: W, h: t.cap * sc };
@@ -635,11 +469,7 @@ const PANEL_TONE = { glass: 'frost', sky: 'sky', grass: 'grass', dark: 'dark', d
 export function drawAeroPanel(ctx, x, y, w, h, o = {}) {
   const tone = PANEL_TONE[o.tone || 'glass'] || o.tone || 'frost';
   const r = o.radius ?? 8;
-  if (o.glow) {
-    ctx.fillStyle = rgba('#bff4ff', 0.18);
-    ctx.fillRect(Math.round(x) - 2, Math.round(y) + 2, Math.round(w) + 4, Math.round(h) - 4);
-    ctx.fillRect(Math.round(x) + 2, Math.round(y) - 2, Math.round(w) - 4, Math.round(h) + 4);
-  }
+  if (o.glow) pixelHalo(ctx, x, y, w, h, notchOf(r, w, h), '#bff4ff', 0.5);
   drawAeroSurface(ctx, x, y, w, h, { tone, r, gloss: o.gloss ?? (h > 80 ? 0.42 : 0.6), glossH: o.glossH ?? Math.min(24, Math.round(h * 0.4)), rim: 0.85, glow: 0.45, streak: w > 120, bubbles: o.bubbles ?? (w * h > 30000 ? 4 : 0), sparkle: o.sparkle ?? (w > 60 && h > 40 ? 2 : 0), inset: o.inset });
   if (o.title) {
     const T = toneOf(tone);
@@ -665,16 +495,18 @@ export function drawAeroButton(ctx, x, y, w, h, o = {}) {
   const toneName = o.tone || 'aqua';
   const T = typeof toneName === 'object' ? toneName : toneOf(toneName);
   const look = btnLook(T, st);
-  const r = o.radius ?? Math.floor(h / 2);
+  const r = o.radius ?? 'pill';
   const down = st === 'down';
-  // hover halo (soft light around the pill)
+  const n = notchOf(r, w, h);
+  // [pixui30] hover halo: a 1 px pale pixel ring hugging the stepped outline
   if (st === 'hover') {
-    ctx.fillStyle = rgba(T.glow || '#bff4ff', 0.28);
-    ctx.fillRect(x + Math.min(r, 4), y - 1, w - Math.min(r, 4) * 2, h + 2);
-    ctx.fillRect(x - 1, y + Math.min(r, 4), w + 2, h - Math.min(r, 4) * 2);
+    ctx.fillStyle = rgba(T.glow || '#bff4ff', 0.5);
+    ctx.fillRect(x + n, y - 2, w - n * 2, 1);
+    ctx.fillRect(x - 1, y + n - 1, 1, h - n * 2 + 1);
+    ctx.fillRect(x + w, y + n - 1, 1, h - n * 2 + 1);
   }
   const key = `btn|${w}|${h}|${r}|${typeof toneName === 'object' ? JSON.stringify(toneName) : toneName}|${st}`;
-  const c = aeroCached(key, () => surfaceTex(w, h, { tone: look, r, gloss: down ? 0.35 : 0.8, glossH: Math.max(3, Math.round(h * (down ? 0.38 : 0.46))), curve: Math.min(3, h * 0.12), rim: down ? 0.35 : 0.85, glow: down ? 0.25 : 0.75 }));
+  const c = aeroCached(key, () => surfaceTex(w, h, { tone: look, r, gloss: down ? 0.25 : 0.75, glossH: Math.max(2, Math.round(h * (down ? 0.3 : 0.42))), rim: down ? 0.35 : 0.9, glow: down ? 0.2 : 0.6, inset: false }));
   // [phase8:ui] chunky pixel press: a solid 2 px base under the button; hover lifts the body 1 px, down sinks it
   const base = aeroCached(key + '|base', () => tinted(c, st === 'disabled' ? '#6a7a8c' : shade(T.edge || '#0b4a8a', -0.1)));
   const lift = st === 'hover' ? -1 : down ? 1 : 0;
@@ -714,82 +546,70 @@ export function drawAeroButton(ctx, x, y, w, h, o = {}) {
 
 // ---------------------------------------------------------------- bar
 
+// [pixui30] pixel bar: a recessed track with 1 px notched corners and a flat fill (light top row, shade bottom row,
+// a pixel glint row), square ends, tick marks for segments
 export function drawAeroBar(ctx, x, y, w, h, k, o = {}) {
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.max(3, Math.round(h));
   k = Math.max(0, Math.min(1, k || 0));
   const color = o.color || AERO.aqua;
-  // recessed glass track
-  ctx.drawImage(aeroCached(`bart|${w}|${h}|${o.back || ''}`, () => surfaceTex(w, h, {
-    top: o.back ? shade(o.back, -0.2) : '#0e3e64', mid: o.back || '#1c5a86', bot: o.back ? shade(o.back, 0.15) : '#2e7aa8', a: [0.55, 0.45],
-    edge: '#06243e', edgeA: 0.75, r: 'pill', gloss: 0, rim: 0, glow: 0.35, glowColor: '#9fe6ff', inset: true,
+  ctx.drawImage(aeroCached(`bart30|${w}|${h}|${o.back || ''}`, () => surfaceTex(w, h, {
+    top: o.back ? shade(o.back, -0.25) : '#0e3e64', mid: o.back ? shade(o.back, -0.1) : '#164c76', bot: o.back || '#1c5a86', a: [0.55, 0.5],
+    edge: '#06243e', edgeA: 1, r: h >= 5 ? 1 : 0, gloss: 0, rim: 0.6, glow: 0, inset: true,
   })), x, y);
   const fw = Math.round((w - 2) * k);
   if (fw > 0) {
-    const fill = aeroCached(`barf|${w - 2}|${h - 2}|${color}|${o.gloss !== false}`, () => surfaceTex(w - 2, h - 2, {
-      top: mix(color, '#ffffff', 0.55), mid: shade(color, 0.05), bot: shade(color, -0.25), edge: shade(color, -0.5), edgeA: 0.9,
-      r: 'pill', gloss: o.gloss === false ? 0 : 0.7, glossH: Math.max(1, Math.round((h - 2) * 0.48)), curve: 0, rim: 0.5, glow: 0.6, glowColor: mix(color, '#ffffff', 0.6),
-    }));
-    const sw = Math.max(Math.min(fw, h - 2), fw);
-    if (sw >= w - 2) ctx.drawImage(fill, x + 1, y + 1);
-    else {
-      // left part from the texture, then a rounded cap from its right end
-      const cap = Math.min(Math.floor((h - 2) / 2), Math.floor(sw / 2));
-      ctx.drawImage(fill, 0, 0, sw - cap, h - 2, x + 1, y + 1, sw - cap, h - 2);
-      ctx.drawImage(fill, w - 2 - cap, 0, cap, h - 2, x + 1 + sw - cap, y + 1, cap, h - 2);
-    }
-    // travelling bubbles inside the fill
-    if (h >= 7 && fw > 10) {
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      for (let i = 0; i < fw / 16; i++) {
-        const bx = x + 4 + Math.floor(hash1(i, 3) * Math.max(1, fw - 8)), by = y + 2 + Math.floor(hash1(i, 4) * (h - 5));
-        if (bx < x + fw - 2) ctx.fillRect(bx, by, 1, 1);
-      }
-    }
+    const fill = aeroCached(`barf30|${w - 2}|${h - 2}|${color}|${o.gloss !== false}`, () => pixelArt(pixelFill(w - 2, h - 2, color, o.gloss !== false)));
+    ctx.drawImage(fill, 0, 0, fw, h - 2, x + 1, y + 1, fw, h - 2);
+    // a dark pixel cap on the leading edge
+    if (fw < w - 2 && fw > 1) { ctx.fillStyle = shade(color, -0.45); ctx.fillRect(x + fw, y + 1, 1, h - 2); }
   }
   const seg = o.segments | 0;
   if (seg > 1 && seg < w / 3) {
-    ctx.fillStyle = 'rgba(6,36,62,0.35)';
-    for (let i = 1; i < seg; i++) ctx.fillRect(x + 1 + Math.round(((w - 2) * i) / seg), y + 2, 1, h - 4);
+    ctx.fillStyle = 'rgba(6,36,62,0.45)';
+    for (let i = 1; i < seg; i++) ctx.fillRect(x + 1 + Math.round(((w - 2) * i) / seg), y + 1, 1, h - 2);
   }
+}
+
+// flat pixel fill for bars / chips: a light top row, the colour, a shade row; a broken glint row when tall enough
+function pixelFill(w, h, color, gloss = true) {
+  const c = makeCanvas(w, h), g = ctxOf(c);
+  g.fillStyle = color; g.fillRect(0, 0, w, h);
+  if (h >= 3) { g.fillStyle = mix(color, '#ffffff', 0.45); g.fillRect(0, 0, w, 1); g.fillStyle = shade(color, -0.22); g.fillRect(0, h - 1, w, 1); }
+  if (h >= 5) { g.fillStyle = shade(color, -0.1); g.fillRect(0, h - 2, w, 1); }
+  if (gloss && h >= 5) { g.fillStyle = mix(color, '#ffffff', 0.7); for (let xx = 2; xx < w - 2; xx += 9) g.fillRect(xx, 1, Math.min(4, w - 2 - xx), 1); }
+  return c;
 }
 
 // ---------------------------------------------------------------- orbs, bubbles, coin
 
+// [pixui30] the 'orb' is a STEPPED PIXEL OCTAGON knob (no circles): a dark outline, a light top-left bevel, three
+// flat tone bands, a 2 px glint block top-left and a shade bevel bottom-right
 function orbTex(r, color) {
-  const S = Math.ceil(r * 2) + 2, c = S / 2;
+  const S = Math.max(3, Math.round(r * 2));
+  const n = S <= 4 ? 1 : S <= 8 ? 2 : Math.max(2, Math.floor(S * 0.24));
   const b = new PixelBuffer(S, S);
-  const C = rgbOf(color), Lt = rgbOf(mix(color, '#ffffff', 0.7)), Dk = rgbOf(shade(color, -0.45)), E = rgbOf(shade(color, -0.65));
+  const ins = (x, y) => { if (x < 0 || y < 0 || x >= S || y >= S) return false; const ex = Math.min(x, S - 1 - x), ey = Math.min(y, S - 1 - y); return ex + ey >= n; };
+  const C = rgbOf(color), Lt = mixC(C, WHITE, 0.55), Dk = mixC(C, [10, 30, 60], 0.32), E = mixC(C, [6, 16, 40], 0.7);
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
-    if (d > r) continue;
-    const u = d / r;
-    // light from the top-left; a bright rim of refracted light at the bottom-right
-    const lit = (-dx * 0.6 - dy * 0.8) / r;
-    let k = 0.5 + lit * 0.45;
-    let col = k > 0.5 ? [C[0] + (Lt[0] - C[0]) * (k - 0.5) * 2, C[1] + (Lt[1] - C[1]) * (k - 0.5) * 2, C[2] + (Lt[2] - C[2]) * (k - 0.5) * 2] : [Dk[0] + (C[0] - Dk[0]) * k * 2, Dk[1] + (C[1] - Dk[1]) * k * 2, Dk[2] + (C[2] - Dk[2]) * k * 2];
-    // bottom refraction glow
-    const rg = Math.max(0, (dy / r) * 0.9 + (dx / r) * 0.3) * Math.max(0, u - 0.45) * 1.8;
-    if (rg > 0) col = col.map((v, i) => v + (Lt[i] - v) * Math.min(1, rg));
-    if (d > r - 1) col = [E[0], E[1], E[2]];
-    b.set(x, y, packRGB(Math.max(0, Math.min(255, col[0])), Math.max(0, Math.min(255, col[1])), Math.max(0, Math.min(255, col[2]))));
+    if (!ins(x, y)) continue;
+    let c;
+    if (!ins(x - 1, y) || !ins(x + 1, y) || !ins(x, y - 1) || !ins(x, y + 1)) c = E;
+    else if (S >= 6 && (!ins(x, y - 2) || !ins(x - 2, y)) && x + y < S - 1) c = mixC(C, WHITE, 0.75);
+    else if (S >= 6 && (!ins(x, y + 2) || !ins(x + 2, y)) && x + y > S - 1) c = Dk;
+    else { const t = (x + y * 1.6) / (S * 2.6); c = t < 0.36 ? Lt : t < 0.66 ? C : mixC(C, Dk, 0.6); }
+    b.set(x, y, packRGB(Math.round(c[0]), Math.round(c[1]), Math.round(c[2])));
   }
-  // specular cap: a soft white ellipse at the top-left plus a hard glint
-  const hx = c - r * 0.32, hy = c - r * 0.5, hrx = r * 0.55, hry = r * 0.3;
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const ex = (x + 0.5 - hx) / hrx, ey = (y + 0.5 - hy) / hry;
-    const e = ex * ex + ey * ey;
-    if (e < 1 && Math.hypot(x + 0.5 - c, y + 0.5 - c) < r - 1) blend(b.data, y * S + x, 255, 255, 255, 0.75 * (1 - e * 0.7));
-  }
-  const gx = Math.round(c - r * 0.5), gy = Math.round(c - r * 0.55);
-  if (r >= 3) blend(b.data, gy * S + gx, 255, 255, 255, 1);
+  if (S >= 7) { const gx = Math.max(2, Math.round(S * 0.28)), gy = Math.max(2, Math.round(S * 0.24)); b.set(gx, gy, packRGB(255, 255, 255)); b.set(gx + 1, gy, packRGB(255, 255, 255)); if (S >= 11) b.set(gx, gy + 1, packRGB(255, 255, 255)); }
+  else if (S >= 4) b.set(1 + (n > 1 ? 1 : 0), 1 + (n > 1 ? 0 : 1) , packRGB(255, 255, 255));
   return b.toCanvas();
 }
 
+// the cached pixel orb canvas itself (for callers that bake it into their own art)
+export function pixelOrbCanvas(r, color = AERO.aqua) { r = Math.max(1.5, Math.round(r * 2) / 2); return aeroCached(`orb30|${r}|${color}`, () => pixelArt(orbTex(r, color))); }
+
 export function drawGlossOrb(ctx, cx, cy, r, color = AERO.aqua, t = 0) {
   r = Math.max(1.5, Math.round(r * 2) / 2);
-  // [phase10:ui] big orbs (r >= 9: hub badges) are chunky voxel bubbles (bigicons decor 'orb:<color>'); small knobs stay 2D
-  if (r >= 9 && decor3d) { let f = null; try { f = decor3d('orb:' + color, Math.round(r * 2 + 1), 0); } catch { f = null; } if (f) { ctx.drawImage(f.canvas, Math.round((cx - f.ox) * 2) / 2, Math.round((cy - f.oy) * 2) / 2); return; } }
-  const c = aeroCached(`orb|${r}|${color}`, () => { const c1 = orbTex(r, color); return withHi(c1, () => fitHi(c1, orbTex(r * HI, color))); });
+  const c = aeroCached(`orb30|${r}|${color}`, () => pixelArt(orbTex(r, color)));
   ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
   void t;
 }
@@ -903,22 +723,7 @@ export function drawAeroCoin(ctx, cx, cy, r = 5, t = 0) {
 export function drawSparkle(ctx, x, y, size = 2, alpha = 1, color = '#ffffff') {
   x = Math.round(x); y = Math.round(y);
   const ga = ctx.globalAlpha;
-  if (ctx.__hi) {
-    // [phase9:ui] full-res twinkle: a plus-shaped core, hairline arms twice as long fading out, tiny diagonal glints
-    const cx = x * 2 + 1, cy = y * 2 + 1, L = size * 2 + 1;
-    const P = (dx, dy) => ctx.fillRect((cx + dx) / 2, (cy + dy) / 2, 0.5, 0.5);
-    ctx.fillStyle = color;
-    ctx.globalAlpha = ga * alpha;
-    P(0, 0); P(1, 0); P(-1, 0); P(0, 1); P(0, -1);
-    for (let i = 2; i <= L; i++) {
-      ctx.globalAlpha = ga * alpha * Math.max(0.15, 1 - (i - 1) / (L + 0.5));
-      P(i, 0); P(-i, 0);
-      if (i < L) { P(0, i); P(0, -i); }
-    }
-    if (size >= 2) { ctx.globalAlpha = ga * alpha * 0.45; P(2, 2); P(-2, -2); P(2, -2); P(-2, 2); }
-    ctx.globalAlpha = ga;
-    return;
-  }
+  // [pixui30] one pixel size everywhere: the twinkle is drawn in logical pixels on the 2x layer too
   ctx.fillStyle = color;
   ctx.globalAlpha = ga * alpha;
   ctx.fillRect(x, y, 1, 1);
@@ -934,22 +739,30 @@ export function drawSparkle(ctx, x, y, size = 2, alpha = 1, color = '#ffffff') {
   ctx.globalAlpha = ga;
 }
 
+// [pixui30] pixel light: three flat-alpha bands shaped as stepped octagons, ordered-dithered at each band edge
+// (no smooth radial falloff)
 function glowTex(r, color) {
-  const S = Math.ceil(r * 2), c = S / 2;
-  const cv = makeCanvas(S, S);
-  const g = ctxOf(cv);
-  const gr = g.createRadialGradient(c, c, 0, c, c, r);
-  gr.addColorStop(0, rgba(color, 1)); gr.addColorStop(0.4, rgba(color, 0.45)); gr.addColorStop(1, rgba(color, 0));
-  g.fillStyle = gr;
-  g.fillRect(0, 0, S, S);
-  return cv;
+  const S = Math.ceil(r * 2), c = makeCanvas(S, S), g = ctxOf(c);
+  const k2 = 1 / Math.SQRT2;
+  const AL = [0.55, 0.3, 0.13];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const dx = Math.abs(x + 0.5 - r), dy = Math.abs(y + 0.5 - r);
+    const d = Math.max(dx, dy, (dx + dy) * k2 * 1.04) / r;
+    if (d >= 1) continue;
+    const q = d * 3 + (bayer(x, y) - 0.5) * 0.35;
+    const i = q < 1 ? 0 : q < 2 ? 1 : q < 3 ? 2 : -1;
+    if (i < 0) continue;
+    g.fillStyle = rgba(color, AL[i]);
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
 }
 
 export function drawAeroGlow(ctx, cx, cy, r, color = '#bff6ff', alpha = 0.5) {
   r = Math.max(2, Math.round(r));
-  const c = aeroCached(`glow|${r}|${color}`, () => glowTex(r, color));
+  const c = aeroCached(`glow30|${r}|${color}`, () => pixelArt(glowTex(r, color)));
   const ga = ctx.globalAlpha;
-  ctx.globalAlpha = ga * alpha;
+  ctx.globalAlpha = ga * Math.round(Math.min(1, alpha) * 8) / 8;
   ctx.drawImage(c, Math.round(cx - r), Math.round(cy - r));
   ctx.globalAlpha = ga;
 }
@@ -962,7 +775,8 @@ export function drawAeroBadge(ctx, right, top, value, t = 0) {
   const h = ch + 6 + (font === 'big' ? 2 : 0), w = Math.max(h, tw + 8);
   const x = Math.round(right - w), y = Math.round(top + (Math.sin(t * 5) > 0.85 ? -1 : 0));
   const tone = value === '!' ? 'orange' : 'red';
-  ctx.drawImage(aeroCached(`badge|${w}|${h}|${tone}`, () => surfaceTex(w, h, { tone, r: 'pill', gloss: 0.85, glossH: Math.round(h * 0.45), curve: 1, rim: 0.7, glow: 0.6, edge: '#ffffff', edgeA: 1 })), x, y);
+  // [pixui30] a small stepped pixel square (1 px notch): dark outline, light bevel, flat red / orange
+  ctx.drawImage(aeroCached(`badge30|${w}|${h}|${tone}`, () => surfaceTex(w, h, { tone, r: 2, gloss: 0.6, glossH: Math.round(h * 0.4), rim: 1, glow: 0.3, edge: tone === 'orange' ? '#6a2a00' : '#5a0614', edgeA: 1 })), x, y);
   drawText(ctx, txt, x + Math.round((w - tw) / 2), y + Math.round((h - ch) / 2), { font, color: '#ffffff', shadow: toneOf(tone).shadow });
   return { x, y, w, h };
 }
@@ -982,20 +796,38 @@ export function drawAeroLabel(ctx, text, x, y, o = {}) {
 
 // ---------------------------------------------------------------- shared panel frame & cards
 
+// [pixui30] a hard pixel drop shadow offset (dx, dy) behind a w x h stepped shape (notch n = 0..3): the shape's own
+// stepped silhouette shifted down-right, minus the shape itself (flat, no blur). o: {n, alpha, color}
+export function pixelShadow(ctx, x, y, w, h, dx = 2, dy = 2, o = {}) {
+  w = Math.round(w); h = Math.round(h);
+  if (w < 3 || h < 3) return;
+  const n = Math.max(0, Math.min(3, o.n ?? 3));
+  const color = o.color || '#03183a';
+  const c = aeroCached(`pshadow|${w}|${h}|${dx}|${dy}|${n}|${color}`, () => {
+    const N = NOTCHES[n];
+    const W = w + dx, H = h + dy, cv = makeCanvas(W, H), g = ctxOf(cv);
+    const ins = (yy) => (yy < N.length ? N[yy] : h - 1 - yy < N.length ? N[h - 1 - yy] : 0);
+    g.fillStyle = color;
+    for (let yy = 0; yy < h; yy++) { const k = ins(yy); g.fillRect(dx + k, dy + yy, w - k * 2, 1); }
+    g.globalCompositeOperation = 'destination-out';
+    for (let yy = 0; yy < h; yy++) { const k = ins(yy); g.fillRect(k, yy, w - k * 2, 1); }
+    return pixelArt(cv);
+  });
+  const ga = ctx.globalAlpha;
+  ctx.globalAlpha = ga * (o.alpha ?? 0.32);
+  ctx.drawImage(c, Math.round(x), Math.round(y));
+  ctx.globalAlpha = ga;
+}
+
 export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
-  // soft shadow + outer halo
-  ctx.fillStyle = rgba('#03183a', 0.2);
-  ctx.fillRect(x + 6, y + h, w - 10, 3);
-  ctx.fillRect(x + w, y + 6, 3, h - 10);
-  ctx.fillStyle = rgba('#bff4ff', 0.16);
-  ctx.fillRect(x - 2, y + 4, w + 4, h - 8);
-  ctx.fillRect(x + 4, y - 2, w - 8, h + 4);
-  // the body is a little eco wallpaper: deep sky, sun bloom, white arcs, a curved grass horizon
+  // [pixui30] hard pixel drop shadow (3 px, stepped like the frame corner)
+  pixelShadow(ctx, x, y, w, h, 3, 3);
+  // the body is a little eco wallpaper: banded sky, pixel clouds, a stepped grass horizon
   ctx.drawImage(ecoBackdrop(w, h, { seed: o.seed ?? 7, r: 10 }), x, y);
-  // [phase10:ui] the window chrome is a chunky VOXEL frame: a raised glossy glass-blue ring of blocks (bevel, AO into
-  // the content, a slab edge underneath), a voxel title plaque, voxel ornaments (leaves, shell, starfish, bubbles)
-  ctx.drawImage(aeroCached(`vframe|${w}|${h}`, () => surfaceTex(w, h, { ring: 4, r: 10, top: '#ffffff', mid: '#d2f1ff', bot: '#86c8f0', edge: '#06336e', gloss: 0.3, glossH: 6, rim: 1, glow: 0.3, depth: 2, block: 4, seed: w })), x, y);
+  // [pixui30] the window chrome is a PIXEL frame ring: an 8 px glass-blue band, dark outline inside and out, light
+  // bevel top-left / shade bottom-right (raised), stepped 3 px corners, a darker lip along the bottom
+  ctx.drawImage(aeroCached(`vframe30|${w}|${h}`, () => surfaceTex(w, h, { ring: 4, r: 10, top: '#ffffff', mid: '#d2f1ff', bot: '#86c8f0', edge: '#06336e', gloss: 0.3, glossH: 4, rim: 1, glow: 0.3, depth: 2, seed: w })), x, y);
   const k = w > 360 ? 1 : 0.8;
   const t = performance.now() / 1000;
   const deco = o.leaves !== false;
@@ -1006,7 +838,7 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
   if (o.title || o.icon) {
     const pw = Math.round(iw + tw + 14), ph = 28;
     plaque = { x: x + 5, y: y + 3, w: pw, h: ph };
-    ctx.drawImage(aeroCached(`vplaque|${pw}|${ph}`, () => surfaceTex(pw, ph, { tone: 'aqua', r: 8, gloss: 0.75, glossH: 12, curve: 2, rim: 0.9, glow: 0.6, depth: 1, block: 4 })), x + 5, y + 3);
+    ctx.drawImage(aeroCached(`vplaque30|${pw}|${ph}`, () => surfaceTex(pw, ph, { tone: 'aqua', r: 8, gloss: 0.75, glossH: 12, rim: 0.9, glow: 0.6, depth: 2 })), x + 5, y + 3);
   }
   if (o.icon) {
     const ic = o.icon;
@@ -1234,16 +1066,13 @@ export function drawSplash(ctx, x, y, w = 48, o = {}) {
   ctx.drawImage(c, Math.round(x), Math.round(y - c.height));
 }
 
+// [pixui30] the window wallpaper as pixel art: a banded sky (flat bands, checker-dithered seams), a few pixel clouds,
+// pixel twinkles and a stepped grass horizon in three flat tones (no sun bloom, no round bubbles)
 function ecoTex(w, h, o) {
-  const R = o.r ?? 10;
-  const body = surfaceTex(w, h, { top: '#1470d8', mid: '#4cb4f8', bot: '#c8f0ff', edge: '#073c80', r: R, gloss: 0.38, glossH: Math.min(28, Math.round(h * 0.3)), curve: 6, rim: 0.85, glow: 0.2, streak: true, seed: o.seed });
-  return dualArt(w, h, (g, S) => {
-  const q = 1 / S;
+  const body = pixelSurface(w, h, { top: '#1470d8', mid: '#4cb4f8', bot: '#c8f0ff', edge: '#073c80', r: o.r ?? 10, gloss: 0.3, glossH: Math.min(20, Math.round(h * 0.14)), rim: 0.85, glow: 0.2, streak: true, seed: o.seed });
+  const c = makeCanvas(w, h), g = ctxOf(c);
   g.drawImage(body, 0, 0);
   g.globalCompositeOperation = 'source-atop';
-  // [phase8:ui] a pixel sun with chunky rays and a few fluffy pixel clouds (no thin arc lines)
-  const sx = Math.round(w * 0.78), sy = -4;
-  drawSunFlare(g, sx, sy + 6, Math.min(46, Math.round(h * 0.18)), 0.85);
   if (h > 90 && w > 140) {
     const nC = Math.max(1, Math.round(w / 260));
     for (let i = 0; i < nC; i++) {
@@ -1255,36 +1084,167 @@ function ecoTex(w, h, o) {
       g.globalAlpha = 1;
     }
   }
-  // curved grass horizon along the bottom
-  const base = h - 4;
+  // stepped grass horizon: the crest rises in 2 px terraces toward the middle
+  const base = h - 4, amp = Math.min(18, h * 0.06);
   for (let x = 0; x < w; x++) {
     const n = (x - w / 2) / (w / 2);
-    const top = Math.round(base - 16 - (1 - n * n) * Math.min(18, h * 0.06));
-    for (let y = top; y < h; y++) {
-      const k = (y - top) / Math.max(1, h - top);
-      const col = y === top ? '#e8ffb0' : y === top + 1 ? '#a8ec5a' : mix('#6cd23c', '#2a8a1c', Math.min(1, k * 1.4));
-      g.fillStyle = col;
-      g.fillRect(x, y, 1, 1);
-    }
+    const top = Math.round(base - 16 - Math.floor(((1 - n * n) * amp) / 2) * 2);
+    g.fillStyle = '#e8ffb0'; g.fillRect(x, top, 1, 1);
+    g.fillStyle = '#a8ec5a'; g.fillRect(x, top + 1, 1, 2);
+    g.fillStyle = '#6cd23c'; g.fillRect(x, top + 3, 1, 5);
+    g.fillStyle = '#4cb22c'; g.fillRect(x, top + 8, 1, 4);
+    g.fillStyle = '#2a8a1c'; g.fillRect(x, top + 12, 1, h - top - 12);
+    if (((x + 1) & 1) === 0) { g.fillStyle = '#6cd23c'; g.fillRect(x, top + 7, 1, 1); g.fillStyle = '#4cb22c'; g.fillRect(x, top + 11, 1, 1); }
     if (hash1(x, 21) > 0.82) { g.fillStyle = '#c8f878'; g.fillRect(x, top - 1, 1, 1); }
-    if (S > 1) {
-      // full-res: grass blades along the horizon and a hairline sheen on the crest
-      g.fillStyle = '#ffffff'; g.globalAlpha = 0.55; g.fillRect(x, top, 1, q); g.globalAlpha = 1;
-      if (hash1(x, 22) > 0.55) { g.fillStyle = hash1(x, 23) > 0.5 ? '#d8ff9a' : '#8fe04a'; g.fillRect(x + q * (hash1(x, 24) > 0.5 ? 1 : 0), top - q * (1 + Math.floor(hash1(x, 25) * 3)), q, q * (1 + Math.floor(hash1(x, 25) * 3))); }
-      if (hash1(x, 26) > 0.93) { g.fillStyle = '#ffffff'; g.fillRect(x, top - 2 - q, q, q); g.fillStyle = hash1(x, 27) > 0.5 ? '#ffe27a' : '#ff9ed2'; g.fillRect(x, top - 2, q * 2, q * 2); }
-    }
+    if (hash1(x, 26) > 0.95) { g.fillStyle = hash1(x, 27) > 0.5 ? '#ffe27a' : '#ff9ed2'; g.fillRect(x, top - 2, 2, 2); g.fillStyle = '#ffffff'; g.fillRect(x, top - 3, 1, 1); }
   }
-  // bubbles drifting up the sides
+  // pixel twinkles drifting up the sides (little plus marks)
+  g.fillStyle = 'rgba(255,255,255,0.6)';
   for (let i = 0; i < Math.round(w / 60); i++) {
-    const bx = hash1(i, o.seed + 31) < 0.5 ? 6 + hash1(i, 32) * 30 : w - 36 + hash1(i, 33) * 30;
-    const by = h * (0.25 + hash1(i, 34) * 0.55), br = 2 + Math.floor(hash1(i, 35) * 4);
-    g.drawImage(aeroCached(`pbub|${br}`, () => hiBubble(br)), Math.round(bx - br), Math.round(by - br));
+    const bx = Math.round(hash1(i, o.seed + 31) < 0.5 ? 8 + hash1(i, 32) * 28 : w - 34 + hash1(i, 33) * 26);
+    const by = Math.round(h * (0.25 + hash1(i, 34) * 0.55));
+    g.fillRect(bx, by - 1, 1, 3); g.fillRect(bx - 1, by, 3, 1);
   }
   g.globalCompositeOperation = 'source-over';
-  });
+  return nearestHi(c);
 }
 
 export function ecoBackdrop(w, h, o = {}) {
   w = Math.max(16, Math.round(w)); h = Math.max(16, Math.round(h));
   return aeroCached(`eco|${w}|${h}|${o.seed ?? 7}|${o.r ?? 10}`, () => ecoTex(w, h, { seed: o.seed ?? 7, r: o.r }));
+}
+
+
+// ================================================================ [pixui30] PIXEL KIT
+// Reusable pixel-art chrome (all stepped corners, 1 px dark outline + light bevel, flat banded fills, hard shadows).
+// Every helper snaps to integer logical pixels and caches its art; on the 2x UI layer the art is the same pixels
+// scaled up by nearest neighbour, so it matches the pixel fonts. Tones: any AERO_TONES name or a tone object.
+//   pixelPanel(ctx, x, y, w, h, {tone='frost', r=8, shadow=2, inset, gloss, glow, title, streak})   window / card body
+//   pixelButton(ctx, x, y, w, h, {label, icon, tone='aqua', state, font, align, r='pill'})   = drawAeroButton
+//   pixelBar(ctx, x, y, w, h, k, {color, back, segments})                                       = drawAeroBar
+//   pixelBadge(ctx, right, top, value, t)                                                       = drawAeroBadge
+//   pixelChip(ctx, x, y, w, h, {tone='glass', r='pill', inset}) -> {x, y, w, h}  small stepped pill / chip / plaque
+//   pixelRectPath(ctx, x, y, w, h, r)    a STEPPED path (for fill / clip / stroke) replacing roundRect paths: r is a
+//                                        radius (px or 'pill') mapped by notchOf; pass x + 0.5 / w - 1 for 1 px strokes
+//   pixelRect(ctx, x, y, w, h, r, fill, {outline, hi, lo})   filled stepped rect, optional 1 px outline + bevel
+//   pixelHalo(ctx, x, y, w, h, n, color, alpha)    a 1 px pixel ring just outside a stepped rect (hover / focus)
+//   pixelShadow(ctx, x, y, w, h, dx, dy, {n, alpha, color})   hard drop shadow of a stepped rect
+//   pixelGradient(ctx, x0, y0, x1, y1, stops, bands=4) -> CanvasGradient   a BANDED linear gradient (hard stops)
+//   notchOf(r, w, h) -> 0..3, NOTCHES, pixelArt(canvas) -> canvas with a nearest `.hi` twin
+export function pixelPanel(ctx, x, y, w, h, o = {}) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  if (w < 4 || h < 4) return;
+  const r = o.r ?? 8;
+  if (o.shadow !== 0 && o.shadow !== false) pixelShadow(ctx, x, y, w, h, o.shadow ?? 2, o.shadow ?? 2, { n: notchOf(r, w, h) });
+  drawAeroSurface(ctx, x, y, w, h, { tone: o.tone || 'frost', r, gloss: o.gloss ?? 0.35, glossH: o.glossH ?? Math.min(16, Math.round(h * 0.3)), rim: o.rim ?? 0.9, glow: o.glow ?? 0.3, inset: o.inset, streak: o.streak, a: o.a, edge: o.edge, depth: o.depth });
+  if (o.title) {
+    const T = toneOf(typeof o.tone === 'string' ? o.tone : 'frost');
+    drawText(ctx, o.title, x + 8, y + 6, { font: fitFont(o.title, 'normal', w - 16), color: T.text, shadow: T.text === '#ffffff' ? T.shadow : null });
+  }
+}
+export const pixelButton = (...a) => drawAeroButton(...a);
+export const pixelBar = (...a) => drawAeroBar(...a);
+export const pixelBadge = (...a) => drawAeroBadge(...a);
+export function pixelChip(ctx, x, y, w, h, o = {}) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  if (w >= 3 && h >= 3) drawAeroSurface(ctx, x, y, w, h, { tone: o.tone || 'glass', r: o.r ?? 'pill', gloss: o.gloss ?? 0.5, glossH: Math.round(h * 0.42), rim: 0.85, glow: 0.4, inset: o.inset, a: o.a, edge: o.edge });
+  return { x, y, w, h };
+}
+export function pixelRectPath(ctx, x, y, w, h, r) {
+  const n = notchOf(r, Math.round(w) + 1, Math.round(h) + 1);
+  ctx.beginPath();
+  if (!n) { ctx.rect(x, y, w, h); return; }
+  const N = NOTCHES[n], P = [[x + N[0], y], [x + w - N[0], y]];
+  for (let i = 0; i < n; i++) P.push([x + w - N[i], y + i + 1], [x + w - (i + 1 < n ? N[i + 1] : 0), y + i + 1]);
+  P.push([x + w, y + h - n]);
+  for (let i = n - 1; i >= 0; i--) P.push([x + w - N[i], y + h - i - 1], [x + w - N[i], y + h - i]);
+  P.push([x + N[0], y + h]);
+  for (let i = 0; i < n; i++) P.push([x + N[i], y + h - i - 1], [x + (i + 1 < n ? N[i + 1] : 0), y + h - i - 1]);
+  P.push([x, y + n]);
+  for (let i = n - 1; i >= 0; i--) P.push([x + N[i], y + i + 1], [x + N[i], y + i]);
+  ctx.moveTo(P[0][0], P[0][1]);
+  for (let i = 1; i < P.length; i++) ctx.lineTo(P[i][0], P[i][1]);
+  ctx.closePath();
+}
+export function pixelRect(ctx, x, y, w, h, r, fill, o = {}) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  if (w < 1 || h < 1) return;
+  const n = notchOf(r, w, h), N = NOTCHES[n];
+  const ins = (yy) => (yy < 0 || yy >= h ? 0 : yy < N.length ? N[yy] : h - 1 - yy < N.length ? N[h - 1 - yy] : 0);
+  const rows = (col, b) => {
+    ctx.fillStyle = col;
+    for (let yy = b; yy < h - b; yy++) { const k = (b ? Math.max(ins(yy - 1), ins(yy), ins(yy + 1)) : ins(yy)) + b; if (w - k * 2 > 0) ctx.fillRect(x + k, y + yy, w - k * 2, 1); }
+  };
+  const b = o.outline ? 1 : 0;
+  if (o.outline) rows(o.outline, 0);
+  if (fill) rows(fill, b);
+  const kAt = (yy) => (b ? Math.max(ins(yy - 1), ins(yy), ins(yy + 1)) : ins(yy)) + b;
+  const side0 = n + b, sideH = h - (n + b) * 2;
+  if (o.hi && h > 2 + b * 2) { ctx.fillStyle = o.hi; const k = kAt(b); ctx.fillRect(x + k, y + b, w - k * 2, 1); if (sideH > 0) ctx.fillRect(x + b, y + side0, 1, sideH); }
+  if (o.lo && h > 2 + b * 2) { ctx.fillStyle = o.lo; const k = kAt(h - 1 - b); ctx.fillRect(x + k, y + h - 1 - b, w - k * 2, 1); if (sideH > 0) ctx.fillRect(x + w - 1 - b, y + side0, 1, sideH); }
+}
+export function pixelHalo(ctx, x, y, w, h, n = 2, color = '#ffffff', alpha = 0.6) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  const ga = ctx.globalAlpha;
+  ctx.globalAlpha = ga * alpha;
+  ctx.fillStyle = color;
+  ctx.fillRect(x + n, y - 1, w - n * 2, 1); ctx.fillRect(x + n, y + h, w - n * 2, 1);
+  ctx.fillRect(x - 1, y + n, 1, h - n * 2); ctx.fillRect(x + w, y + n, 1, h - n * 2);
+  ctx.globalAlpha = ga;
+}
+function parseCol(c) {
+  if (c[0] === '#') { const v = rgbOf(c.length === 4 ? '#' + c[1] + c[1] + c[2] + c[2] + c[3] + c[3] : c.slice(0, 7)); return [v[0], v[1], v[2], 1]; }
+  const m = c.match(/rgba?\(([^)]+)\)/);
+  if (!m) return [255, 255, 255, 1];
+  const p = m[1].split(',').map((q) => parseFloat(q));
+  return [p[0], p[1], p[2], p[3] ?? 1];
+}
+export function pixelGradient(ctx, x0, y0, x1, y1, stops, bands = 4) {
+  const g = ctx.createLinearGradient(x0, y0, x1, y1);
+  const P = stops.map(([t, c]) => [t, parseCol(c)]);
+  const col = (t) => {
+    let i = 0;
+    while (i < P.length - 2 && t > P[i + 1][0]) i++;
+    const [ta, ca] = P[i], [tb, cb] = P[Math.min(P.length - 1, i + 1)];
+    const k = tb > ta ? Math.max(0, Math.min(1, (t - ta) / (tb - ta))) : 0;
+    const v = ca.map((q, j) => q + (cb[j] - q) * k);
+    return `rgba(${Math.round(v[0])},${Math.round(v[1])},${Math.round(v[2])},${Math.round(v[3] * 100) / 100})`;
+  };
+  for (let i = 0; i < bands; i++) {
+    const c = col((i + 0.5) / bands);
+    g.addColorStop(i / bands, c); g.addColorStop(Math.min(1, (i + 1) / bands), c);
+  }
+  return g;
+}
+
+// [pixui30] a translucent glass PLATE for items / bait shown 'in a bubble': a stepped octagon (no circle) with a
+// tinted banded fill, a rim-coloured dark outline, a 1 px light bevel top-left and a pixel glint. Draw the item on top.
+//   pixelGlassPlate(ctx, cx, cy, size, {tint, rim, alpha})
+function glassOctTex(S, tint, rim) {
+  const b = new PixelBuffer(S, S);
+  const n = Math.max(2, Math.floor(S * 0.24));
+  const ins = (x, y) => { if (x < 0 || y < 0 || x >= S || y >= S) return false; const ex = Math.min(x, S - 1 - x), ey = Math.min(y, S - 1 - y); return ex + ey >= n; };
+  const T = rgbOf(tint), Rm = rgbOf(rim), E = mixC(Rm, [4, 20, 50], 0.45);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    if (!ins(x, y)) continue;
+    let c, a;
+    if (!ins(x - 1, y) || !ins(x + 1, y) || !ins(x, y - 1) || !ins(x, y + 1)) { c = E; a = 0.95; }
+    else if ((!ins(x, y - 2) || !ins(x - 2, y)) && x + y < S) { c = WHITE; a = 0.9; }
+    else if ((!ins(x, y + 2) || !ins(x + 2, y)) && x + y > S) { c = mixC(Rm, WHITE, 0.25); a = 0.75; }
+    else { const t = y / S; c = t < 0.34 ? mixC(T, WHITE, 0.6) : t < 0.7 ? T : mixC(T, Rm, 0.35); a = t < 0.34 ? 0.62 : t < 0.7 ? 0.45 : 0.55; }
+    b.set(x, y, ((Math.round(a * 255) << 24) | (Math.round(c[2]) << 16) | (Math.round(c[1]) << 8) | Math.round(c[0])) >>> 0);
+  }
+  const g0 = Math.max(n, Math.round(S * 0.26)), gy = Math.max(2, Math.round(S * 0.2));
+  for (let i = 0; i < Math.max(2, Math.round(S * 0.12)); i++) b.set(g0 + i, gy, packRGB(255, 255, 255));
+  b.set(g0 - 1, gy + 1, packRGB(255, 255, 255));
+  return b.toCanvas();
+}
+export function pixelGlassPlate(ctx, cx, cy, size, o = {}) {
+  const S = Math.max(6, Math.round(size));
+  const tint = o.tint || '#e8fbff', rim = o.rim || '#2fb8e0';
+  const c = aeroCached(`gplate|${S}|${tint}|${rim}`, () => pixelArt(glassOctTex(S, tint, rim)));
+  const ga = ctx.globalAlpha;
+  if (o.alpha != null) ctx.globalAlpha = ga * o.alpha;
+  ctx.drawImage(c, Math.round(cx - S / 2), Math.round(cy - S / 2));
+  ctx.globalAlpha = ga;
 }

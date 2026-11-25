@@ -772,6 +772,7 @@ export const CURSOR_NAMES = [...Object.keys(CURSORS), 'cursor_reel'];
 
 // getUiIcon(name, zoom = 1): zoom 2/3 gives a crisp nearest-neighbour enlargement (bigger UI sizes) [phase6:ui]
 function flatIcon(name) {
+  if (name === 'fish') return makeCanvas(12, 9); // [vicons30] the voxel grouper's box (a long fish)
   if (AERO_ICONS[name]) return buildAero(AERO_ICONS[name]);
   if (ICONS[name]) return build(ICONS[name]);
   return makeCanvas(9, 9);

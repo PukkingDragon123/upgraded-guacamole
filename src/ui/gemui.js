@@ -1,21 +1,22 @@
-// [cur26] Hand-drawn 2D pixel art for the two currencies + the gem "Skip" button.
-//   Aero Bucks = a water droplet; Byte Gems = a faceted violet pixel crystal with a cyan "byte" glint.
-// When the icon agent's pixel icons exist (getUiIcon('aerobuck') / getUiIcon('gem')) they are used; otherwise the
-// sprites below (authored here, 1 canvas px = 1 art px, drawn with nearest-neighbour scaling) stand in.
+// [cur26] The two currencies + the gem "Skip" button.
+//   Aero Bucks = a water droplet; Byte Gems = a faceted violet crystal with a cyan "byte" glint.
+// [vicons30] The currency icons are the DETAILED VOXEL models (src/gfx/iconvox.js 'aerobuck' / 'gem', the same ones
+// getUiIcon('aerobuck') / getUiIcon('gem') return); the gem turns once whenever its shine sweeps. The pixel sprites
+// below (1 canvas px = 1 art px, nearest-neighbour scaled) only stand in until a voxel frame is built.
 //
 //   dropSprite() / gemSprite()          -> canvas (art-px sprites, cached)
 //   drawDrop(ctx, cx, cy, p, o)          droplet centred at (cx, cy), p = logical px per art px; o.squash (0..1 splash)
 //   drawGem(ctx, cx, cy, p, o)           gem centred; o.glint (0..1 sweep position, <0 = none), o.sparkle (0..1)
 //   drawDropSplash(ctx, cx, cy, p, k)    the pixel splash on gain (k = 1 -> 0 as it fades): droplets arc out
 //   drawGemShards(ctx, cx, cy, p, k)     the gem glint pop on gain: + sparkles and tiny diamond chips
-//   currencyIcon(kind, px)               a canvas ~px tall for buttons / labels (uses the icon agent's art if present)
+//   currencyIcon(kind, px)               a canvas ~px tall for buttons / labels (the voxel model; the sprite until built)
 //   drawGemButton(ctx, x, y, w, h, o)    pixel-art violet button: gem + "SKIP" + cost (o.label, o.cost, o.state, o.t)
 //   gemSkipButton(ui, ctx, x, y, w, h, o) interactive wrapper (hover / click / disabled toast); returns true on click
 // Inline text icons {abdrop} and {bytegem} are registered on import.
 
 import { makeCanvas } from '../core/canvas.js';
 import { drawText, measureText, registerInlineIcon } from '../gfx/font.js';
-import { getUiIcon } from '../gfx/uiicons.js';
+import { icon3d, icon3dFrame } from '../gfx/icons3d.js'; // [vicons30] voxel currency icons
 import { GEM_NAME, gems, canSpendGems } from '../game/gems.js';
 
 const R = Math.round;
@@ -70,19 +71,18 @@ export function dropSprite() { return (dropC ||= fromArt(DROP_ART, DROP_PAL)); }
 export function gemSprite() { return (gemC ||= fromArt(GEM_ART, GEM_PAL)); }
 const GEM_INNER = GEM_ART.map((r) => [...r].map((ch) => ch !== '.' && ch !== 'o'));
 
-// the icon agent's hand-drawn icons, when they exist (an unknown name gives a blank 9x9 canvas)
-const blank = new WeakMap();
-function agentIcon(name) {
-  let c = null;
-  try { c = getUiIcon(name); } catch { c = null; }
-  if (!c || !c.width || c.__icon3d) return null; // a 3D render is not the hand-drawn pixel icon we want here
-  let e = blank.get(c);
-  if (e === undefined) {
-    e = true;
-    try { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < d.length; i += 4) if (d[i]) { e = false; break; } } catch { e = false; }
-    blank.set(c, e);
-  }
-  return e ? null : c;
+// [vicons30] a voxel frame ({canvas (`.hi`), ox, oy}) of a currency model `px` logical px across (null while unbuilt)
+function voxFrame(name, px, turn = 0) {
+  try { return icon3dFrame(name, Math.max(8, Math.round(px)), turn); } catch { return null; }
+}
+let inlineVox = false;
+function inlineIcons() { // the {abdrop} / {bytegem} text icons: voxel once those renders exist
+  if (inlineVox) return;
+  try {
+    const a = currencyIcon('drop', 9), b = currencyIcon('gem', 8);
+    registerInlineIcon('abdrop', a, 1); registerInlineIcon('bytegem', b, 1);
+    inlineVox = !!(a.__icon3d && b.__icon3d);
+  } catch { /* fonts not ready */ }
 }
 
 function blit(ctx, src, cx, cy, w, h) {
@@ -94,12 +94,13 @@ function blit(ctx, src, cx, cy, w, h) {
 const snap = (v) => Math.round(v * 2) / 2; // half-logical px = one device px on the 2x UI layer
 
 export function drawDrop(ctx, cx, cy, p, o = {}) {
-  const a = agentIcon('aerobuck');
+  inlineIcons();
   const sq = o.squash || 0;
   const sx = 1 + sq * 0.18, sy = 1 - sq * 0.16;
-  if (a) {
-    const H = 14 * p, W = (a.width / a.height) * H;
-    blit(ctx, a, snap(cx), snap(cy + (H * (1 - sy)) / 2), snap(W * sx), snap(H * sy));
+  const f = voxFrame('aerobuck', 15 * p);
+  if (f) { // squashes about its foot
+    const c = f.canvas, w = c.width * sx, h = c.height * sy;
+    ctx.drawImage(c, snap(cx - f.ox * sx), snap(cy - f.oy * sy + (15 * p * (1 - sy)) / 2), snap(w), snap(h));
     return;
   }
   const s = dropSprite();
@@ -108,13 +109,20 @@ export function drawDrop(ctx, cx, cy, p, o = {}) {
 }
 
 export function drawGem(ctx, cx, cy, p, o = {}) {
-  const a = agentIcon('gem');
-  const s = a || gemSprite();
-  const H = a ? 12 * p : s.height * p, W = (s.width / s.height) * H;
+  inlineIcons();
+  const turn = o.glint != null && o.glint >= 0 && o.glint <= 1 ? o.glint : 0; // one full turn per shine sweep
+  const f = voxFrame('gem', 14 * p, turn);
+  if (f) {
+    ctx.drawImage(f.canvas, snap(cx - f.ox), snap(cy - f.oy));
+    if (o.sparkle > 0) pxSparkle(ctx, cx + 5.5 * p, cy - 5 * p, p, o.sparkle, '#ffffff');
+    return;
+  }
+  const s = gemSprite();
+  const H = s.height * p, W = (s.width / s.height) * H;
   const x0 = snap(cx - W / 2), y0 = snap(cy - H / 2);
   blit(ctx, s, snap(cx), snap(cy), snap(W), snap(H));
   // the glint: a 2-px diagonal band sweeping across the facets (our own sprite only: we know its shape)
-  if (!a && o.glint != null && o.glint >= 0 && o.glint <= 1) {
+  if (o.glint != null && o.glint >= 0 && o.glint <= 1) {
     const cols = s.width, rows = s.height, d0 = Math.round(-rows + o.glint * (cols + rows));
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
@@ -177,23 +185,28 @@ export function drawGemShards(ctx, cx, cy, p, k) {
   }
 }
 
-// a currency icon as a small canvas for buttons / inline text (cached per size)
+// a currency icon as a small canvas for buttons / inline text (cached per size): the voxel model once it is built,
+// the pixel sprite meanwhile (not cached, so the voxel one takes over)
 const iconCache = new Map();
 export function currencyIcon(kind, px = 12) {
   const key = kind + px;
   let c = iconCache.get(key);
   if (c) return c;
-  const a = agentIcon(kind === 'gem' ? 'gem' : 'aerobuck');
-  const s = a || (kind === 'gem' ? gemSprite() : dropSprite());
+  try { c = icon3d(kind === 'gem' ? 'gem' : 'aerobuck', px, px); } catch { c = null; }
+  if (c) { iconCache.set(key, c); return c; }
+  const fk = key + '|px';
+  c = iconCache.get(fk);
+  if (c) return c;
+  const s = kind === 'gem' ? gemSprite() : dropSprite();
   const k = Math.max(1, Math.round(px / s.height));
   c = makeCanvas(s.width * k, s.height * k);
   const g = c.getContext('2d');
   g.imageSmoothingEnabled = false;
   g.drawImage(s, 0, 0, c.width, c.height);
-  iconCache.set(key, c);
+  iconCache.set(fk, c);
   return c;
 }
-try { registerInlineIcon('abdrop', currencyIcon('drop', 9), 1); registerInlineIcon('bytegem', currencyIcon('gem', 8), 1); } catch { /* fonts not ready */ }
+inlineIcons();
 
 // ---------------------------------------------------------------- the pixel "Skip" button
 const BTN_TONES = {

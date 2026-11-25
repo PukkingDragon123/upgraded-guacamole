@@ -9,6 +9,7 @@
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { mix, shade, rgba } from '../core/color.js';
 import { TAU, hash1, clamp01 } from '../core/math.js';
+import { pixelRectPath, pixelOrbCanvas } from './aero.js';
 
 const cache = new Map();
 function cached(key, build) {
@@ -22,12 +23,8 @@ function cached(key, build) {
 }
 
 function ellipse(g, x, y, rx, ry, rot = 0) { g.beginPath(); g.ellipse(x, y, Math.max(0.1, rx), Math.max(0.1, ry), rot, 0, TAU); }
-function rr(g, x, y, w, h, r) {
-  r = Math.max(0, Math.min(r, w / 2, h / 2));
-  g.beginPath();
-  g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r);
-  g.closePath();
-}
+// [pixui30] the shared 'rounded rect' path is a STEPPED pixel path now (1-3 px notches, no arcs)
+function rr(g, x, y, w, h, r) { pixelRectPath(g, x, y, w, h, r); }
 export { rr as roundRectPath };
 
 // ---------------------------------------------------------------- sun rays
@@ -97,32 +94,18 @@ function globe(g, cx, cy, r, base = '#5ad43a', o = {}) {
 
 // ---------------------------------------------------------------- eco orbs (tree nodes)
 const LOCKED_ORB = '#a9c6dc';
+// [pixui30] tree-node orbs are stepped pixel octagons (aero.js pixel orb), tinted per look
 export function ecoOrb(r, color, look = 'done') {
   r = Math.max(3, Math.round(r * 2) / 2);
-  return cached(`orb|${r}|${color}|${look}`, () => {
-    const pad = 3, S = Math.ceil(r * 2 + pad * 2), c = makeCanvas(S, S), g = ctxOf(c), cx = S / 2, cy = S / 2;
-    if (look === 'sun') {
-      const sg = g.createRadialGradient(cx, cy, 0, cx, cy, r + pad);
-      sg.addColorStop(0, '#ffffff'); sg.addColorStop(0.5, '#fff8c8'); sg.addColorStop(0.8, '#ffd84a'); sg.addColorStop(1, rgba('#ffd84a', 0));
-      g.fillStyle = sg; g.fillRect(0, 0, S, S);
-      globe(g, cx, cy, r, '#ffe27a', { land: false });
-      return c;
-    }
-    if (look === 'locked') {
-      // frosted glass with a pastel hint of the branch colour
-      const pale = mix(color, '#ffffff', 0.62);
-      const gr = g.createRadialGradient(cx - r * 0.3, cy - r * 0.35, 1, cx, cy, r);
-      gr.addColorStop(0, rgba('#ffffff', 0.9)); gr.addColorStop(0.6, rgba(pale, 0.85)); gr.addColorStop(1, rgba(mix(pale, LOCKED_ORB, 0.5), 0.9));
-      g.fillStyle = gr; ellipse(g, cx, cy, r, r); g.fill();
-      g.strokeStyle = rgba('#6f93b0', 0.9); g.lineWidth = 1; ellipse(g, cx, cy, r - 0.5, r - 0.5); g.stroke();
-      g.fillStyle = rgba('#ffffff', 0.9); ellipse(g, cx - r * 0.1, cy - r * 0.5, r * 0.6, r * 0.32, -0.25); g.fill();
-      return c;
-    }
-    const base = look === 'open' ? mix(color, '#ffffff', 0.28) : color;
-    globe(g, cx, cy, r, base, { seed: Math.round(r * 7 + color.length) });
+  return cached(`orb30|${r}|${color}|${look}`, () => {
+    const pad = 3, S = Math.ceil(r * 2 + pad * 2), c = makeCanvas(S, S), g = ctxOf(c);
+    const col = look === 'sun' ? '#ffe27a' : look === 'locked' ? mix(color, LOCKED_ORB, 0.45) : look === 'open' ? mix(color, '#ffffff', 0.28) : color;
+    const o = pixelOrbCanvas(r, col);
+    g.drawImage(o, Math.round((S - o.width) / 2), Math.round((S - o.height) / 2));
     return c;
   });
 }
+void globe;
 
 // ---------------------------------------------------------------- glass tubes with flowing water
 function pathLen(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return L; }
@@ -162,7 +145,7 @@ export function drawTube(ctx, pts, o = {}) {
       const [x, y] = pointAt(pts, d);
       const r = w > 6 ? 1.6 : 1.1;
       ctx.fillStyle = rgba('#ffffff', 0.95);
-      ctx.beginPath(); ctx.arc(x + Math.sin(t * 6 + i) * 0.6, y, r, 0, TAU); ctx.fill();
+      const q = Math.round(r * 1.4); ctx.fillRect(Math.round(x + Math.sin(t * 6 + i) * 0.6 - q / 2), Math.round(y - q / 2), q, q); // [pixui30] square pixel bubble
     }
   }
   // glass highlight
@@ -173,19 +156,17 @@ export function drawTube(ctx, pts, o = {}) {
 }
 
 // ---------------------------------------------------------------- splash
+// [pixui30] a pixel droplet burst (square drops arcing out and falling; no expanding rings)
 export function drawSplash(ctx, x, y, k, color = '#5fd8ff') {
   k = clamp01(k);
   ctx.save();
   ctx.globalAlpha *= 1 - k;
-  ctx.strokeStyle = rgba('#ffffff', 0.95); ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.ellipse(x, y, 4 + k * 22, 2 + k * 9, 0, 0, TAU); ctx.stroke();
-  ctx.strokeStyle = rgba(color, 0.8); ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.ellipse(x, y, 2 + k * 15, 1 + k * 6, 0, 0, TAU); ctx.stroke();
   for (let i = 0; i < 10; i++) {
     const a = -Math.PI * (0.1 + 0.8 * (i / 9)), sp = 20 + hash1(i, 4) * 16;
     const px = x + Math.cos(a) * sp * k, py = y + Math.sin(a) * sp * k + 40 * k * k;
+    const s = k < 0.5 ? 2 : 1;
     ctx.fillStyle = i % 2 ? '#ffffff' : color;
-    ctx.beginPath(); ctx.arc(px, py, 1.6 * (1 - k * 0.5), 0, TAU); ctx.fill();
+    ctx.fillRect(Math.round(px), Math.round(py), s, s);
   }
   ctx.restore();
 }

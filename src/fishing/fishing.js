@@ -52,6 +52,7 @@ import { reachY, LINE_BASE } from './line.js'; // [crate26] line length
 import { word3D } from './cinematics.js';
 import { rodStats, equippedRod } from '../game/rods.js';
 import { SPECIES } from '../fish/species.js';
+import { FightFX } from './fightfx.js'; // [fishui30] the struggle in the world: splashes, bubbles, sparks, kelp
 
 // A bare hook: no bait equipped. Fish still notice it, just much less eagerly.
 const BARE = { kind: 'bare', type: 'bare', id: null, label: 'Bare hook', mods: { attract: 0.55, rarity: 1, sizeBonus: 0, giantMul: 1, luck: 0 } };
@@ -99,6 +100,7 @@ export class Fishing {
     this.boss = new BossDirector(this); // [phase9:fishing]
     this.bossWin = null; // the boss victory overlay
     this.atMaxLine = false; this.maxK = 0; this.maxCool = 0; this.maxGhost = null; // [crate26] line length
+    this.ffx = new FightFX(this); this.tipBuf = [0, 0, 0, 0]; // [fishui30]
   }
 
   // [crate26] Line length: reach in zones (line.js) and the deepest world y the hook may go (Infinity = no limit).
@@ -367,6 +369,7 @@ export class Fishing {
     w.jig = this.jig;
     this.crank.update(rdt, inp.x, inp.y);
     this.fx.update(rdt);
+    this.ffx.update(dt); // [fishui30] world struggle fx (slowed by slow-mo)
     this.titles.update(rdt);
     const wipe = 1 + (this.state === 'fight' ? this.gear.p * 2.5 : 0); // circling wipes the ink faster
     for (const s of this.splats) s.t += rdt * (s.t > 0.3 ? wipe : 1);
@@ -640,6 +643,7 @@ export class Fishing {
     this.cine = null;
     this.hs = null;
     this.battle = new Battle(this);
+    this.ffx.begin(this.battle); // [fishui30]
     this.power = this.battle.power;
     this.tension = this.battle.tension;
     this.splats = [];
@@ -665,8 +669,7 @@ export class Fishing {
     P.splashBurst?.(f.x, f.y, 1.1);
     g.water?.disturb?.(f.x, f.y, 1.4, 12); // [phase5:water] hook-set shock wave
     P.scales?.(f.x, f.y, 4, this.scaleColors());
-    const surf = this.world.surfaceY;
-    if (surf !== null && surf !== undefined && f.y - surf < 40) P.eruption?.(f.x, surf, 0.6);
+    this.ffx.hookset(this.battle); // [fishui30] it goes berserk: whitewater, bubbles, a splash crown near the surface (was a ring-making eruption)
     if (!f.boss) this.titles.add('fishon', auto ? 'AUTO!' : 'FISH ON!', { rarity: f.sp.rarity }); // a boss gets its intro cutscene
     f.feel('surprised', 0.8);
     f.squashV += 10;
@@ -699,6 +702,7 @@ export class Fishing {
     if (fire && !g.ui?.blocking) { B.pressShock(); if (inp.pressed) inp.consume?.(); }
     g.timeScaleTarget = 1;
     const r = B.update(dt);
+    this.ffx.fight(B, dt); // [fishui30] splashes / bubbles timed to its pulls
     this.tension = B.tension;
     f.controlled = true;
     // centred: soft ticks that climb with the steady streak
@@ -718,7 +722,19 @@ export class Fishing {
     if (B.beat) zoom += 0.12;
     zoom += B.zoomAdd || 0; // [crate26] a crate's surprise beat pushes in
     if (B.boss?.stage === 'intro') this.focusCam(f.x, f.y - (this.H * 0.16) / zoom, zoom, 1.6);
-    else this.focusCam(f.x, f.y + (this.H * (B.camOffY ?? 0.08)) / zoom, zoom, B.mode === 'hookset' ? 4.5 : 3); // the fish sits a bit high: room for the meter
+    else {
+      let fy = f.y + (this.H * (B.camOffY ?? 0.08)) / zoom; // the fish sits a bit high: room for the meter
+      // [fishui30] frame the surface too when it is near, so the splashes up there are seen (presentation only):
+      // aim to put the waterline just under the letterbox while the fish stays clear of the meter
+      const surf = this.world.surfaceY;
+      if (surf !== null && surf !== undefined) {
+        const Z = Math.max(0.5, this.zoom()), S = this.H / 540;
+        const want = surf + (this.H / 2 - (this.H * 0.11 + 56 * S)) / Z, low = f.y - (this.H / 2 - 175 * S) / Z;
+        const k = clamp01((want - low + 40 / Z) / (40 / Z));
+        if (k > 0) fy = lerp(fy, Math.max(low, Math.min(fy, want)), k);
+      }
+      this.focusCam(f.x, fy, zoom, B.mode === 'hookset' ? 4.5 : 3);
+    }
     if (!this.poseHold) {
       const pose = B.stunned || this.gear.p > 0.08 ? 'reel' : 'pull';
       if (pose !== this.pose) this.setPose(pose);
@@ -751,6 +767,7 @@ export class Fishing {
     this.sfx('splash_small', { vol: 0.6, pitch: 0.8 });
     this.particles.bubbleTrail?.(f.x, f.y, Math.cos(this.battle?.away ?? 0) * -L.dir * 90, 0, { n: 6 });
     this.particles.wake?.(f.x, f.y, this.battle?.away ?? 0, 4);
+    this.ffx.lunge(this.battle, L); // [fishui30]
     this.shake(3);
     this.meterShake = 0.6;
   }
@@ -817,6 +834,7 @@ export class Fishing {
     P.electrify?.(f.x, f.y, R, crit ? 7 : 4, { sparks: crit ? 10 : 4 });
     P.scales?.(f.x, f.y, crit ? 6 : 3, this.scaleColors());
     P.aeroBubbles?.(f.x, f.y, crit ? 8 : 4, { w: R * 0.6, sizes: [2, 2, 3, 4] });
+    this.ffx.shock(grade, chain); // [fishui30] electric pixel sparks crackling through the water
     this.cam?.flash?.(crit ? '#fff6c0' : '#bff8ff', crit ? 0.4 : 0.22);
     this.cam?.punch?.(f.x, f.y, crit ? 0.1 : 0.05, 0.3);
     if (crit) this.cam?.slowmo?.(0.35, 0.35);
@@ -981,6 +999,7 @@ export class Fishing {
     this.cine = null;
     this.hs = null;
     this.battle = new CrateBattle(this);
+    this.ffx.begin(this.battle); this.ffx.hookset(this.battle); // [fishui30]
     this.power = this.battle.power;
     this.tension = this.battle.tension;
     this.splats = [];
@@ -1081,7 +1100,10 @@ export class Fishing {
     if ((this.state === 'fight' || (this.state === 'landing' && this.finale?.stage === 'surface')) && f) {
       const m = f.anchors?.mouth || [f.x, f.y];
       const [rx, ry] = this.rodTip();
-      this.drawRope(ctx, rx, ry, m[0], m[1], this.tension, true);
+      // [fishui30] the rod tip flexes toward the fish under strain; the line leaves from the bent tip
+      const tb = this.ffx.flexTip(rx, ry, m[0], m[1], this.tipBuf);
+      this.drawRodFlex(ctx, rx, ry, tb);
+      this.drawRope(ctx, tb[0], tb[1], m[0], m[1], this.tension, true);
     } else if (this.state === 'box' && this.box) {
       this.box.drawWorld(ctx);
     } else if (h.visible) {
@@ -1091,7 +1113,28 @@ export class Fishing {
       this.drawHookAndBait(ctx);
       if (this.boxHover) drawBoxHover(ctx, this, this.boxHover);
     }
+    this.ffx.draw(ctx); // [fishui30] splash crowns, droplets, bubbles, sparks, kelp
     if (!this.hostCine) this.drawCinematicWorld(ctx);
+  }
+
+  // [fishui30] The flexing rod tip: a short graphite curve from the rod's tip to the bent tip (screen pixels).
+  drawRodFlex(ctx, rx, ry, tb) {
+    const m = ctx.getTransform();
+    const Z = Math.max(1, Math.round(Math.hypot(m.a, m.b)));
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.fillStyle = pass ? '#d8e6f2' : '#1c2a3a';
+      for (let i = 0; i <= 10; i++) {
+        const u = i / 10;
+        const wx = (1 - u) * (1 - u) * rx + 2 * (1 - u) * u * tb[2] + u * u * tb[0];
+        const wy = (1 - u) * (1 - u) * ry + 2 * (1 - u) * u * tb[3] + u * u * tb[1];
+        const x = Math.round(m.a * wx + m.c * wy + m.e), y = Math.round(m.b * wx + m.d * wy + m.f);
+        const w = pass ? Math.max(1, Z - 1) : Z + (u < 0.5 ? 1 : 0);
+        ctx.fillRect(x - (pass ? 0 : 1), y - (pass ? 0 : 1), w, w);
+      }
+    }
+    ctx.restore();
   }
 
   drawCinematic(ctx) {
@@ -1154,7 +1197,7 @@ export class Fishing {
     const sag = (1 - T) * Math.min(40, d * 0.18);
     const B = this.battle;
     // line vibration: buzzes with tension, thrums during surges
-    const amp = fight ? Math.max(0, T - 0.6) * 5 + (B?.surging && !B.stunned ? 0.8 : 0) + (B?.stunned ? 0.7 : 0) : 0;
+    const amp = fight ? Math.max(0, T - 0.6) * 5 + (B?.surging && !B.stunned ? 0.8 : 0) + (B?.stunned ? 0.7 : 0) + (this.ffx?.lineBuzz || 0) : 0; // [fishui30] buzzes with the strain
     const mx = (x0 + x1) / 2, my = (y0 + y1) / 2 + sag;
     // [phase4:zoom] the line is plotted in screen space through the current transform: a crisp 1 px line at any
     // camera zoom (world-space 1x1 dots would turn into fat blocks when zoomed in)
@@ -1188,6 +1231,10 @@ export class Fishing {
       if (Z > 1.4) { ctx.fillStyle = rgba('#0c3a5c', 0.3 * alpha); ctx.fillRect(x, y + 1, 1, 1); } // [phase4:zoom] a soft shade keeps the thin line readable over bright water
       ctx.fillStyle = glint ? '#ffffff' : rgba(col, under ? alpha * 0.8 : alpha);
       ctx.fillRect(x, y, 1, 1);
+      if (amp > 1.2 && (i & 1)) { // [fishui30] a faint afterimage of the vibrating line
+        const ax = Math.round(x - 2 * (m.a * nx + m.c * ny) * wv), ay = Math.round(y - 2 * (m.b * nx + m.d * ny) * wv);
+        ctx.fillStyle = 'rgba(232,244,255,0.28)'; ctx.fillRect(ax, ay, 1, 1);
+      }
       if (surf !== null && pwy !== null && (pwy <= surf) !== (wy <= surf)) {
         // little ripple where the line enters the water; spray off a straining line
         const r = (3 + Math.sin(this.t * 4) * 1) * Z, rw = Math.max(2, Math.round(2 * Z));

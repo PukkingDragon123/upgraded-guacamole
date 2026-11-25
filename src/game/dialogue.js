@@ -26,7 +26,7 @@
 
 import { alagardBitmap, loadAlagard, alagardReady } from '../gfx/alagard.js';
 import * as AE from '../ui/aero.js';
-import { clamp, clamp01, ease, TAU } from '../core/math.js';
+import { clamp, clamp01, ease } from '../core/math.js';
 
 loadAlagard();
 
@@ -81,6 +81,36 @@ export function drawAlagard(ctx, text, x, y, o = {}) {
 }
 
 const VOWEL = /[aeiouy]/i;
+
+// [pixui30] pixel-art chrome for the dialogue box / bubbles / choices (see aero.js PIXEL KIT)
+const DLG_TONE = { top: '#3a9ce0', mid: '#165a9e', bot: '#082a62', edge: '#020e2a', text: '#ffffff', shadow: '#020e24', glow: '#3ab0ff', a: [0.96, 0.97] };
+// a downward pixel triangle (rows of fillRects) with apex at (cx, y + s), optional 1 px outline
+function pixelTri(ctx, cx, y, s, fill, outline) {
+  cx = Math.round(cx); y = Math.round(y);
+  if (outline) { ctx.fillStyle = outline; for (let i = -1; i <= s + 1; i++) { const hw = s - i + 1; if (hw >= 0) ctx.fillRect(cx - hw, y + i, hw * 2 + 1, 1); } }
+  ctx.fillStyle = fill;
+  for (let i = 0; i <= s; i++) { const hw = s - i; ctx.fillRect(cx - hw, y + i, hw * 2 + 1, 1); }
+}
+// a stepped pixel wedge from a base edge to a tip (the speech-bubble tail): rows / columns of fillRects
+function pixelTail(ctx, side, bx0, bx1, by, tipX, tipY, fill, outline) {
+  const vert = side === 'above' || side === 'below';
+  const L = Math.max(1, Math.round(vert ? Math.abs(tipY - by) : Math.abs(tipX - by)));
+  for (const pass of [0, 1]) {
+    if (pass === 0 && !outline) continue;
+    ctx.fillStyle = pass ? fill : outline;
+    const e = pass ? 0 : 1;
+    for (let i = 0; i <= L; i++) {
+      const k = i / L;
+      const a = bx0 + ((vert ? tipX : tipY) - bx0) * k, b = bx1 + ((vert ? tipX : tipY) - bx1) * k;
+      const lo = Math.round(Math.min(a, b)) - e, hi = Math.round(Math.max(a, b)) + e;
+      const dir = side === 'above' || side === 'left' ? 1 : -1;
+      const pos = Math.round(by + dir * i);
+      if (vert) ctx.fillRect(lo, pos, Math.max(1, hi - lo + 1), 1);
+      else ctx.fillRect(pos, lo, 1, Math.max(1, hi - lo + 1));
+    }
+    if (!pass && e) { const dir = side === 'above' || side === 'left' ? 1 : -1; if (vert) ctx.fillRect(Math.round(tipX), Math.round(by + dir * (L + 1)), 1, 1); else ctx.fillRect(Math.round(by + dir * (L + 1)), Math.round(tipY), 1, 1); }
+  }
+}
 
 export class Dialogue {
   constructor(o = {}) {
@@ -296,64 +326,39 @@ export class Dialogue {
     const yy = Math.round(y + (1 - kk) * 18);
     const R = Math.round(14 * Math.min(1.5, k));
     this.panelRect = { x, y: yy, w, h };
-    // glass body
-    ctx.fillStyle = 'rgba(4,28,64,0.55)';
-    roundRect(ctx, x + 2, yy + 4, w, h, R); ctx.fill();
-    const g = ctx.createLinearGradient(0, yy, 0, yy + h);
-    g.addColorStop(0, 'rgba(34,124,196,0.95)'); g.addColorStop(0.42, 'rgba(10,64,132,0.95)'); g.addColorStop(1, 'rgba(5,30,74,0.97)');
-    ctx.fillStyle = g;
-    roundRect(ctx, x, yy, w, h, R); ctx.fill();
-    // gloss band + rim
-    ctx.save();
-    roundRect(ctx, x, yy, w, h, R); ctx.clip();
-    const gl = ctx.createLinearGradient(0, yy, 0, yy + h * 0.5);
-    gl.addColorStop(0, 'rgba(255,255,255,0.42)'); gl.addColorStop(1, 'rgba(255,255,255,0.04)');
-    ctx.fillStyle = gl;
-    ctx.beginPath(); ctx.ellipse(x + w * 0.5, yy - h * 0.15, w * 0.62, h * 0.6, 0, 0, TAU); ctx.fill();
-    // drifting bubbles inside the glass
+    // [pixui30] pixel-art glass body: hard drop shadow, stepped corners, dark outline, light bevel, flat bands
+    AE.pixelShadow(ctx, x, yy, w, h, 2, 4, { n: 3, alpha: 0.5, color: '#041c40' });
+    AE.drawAeroSurface(ctx, x, yy, w, h, { tone: DLG_TONE, a: [0.96, 0.97], r: R, gloss: 0.32, glossH: Math.round(h * 0.34), rim: 1, glow: 0.4, streak: true, seed: 3 });
+    // tiny square pixel bubbles drifting up inside the glass
     for (let i = 0; i < 9; i++) {
       const ph = (t * 0.12 + i * 0.37) % 1;
-      const bx = x + 30 + ((i * 97) % (w - 60)), by = yy + h - ph * h;
-      ctx.globalAlpha = a0 * 0.35 * Math.sin(ph * Math.PI);
-      AE.drawAeroBubble(ctx, bx, by, (2 + (i % 3)) * Math.min(1.5, k)); // [phase8:ui] pixel bubble, not a thin ring
+      const bx = Math.round(x + 30 + ((i * 97) % (w - 60))), by = Math.round(yy + h - 6 - ph * (h - 12));
+      const s2 = 1 + (i % 2);
+      ctx.globalAlpha = a0 * (o.alpha ?? 1) * (ph < 0.15 || ph > 0.85 ? 0.25 : 0.5);
+      ctx.fillStyle = '#bff4ff'; ctx.fillRect(bx, by, s2 + 1, s2 + 1);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(bx, by, 1, 1);
     }
-    ctx.restore();
     ctx.globalAlpha = a0 * (o.alpha ?? 1) * clamp01(this.t * 6);
-    ctx.strokeStyle = 'rgba(160,240,255,0.95)'; ctx.lineWidth = 1;
-    roundRect(ctx, x + 0.5, yy + 0.5, w - 1, h - 1, R); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    roundRect(ctx, x + 2.5, yy + 2.5, w - 5, h - 5, R - 2); ctx.stroke();
-    // portrait orb
-    const pcx = x + pr + 14, pcy = yy + h / 2;
-    const og = ctx.createRadialGradient(pcx - pr * 0.3, pcy - pr * 0.4, 2, pcx, pcy, pr);
-    og.addColorStop(0, '#f2ffff'); og.addColorStop(0.55, '#8fe4f6'); og.addColorStop(1, '#2a9ad4');
-    ctx.fillStyle = og;
-    ctx.beginPath(); ctx.arc(pcx, pcy, pr, 0, TAU); ctx.fill();
+    // portrait: a stepped pixel frame (square with notched corners), the portrait clipped to its stepped well
+    const pcx = Math.round(x + pr + 14), pcy = Math.round(yy + h / 2);
+    const pS = pr * 2;
+    AE.drawAeroSurface(ctx, pcx - pr, pcy - pr, pS, pS, { tone: 'white', r: 12, gloss: 0.4, glossH: Math.round(pS * 0.4), rim: 1, glow: 0.3, edge: '#04214a' });
+    AE.drawAeroSurface(ctx, pcx - pr + 3, pcy - pr + 3, pS - 6, pS - 6, { top: '#d8fbff', mid: '#8fe4f6', bot: '#2a9ad4', edge: '#0a4a7e', r: 8, gloss: 0, rim: 0.4, glow: 0.3, inset: true });
     if (this.portrait) {
       ctx.save();
-      ctx.beginPath(); ctx.arc(pcx, pcy, pr - 2, 0, TAU); ctx.clip();
+      AE.pixelRectPath(ctx, pcx - pr + 4, pcy - pr + 4, pS - 8, pS - 8, 6); ctx.clip();
       try { this.portrait(ctx, pcx, pcy, pr, this); } catch (e) { /* optional */ }
       ctx.restore();
     }
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(pcx, pcy, pr, 0, TAU); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.beginPath(); ctx.ellipse(pcx - pr * 0.25, pcy - pr * 0.6, pr * 0.45, pr * 0.18, -0.3, 0, TAU); ctx.fill();
-    // name tag
+    // name tag (a stepped green plaque)
     const tx = pcx + pr + 14;
     if (this.name) {
       const nfs = fs >= 24 ? 20 : 16;
       const th = Math.round(nfs * 1.15);
       const nw = Math.ceil(alagardWidth(this.name.toUpperCase(), nfs)) + 22;
       const ny = yy - Math.round(th * 0.55);
-      const ng = ctx.createLinearGradient(0, ny, 0, ny + th);
-      ng.addColorStop(0, '#9effa0'); ng.addColorStop(0.5, '#3fd06a'); ng.addColorStop(1, '#1e9a48');
-      ctx.fillStyle = ng;
-      roundRect(ctx, tx - 4, ny, nw, th, th / 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      roundRect(ctx, tx - 1, ny + 2, nw - 6, Math.round(th * 0.33), th * 0.16); ctx.fill();
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
-      roundRect(ctx, tx - 3.5, ny + 0.5, nw - 1, th - 1, th / 2 - 0.5); ctx.stroke();
+      AE.pixelShadow(ctx, tx - 4, ny, nw, th, 1, 2, { n: 2, alpha: 0.45 });
+      AE.drawAeroSurface(ctx, tx - 4, ny, nw, th, { top: '#c8ffb0', mid: '#3fd06a', bot: '#1e9a48', edge: '#0a4a1e', r: 'pill', gloss: 0.5, glossH: Math.round(th * 0.4), rim: 1, glow: 0.3 });
       drawAlagard(ctx, this.name.toUpperCase(), tx + 7, ny + Math.round((th - nfs * 1.05) / 2), { size: nfs, color: '#ffffff', shadow: '#0c5a2a' });
     }
     // the typed text
@@ -370,8 +375,7 @@ export class Dialogue {
     if (this.waiting && this.picked < 0) {
       const bob = Math.round(Math.sin(t * 6) * 2);
       const ax = x + w - 20, ay = yy + h - 16 + bob, s = Math.round(5 * Math.min(1.6, k));
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.moveTo(ax - s, ay - s * 0.6); ctx.lineTo(ax + s, ay - s * 0.6); ctx.lineTo(ax, ay + s * 0.6); ctx.closePath(); ctx.fill();
+      pixelTri(ctx, ax, Math.round(ay - s * 0.6), s, '#ffffff', '#06264e');
     }
     ctx.restore();
     ctx.globalAlpha = a0;
@@ -428,26 +432,28 @@ export class Dialogue {
     ctx.globalAlpha = a0 * (o.alpha ?? 1);
     const ox = side === 'left' ? bx + tw : side === 'right' ? bx : clamp(P.px, bx, bx + tw);
     const oy = side === 'above' ? by + th : side === 'below' ? by : clamp(P.py, by, by + th);
-    ctx.translate(ox, oy);
-    const sc = Math.max(0.01, pop * (l.big ? 1 + 0.05 * Math.sin(t * 12) : 1));
-    ctx.scale(sc, sc);
-    ctx.translate(-ox, -oy);
+    void ox; void oy;
+    // [pixui30] pop in by sliding a few whole pixels (no scaling: pixels stay square); big lines hop
+    ctx.translate(0, Math.round((1 - pop) * 6) - (l.big && Math.sin(t * 12) > 0.5 ? 1 : 0));
     this.panelRect = { x: bx, y: by, w: tw, h: th };
-    // tail toward the speaker
+    // tail toward the speaker: a stepped pixel wedge with an outline, drawn under the bubble
     const tl = Math.round(7 * Math.min(1.6, k));
-    ctx.fillStyle = 'rgba(244,253,255,0.97)';
-    ctx.beginPath();
+    const fillC = '#f4fdff', inkC = '#1d5a8a';
     if (side === 'above' || side === 'below') {
-      const tx = clamp(P.px, bx + tl * 2, bx + tw - tl * 2), ey = side === 'above' ? by + th - 1 : by + 1;
+      const tx = clamp(P.px, bx + tl * 2, bx + tw - tl * 2), ey = side === 'above' ? by + th - 2 : by + 1;
       const tipY = side === 'above' ? Math.min(P.py - 2, ey + gap) : Math.max(P.py + 2, ey - gap);
-      ctx.moveTo(tx - tl, ey); ctx.lineTo(tx + tl, ey); ctx.lineTo(clamp(P.px, tx - tl * 2, tx + tl * 2), tipY);
+      pixelTail(ctx, side, tx - tl, tx + tl, ey, clamp(P.px, tx - tl * 2, tx + tl * 2), tipY, fillC, inkC);
     } else {
-      const ty = clamp(P.py, by + tl * 2, by + th - tl * 2), ex = side === 'left' ? bx + tw - 1 : bx + 1;
+      const ty = clamp(P.py, by + tl * 2, by + th - tl * 2), ex = side === 'left' ? bx + tw - 2 : bx + 1;
       const tipX = side === 'left' ? Math.min(P.px - 2, ex + gap) : Math.max(P.px + 2, ex - gap);
-      ctx.moveTo(ex, ty - tl); ctx.lineTo(ex, ty + tl); ctx.lineTo(tipX, clamp(P.py, ty - tl * 2, ty + tl * 2));
+      pixelTail(ctx, side, ty - tl, ty + tl, ex, tipX, clamp(P.py, ty - tl * 2, ty + tl * 2), fillC, inkC);
     }
-    ctx.closePath(); ctx.fill();
-    AE.drawAeroSurface?.(ctx, bx, by, tw, th, { tone: 'frost', r: Math.round(10 * Math.min(1.5, k)), gloss: 0.55, glossH: Math.round(th * 0.42), rim: 0.9, glow: 0.45 });
+    AE.pixelShadow?.(ctx, bx, by, tw, th, 2, 2, { n: 2, alpha: 0.3 });
+    AE.drawAeroSurface?.(ctx, bx, by, tw, th, { tone: 'frost', edge: inkC, r: Math.round(10 * Math.min(1.5, k)), gloss: 0.4, glossH: Math.round(th * 0.36), rim: 0.9, glow: 0.4 });
+    // re-cover the seam where the tail meets the body
+    ctx.fillStyle = fillC;
+    if (side === 'above' || side === 'below') { const tx = clamp(P.px, bx + tl * 2, bx + tw - tl * 2); ctx.fillRect(Math.round(tx - tl + 1), side === 'above' ? by + th - 2 : by, tl * 2 - 1, 2); }
+    else { const ty = clamp(P.py, by + tl * 2, by + th - tl * 2); ctx.fillRect(side === 'left' ? bx + tw - 2 : bx, Math.round(ty - tl + 1), 2, tl * 2 - 1); }
     const ink = AE.AERO?.ink || '#13304e';
     let left = Math.floor(this.shown);
     lines.forEach((ln, i) => {
@@ -494,29 +500,16 @@ export class Dialogue {
       this.rects.push({ x, y: yy, w, h: ph, i });
       ctx.save();
       ctx.globalAlpha *= clamp01(kk * 1.4) * (other ? Math.max(0, 1 - this.pickT * 4) : 1);
-      ctx.translate(x + w / 2, yy + ph / 2);
-      ctx.scale(pk * (0.6 + 0.4 * kk), pk * (0.6 + 0.4 * kk));
-      ctx.translate(-(x + w / 2), -(yy + ph / 2));
-      // bubble pill
-      ctx.fillStyle = 'rgba(4,30,70,0.35)';
-      roundRect(ctx, x + 1, yy + 3, w, ph, ph / 2); ctx.fill();
-      const g = ctx.createLinearGradient(0, yy, 0, yy + ph);
-      if (picked) { g.addColorStop(0, '#d8ffb0'); g.addColorStop(0.5, '#6ee04a'); g.addColorStop(1, '#2fa82a'); }
-      else if (hov) { g.addColorStop(0, '#ffffff'); g.addColorStop(0.5, '#a8f4ff'); g.addColorStop(1, '#3ec4ec'); }
-      else { g.addColorStop(0, '#f4feff'); g.addColorStop(0.5, '#c8f2ff'); g.addColorStop(1, '#6fd0f0'); }
-      ctx.fillStyle = g;
-      roundRect(ctx, x, yy, w, ph, ph / 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.75)';
-      roundRect(ctx, x + 6, yy + 2, w - 12, Math.round(ph * 0.36), ph * 0.18); ctx.fill();
-      ctx.strokeStyle = hov || picked ? '#ffffff' : 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1;
-      roundRect(ctx, x + 0.5, yy + 0.5, w - 1, ph - 1, ph / 2 - 0.5); ctx.stroke();
-      // number badge
-      const br = Math.round(ph / 2 - 3), bcx = x + br + 4, bcy = yy + ph / 2;
-      const bg = ctx.createRadialGradient(bcx - 2, bcy - 3, 1, bcx, bcy, br);
-      bg.addColorStop(0, '#9ff8ff'); bg.addColorStop(1, '#1a86d0');
-      ctx.fillStyle = bg;
-      ctx.beginPath(); ctx.arc(bcx, bcy, br, 0, TAU); ctx.fill();
-      ctx.strokeStyle = '#ffffff'; ctx.beginPath(); ctx.arc(bcx, bcy, br, 0, TAU); ctx.stroke();
+      // [pixui30] stepped pixel pill (no scaling: picked choices hop up a pixel instead)
+      if (pk > 1.03) ctx.translate(0, -1);
+      const look = picked ? { top: '#e4ffc8', mid: '#6ee04a', bot: '#2fa82a', edge: '#0e4a12', text: '#ffffff', shadow: '#0e4a12', glow: '#eaffb4', a: [1, 1] }
+        : hov ? { top: '#ffffff', mid: '#a8f4ff', bot: '#3ec4ec', edge: '#0a3e74', text: '#0e3a66', shadow: '#ffffff', glow: '#ffffff', a: [1, 1] }
+        : { top: '#f4feff', mid: '#c8f2ff', bot: '#6fd0f0', edge: '#1d5a8a', text: '#0e3a66', shadow: '#ffffff', glow: '#ffffff', a: [1, 1] };
+      AE.pixelShadow(ctx, x, yy, w, ph, 1, 3, { n: 2, alpha: 0.4, color: '#041e46' });
+      AE.drawAeroSurface(ctx, x, yy, w, ph, { tone: look, r: 'pill', gloss: 0.55, glossH: Math.round(ph * 0.38), rim: 1, glow: 0.4 });
+      // number badge: a small stepped square
+      const br = Math.round(ph / 2 - 3), bcx = x + br + 4, bcy = Math.round(yy + ph / 2);
+      AE.drawAeroSurface(ctx, bcx - br, bcy - br, br * 2, br * 2, { top: '#9ff8ff', mid: '#3aa8e8', bot: '#1a6ac0', edge: '#06264e', r: 4, gloss: 0.4, glossH: br, rim: 1, glow: 0.2 });
       const nfs = fs >= 24 ? 20 : 16;
       drawAlagard(ctx, String(i + 1), bcx, bcy - Math.round(nfs * 0.55), { size: nfs, align: 'center', color: '#ffffff', shadow: '#0a4a8a' });
       drawAlagard(ctx, c.text, bcx + br + Math.round(6 * k), yy + Math.round(ph / 2) - Math.round(fs * 0.55), { size: fs, color: '#0e3a66', shadow: 'rgba(255,255,255,0.8)' });
@@ -527,15 +520,7 @@ export class Dialogue {
   }
 }
 
-export function roundRect(ctx, x, y, w, h, r) {
-  r = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
+// [pixui30] stepped pixel path (kept for older callers; no arcs)
+export function roundRect(ctx, x, y, w, h, r) { AE.pixelRectPath(ctx, x, y, w, h, r); }
 
 export { alagardReady };

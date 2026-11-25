@@ -15,7 +15,7 @@ import { drawFishRig } from '../gfx/fishrig.js';
 import { glowSprite, gbubbleSprite } from '../gfx/particles.js';
 import { traitList, valueMultiplier } from '../fish/traits.js';
 import { RELEASE_VALUE } from '../game/shopdata.js';
-import { drawAeroPanel, drawGlossOrb, drawAeroCoin } from './aero.js';
+import { drawAeroPanel, drawGlossOrb, drawAeroCoin, pixelRectPath, pixelGradient } from './aero.js';
 import { glossText, drawGlassPill, glossFor, word3D } from '../fishing/cinematics.js';
 import { centerRect } from './ui.js';
 import { drawTrophy } from '../fishing/boss.js'; // [phase9:fishing] boss catches
@@ -100,10 +100,7 @@ function drawSplash(ctx, x, y, w, t, k = 1) {
   const base = y;
   const crest = (i) => base - (10 + Math.sin(i * 0.07 + t * 1.8) * 4 + Math.sin(i * 0.19 - t * 2.6) * 3 + Math.max(0, Math.sin(i * 0.031 + t * 0.9)) * 7) * k;
   const top = base - 24 * k;
-  const gr = ctx.createLinearGradient(0, top, 0, base + 30 * k);
-  gr.addColorStop(0, 'rgba(220,250,255,0.95)');
-  gr.addColorStop(0.3, 'rgba(120,215,255,0.88)');
-  gr.addColorStop(1, 'rgba(49,155,255,0.85)');
+  const gr = pixelGradient(ctx, 0, Math.round(top), 0, Math.round(base + 30 * k), [[0, 'rgba(220,250,255,0.95)'], [0.3, 'rgba(120,215,255,0.88)'], [1, 'rgba(49,155,255,0.85)']], 4); // [pixui30] banded
   ctx.fillStyle = gr;
   ctx.beginPath();
   ctx.moveTo(x, base + 30 * k);
@@ -211,11 +208,9 @@ export class RevealPanel {
     // ---- the card: glossy glass body with a sky-blue sun burst inside
     drawAeroPanel(ctx, r.x, r.y, W, H, { tone: 'sky', radius: Math.round(12 * k), bubbles: 0, sparkle: 0 });
     ctx.save();
-    ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(r.x + 4, r.y + 4, W - 8, H - 8, 9) : ctx.rect(r.x + 4, r.y + 4, W - 8, H - 8);
+    pixelRectPath(ctx, r.x + 4, r.y + 4, W - 8, H - 8, 9); // [pixui30] stepped clip + banded sky
     ctx.clip();
-    const sky = ctx.createLinearGradient(0, r.y, 0, r.y + H);
-    sky.addColorStop(0, '#1e8fe0'); sky.addColorStop(0.45, '#59c3ff'); sky.addColorStop(0.8, '#bfeaff'); sky.addColorStop(1, '#e8fbff');
+    const sky = pixelGradient(ctx, 0, r.y, 0, r.y + H, [[0, '#1e8fe0'], [0.45, '#59c3ff'], [0.8, '#bfeaff'], [1, '#e8fbff']], 6);
     ctx.fillStyle = sky;
     ctx.fillRect(r.x, r.y, W, H);
     // [catch fx] clean backdrop (no light rays / spotlight): soft drifting bokeh orbs and a faint rarity tint

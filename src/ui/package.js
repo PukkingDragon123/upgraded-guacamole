@@ -7,6 +7,7 @@ import { rgba, RARITY, RARITY_ORDER, mix, shade } from '../core/color.js';
 import { rng } from '../core/rng.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { drawWood, drawPlank } from './panels.js';
+import { pixelGradient } from './aero.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { ITEMS, TIERS, TIER_ORDER, openPackage, grantLoot, inventory } from '../build/items.js';
@@ -87,8 +88,7 @@ export class PackagePanel {
     const T = TIERS[this.pkg?.tier] || TIERS.crate;
     ctx.save();
     ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
-    const bg = ctx.createRadialGradient(r.x + r.w / 2, r.y + r.h * 0.45, 10, r.x + r.w / 2, r.y + r.h * 0.45, r.w * 0.7);
-    bg.addColorStop(0, mix(T.color, '#1a1030', 0.75)); bg.addColorStop(1, '#06040c');
+    const bg = pixelGradient(ctx, 0, r.y, 0, r.y + r.h, [[0, '#06040c'], [0.45, mix(T.color, '#1a1030', 0.75)], [1, '#06040c']], 7); // [pixui30] banded stage light
     ctx.fillStyle = bg; ctx.fillRect(r.x, r.y, r.w, r.h);
     const cx = Math.round(r.x + r.w / 2), floor = Math.round(r.y + r.h * 0.56);
     // [polish17] (no god-ray fan behind the crate any more; the stage glow above carries the tier colour)

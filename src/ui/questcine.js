@@ -56,7 +56,7 @@ import { prepProps, propsReady } from './cineprops.js'; // [cine21]
 import { BOSS_BY_ID, BOSS_BY_OCEAN } from '../fish/bosses.js'; // [cine21]
 import { SPECIES_BY_ID } from '../fish/species.js'; // [cine21]
 import { drawFishFit } from './journal.js'; // [cine21]
-import { aeroSurface, drawAeroGlow, drawSparkle, drawFocusBrackets, drawPixelBrackets, drawAeroCoin } from './aero.js';
+import { aeroSurface, drawAeroGlow, drawSparkle, drawFocusBrackets, drawPixelBrackets, drawAeroCoin, pixelGradient } from './aero.js';
 import { drawAnimIcon, drawPadlock } from './labrows.js';
 import { text3dCanvas } from './pop3d.js';
 import { CHAPTERS, CHAPTER_BY_ID, QUEST_BY_ID, ensureQuests, rewardList } from '../game/quests.js';
@@ -148,9 +148,7 @@ function barArt(W, h, top) {
   if (c) return c;
   c = hiArt(W, h, (g, w2, h2) => {
     const D = h2 / h;
-    const gr = g.createLinearGradient(0, 0, 0, h2);
-    if (top) { gr.addColorStop(0, '#020c22'); gr.addColorStop(0.7, '#06204a'); gr.addColorStop(1, '#0d3a74'); }
-    else { gr.addColorStop(0, '#0d3a74'); gr.addColorStop(0.3, '#06204a'); gr.addColorStop(1, '#020c22'); }
+    const gr = pixelGradient(g, 0, 0, 0, h2, top ? [[0, '#020c22'], [0.7, '#06204a'], [1, '#0d3a74']] : [[0, '#0d3a74'], [0.3, '#06204a'], [1, '#020c22']], 4); // [pixui30] banded
     g.fillStyle = gr; g.fillRect(0, 0, w2, h2);
     // ordered-dither band of deeper blue (pixel texture, no smooth gloss)
     g.fillStyle = 'rgba(40,120,200,0.18)';

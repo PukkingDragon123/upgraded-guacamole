@@ -14,7 +14,8 @@
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { hash1 } from '../core/math.js';
-import { aeroCached, drawAeroButton, drawAeroBubble, drawAeroGlow, drawSparkle } from '../ui/aero.js';
+import { aeroCached, drawAeroButton, drawAeroBubble, drawAeroGlow, drawSparkle, drawSunFlare, pixelGradient, pixelOrbCanvas, pixelRectPath } from '../ui/aero.js';
+import { pixelCloud } from '../gfx/pxsprites.js';
 
 const TAU = Math.PI * 2;
 const LEAF = [['#d8ff8a', '#7ed83a', '#2f9a1c', '#1d6312'], ['#e8ffa8', '#9ae84a', '#46b22a', '#22701a'], ['#c8f870', '#5cc832', '#24861a', '#165a10']];
@@ -129,7 +130,8 @@ function globeTex(r) {
 
 export function ecoGlobe(ctx, cx, cy, r, t = 0) {
   r = Math.max(4, Math.round(r));
-  const c = aeroCached(`globe|${r}`, () => globeTex(r));
+  const c = pixelOrbCanvas(r, '#4cc83a'); // [pixui30] a stepped pixel orb instead of the round globe
+  void globeTex;
   drawAeroGlow(ctx, cx, cy, r * 1.6, '#d8ffb0', 0.35);
   ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
   const ph = (t * 0.35) % 1;
@@ -137,50 +139,29 @@ export function ecoGlobe(ctx, cx, cy, r, t = 0) {
 }
 
 // ---------------------------------------------------------------- sky
+// [pixui30] pixel sky: flat colour bands with checker-dithered seams, pixel clouds, a pixel sun and a stepped grass
+// horizon (no arcs, no smooth gradients)
 function skyTex(w, h, o) {
   const c = makeCanvas(w, h), g = ctxOf(c);
-  const gr = g.createLinearGradient(0, 0, 0, h);
-  gr.addColorStop(0, '#1a86dc'); gr.addColorStop(0.55, '#4cb8f6'); gr.addColorStop(1, '#bfeaff');
-  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  g.fillStyle = pixelGradient(g, 0, 0, 0, h, [[0, '#1a86dc'], [0.55, '#4cb8f6'], [1, '#bfeaff']], Math.max(3, Math.min(7, Math.round(h / 12))));
+  g.fillRect(0, 0, w, h);
   const [sx, sy] = [o.sun[0] * w, o.sun[1] * h];
-  // white arcs fanning from behind the sun
-  if (o.arcs !== false) {
-    g.strokeStyle = 'rgba(255,255,255,0.32)'; g.lineWidth = 1;
-    for (let i = 0; i < 7; i++) {
-      const rr = h * 0.9 + i * Math.max(4, h * 0.09);
-      g.beginPath(); g.arc(sx + w * 0.18, sy + rr * 0.95, rr, Math.PI * 1.08, Math.PI * 1.62); g.stroke();
-    }
-  }
-  // clouds
   if (o.clouds !== false) {
-    for (let i = 0; i < 5; i++) {
-      const cx = hash1(i, 3) * w, cy = h * (0.12 + hash1(i, 7) * 0.4), s = 6 + hash1(i, 9) * h * 0.18;
-      g.fillStyle = 'rgba(255,255,255,0.55)';
-      for (let k = 0; k < 4; k++) { g.beginPath(); g.ellipse(cx + (k - 1.5) * s * 0.7, cy + Math.sin(k * 2.1) * s * 0.15, s * 0.6, s * 0.35, 0, 0, TAU); g.fill(); }
+    for (let i = 0; i < 3; i++) {
+      const cl = pixelCloud(Math.round(Math.min(60, w * 0.2) * (0.7 + hash1(i, 9) * 0.5)), i + 3);
+      g.globalAlpha = 0.6; g.drawImage(cl, Math.round(hash1(i, 3) * w - cl.width / 2), Math.round(h * (0.1 + hash1(i, 7) * 0.3))); g.globalAlpha = 1;
     }
   }
-  // sun bloom
-  const sg = g.createRadialGradient(sx, sy, 0, sx, sy, Math.max(w, h) * 0.45);
-  sg.addColorStop(0, 'rgba(255,255,255,1)'); sg.addColorStop(0.12, 'rgba(255,255,240,0.85)'); sg.addColorStop(0.4, 'rgba(255,255,255,0.25)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = sg; g.fillRect(0, 0, w, h);
-  // curved grass horizon
+  drawSunFlare(g, sx, sy, Math.max(8, Math.round(Math.min(w, h) * 0.22)), 0.9);
   if (o.grass) {
     const gy = h - o.grass;
-    g.beginPath();
-    g.moveTo(0, gy + o.grass * 0.55);
-    g.quadraticCurveTo(w * 0.45, gy - o.grass * 0.55, w, gy + o.grass * 0.2);
-    g.lineTo(w, h); g.lineTo(0, h); g.closePath();
-    const gg = g.createLinearGradient(0, gy - o.grass * 0.3, 0, h);
-    gg.addColorStop(0, '#b8f05a'); gg.addColorStop(0.35, '#6ccf34'); gg.addColorStop(1, '#2e8e1c');
-    g.fillStyle = gg; g.fill();
-    g.strokeStyle = 'rgba(240,255,200,0.9)'; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(0, gy + o.grass * 0.55 + 1); g.quadraticCurveTo(w * 0.45, gy - o.grass * 0.55 + 1, w, gy + o.grass * 0.2 + 1); g.stroke();
-    // grass blades
-    g.strokeStyle = 'rgba(40,120,20,0.35)';
-    for (let i = 0; i < w; i += 3) {
-      const u = i / w, by = (1 - u) * (1 - u) * (gy + o.grass * 0.55) + 2 * (1 - u) * u * (gy - o.grass * 0.55) + u * u * (gy + o.grass * 0.2);
-      const bh = 2 + hash1(i, 5) * 3;
-      g.beginPath(); g.moveTo(i, by + 3 + bh); g.lineTo(i + 1, by + 3); g.stroke();
+    for (let x = 0; x < w; x++) {
+      const u = x / Math.max(1, w - 1);
+      const top = Math.round((1 - u) * (1 - u) * (gy + o.grass * 0.55) + 2 * (1 - u) * u * (gy - o.grass * 0.55) + u * u * (gy + o.grass * 0.2));
+      g.fillStyle = '#e8ffb0'; g.fillRect(x, top, 1, 1);
+      g.fillStyle = '#9ee64e'; g.fillRect(x, top + 1, 1, 2);
+      g.fillStyle = '#6ccf34'; g.fillRect(x, top + 3, 1, 4);
+      g.fillStyle = '#2e8e1c'; g.fillRect(x, top + 7, 1, Math.max(0, h - top - 7));
     }
   }
   return c;
@@ -205,7 +186,8 @@ export function ecoBubbles(ctx, x, y, w, h, t, n = 8) {
     const sp = 6 + hash1(i, 4) * 10;
     const bx = x + hash1(i, 1) * w + Math.sin(t * 1.4 + i) * 3;
     const by = y + h - ((t * sp + hash1(i, 6) * h) % (h + 10)) + 5;
-    drawAeroBubble(ctx, bx, by, 1.5 + hash1(i, 8) * 3, 0.85);
+    ctx.fillStyle = 'rgba(232,250,255,0.75)'; ctx.fillRect(Math.round(bx), Math.round(by), 2, 2); // [pixui30] square pixel bubbles
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(bx), Math.round(by), 1, 1);
   }
 }
 
@@ -262,9 +244,9 @@ export function splash(ctx, cx, cy, w, t = 0, alpha = 1) {
 // A glossy pill riding on a water splash (draw only; o: {hover, down, disabled, tone, icon, active, t}).
 export function drawSplashButton(ctx, x, y, w, h, label, o = {}) {
   const t = o.t || 0, hov = !!o.hover && !o.disabled;
-  if (!o.disabled) splash(ctx, x + w / 2, y + h + 1, w * (hov ? 1.12 : 1.0), t, hov ? 1 : 0.85);
+  // [pixui30] (no curved water splash under the pixel button)
   drawAeroButton(ctx, x, y + (o.down ? 1 : 0), w, h, { label, icon: o.icon || null, tone: o.disabled ? 'grey' : o.tone || 'aqua', state: o.disabled ? 'disabled' : o.down ? 'down' : hov || o.active ? 'hover' : 'normal' });
-  if (hov) for (let i = 0; i < 3; i++) drawAeroBubble(ctx, x + 6 + ((i * 29 + t * 18) % Math.max(1, w - 12)), y - 2 - ((t * 14 + i * 7) % 8), 1.5, 0.8);
+  if (hov) { ctx.fillStyle = 'rgba(255,255,255,0.85)'; for (let i = 0; i < 3; i++) ctx.fillRect(Math.round(x + 6 + ((i * 29 + t * 18) % Math.max(1, w - 12))), Math.round(y - 3 - ((t * 14 + i * 7) % 8)), 2, 2); }
 }
 
 // Immediate-mode version for panels. Returns true when clicked.
@@ -283,9 +265,7 @@ export function splashButton(ui, ctx, x, y, w, h, label, o = {}) {
 export function ecoBand(ctx, x, y, w, h, t, o = {}) {
   ctx.save();
   const r = o.r ?? 9;
-  ctx.beginPath();
-  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+  pixelRectPath(ctx, Math.round(x), Math.round(y), Math.round(w), Math.round(h), r); // [pixui30] stepped clip
   ctx.clip();
   ecoSky(ctx, x, y, w, h, t, { sun: o.sun || [0.62, 0.2], clouds: false, grass: o.grass ?? 7 });
   ecoBubbles(ctx, x, y, w, h, t, 6);

@@ -4,7 +4,7 @@ import { clamp, TAU, hash1 } from '../core/math.js';
 import { rgba, mix, shade, RARITY } from '../core/color.js';
 import { drawText, measureText, wrapText, lineHeight } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroLabel, drawAeroBadge } from './aero.js';
+import { drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroLabel, drawAeroBadge, drawAeroSurface, pixelHalo, pixelRect } from './aero.js';
 import { RODS, ROD_BY_ID, ROD_STAT_KEYS, ensureRods, equipRod, rodStatsOf } from '../game/rods.js';
 import { lineLabel } from '../fishing/line.js'; // [crate26] line length
 import { BOAT_ORDER, BOAT_NAMES, BRANCHES, EFFECT_INFO, fmtEffect, unlocked, nodeFor, labStatus } from '../game/lab.js';
@@ -20,14 +20,10 @@ function tile(ctx, ui, x, y, w, h, o = {}) {
   const hov = ui.hover({ x, y, w, h });
   ctx.save();
   if (o.glow) drawAeroGlow(ctx, x + w / 2, y + h / 2, Math.max(w, h) * 0.75, o.glow, 0.55);
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, rgba('#ffffff', 0.98)); g.addColorStop(1, rgba(o.bottom || '#d9f2fc', 0.96)); // [lab13] solid over the lab room
-  ctx.fillStyle = g; roundRectPath(ctx, x, y, w, h, 8); ctx.fill();
-  ctx.fillStyle = rgba('#ffffff', 0.7); ctx.fillRect(x + 6, y + 2, w - 12, 2);
-  ctx.strokeStyle = o.sel ? '#ffffff' : o.edge || rgba('#7fbedd', 0.9); ctx.lineWidth = o.sel ? 2.5 : 1;
-  roundRectPath(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 8); ctx.stroke();
-  if (o.sel) { ctx.strokeStyle = '#35c8ff'; ctx.lineWidth = 1; roundRectPath(ctx, x - 1.5, y - 1.5, w + 3, h + 3, 9); ctx.stroke(); }
-  if (hov && !o.sel) { ctx.strokeStyle = rgba('#35c8ff', 0.8); ctx.lineWidth = 1; roundRectPath(ctx, x - 0.5, y - 0.5, w + 1, h + 1, 8); ctx.stroke(); }
+  // [pixui30] pixel tile: stepped corners, dark outline, light bevel; selection / hover = 1 px pixel rings
+  drawAeroSurface(ctx, x, y, w, h, { top: '#ffffff', mid: '#f4fbff', bot: o.bottom || '#d9f2fc', a: [0.98, 0.96], edge: o.sel ? '#0a5a9a' : o.edge || '#4a8eb8', r: 8, gloss: 0.35, glossH: Math.min(14, Math.round(h * 0.25)), rim: 1, glow: 0.25 });
+  if (o.sel) { pixelHalo(ctx, x, y, w, h, 2, '#ffffff', 1); pixelHalo(ctx, x - 1, y - 1, w + 2, h + 2, 3, '#35c8ff', 1); }
+  else if (hov) pixelHalo(ctx, x, y, w, h, 2, '#35c8ff', 0.8);
   ctx.restore();
   return hov;
 }
@@ -95,9 +91,9 @@ export function drawRodsView(ctx, ui, panel, view) {
       ctx.drawImage(ic, Math.round(x + TW / 2 - ic.width / 2), Math.round(y + TH * (two ? 0.37 : 0.42) - ic.height / 2 + bob));
       ctx.globalAlpha = 1;
     }
-    ctx.fillStyle = rarityCol(rod.rarity); roundRectPath(ctx, x + 8, y + TH - 5, TW - 16, 3, 1.5); ctx.fill();
+    ctx.fillStyle = rarityCol(rod.rarity); ctx.fillRect(x + 8, y + TH - 5, TW - 16, 3);
     tileName(ctx, rod.name, x + TW / 2, y + TH - 15, TW - 8, owned ? INK : '#7a90a4');
-    if (eq) { const ck = getUiIcon('check'); ctx.fillStyle = '#4cc83a'; ctx.beginPath(); ctx.arc(x + TW - 8, y + 8, 6, 0, TAU); ctx.fill(); if (ck) ctx.drawImage(ck, x + TW - 8 - Math.floor(ck.width / 2), y + 8 - Math.floor(ck.height / 2)); }
+    if (eq) { const ck = getUiIcon('check'); pixelRect(ctx, x + TW - 14, y + 2, 12, 12, 3, '#4cc83a', { outline: '#1a5e12', hi: '#9cf060' }); if (ck) ctx.drawImage(ck, x + TW - 8 - Math.floor(ck.width / 2), y + 8 - Math.floor(ck.height / 2)); }
     else if (!owned) { const lk = getUiIcon('lock'); if (lk) ctx.drawImage(lk, x + TW - 14, y + 4); }
     if (hov) ui.tip = rod.name;
     if (ui.clicked({ x, y, w: TW, h: TH })) { panel.rodSel = rod.id; panel.game.audio.play('ui_click'); }
@@ -258,7 +254,7 @@ export function drawBoatsView(ctx, ui, panel, view) {
     const ic = icon('boat:' + id, Math.min(80, sp * 1.6));
     if (ic) { ctx.globalAlpha = has ? 1 : 0.5; ctx.drawImage(ic, Math.round(x - ic.width / 2), Math.round(y - ic.height + 6)); ctx.globalAlpha = 1; }
     if (!has) { const lk = getUiIcon('lock'); if (lk) ctx.drawImage(lk, Math.round(x - 4), Math.round(y - 46)); }
-    if (i === cur) { const ck = getUiIcon('check'); ctx.fillStyle = '#4cc83a'; ctx.beginPath(); ctx.arc(x + 22, y - 46, 6, 0, TAU); ctx.fill(); if (ck) ctx.drawImage(ck, Math.round(x + 22 - ck.width / 2), Math.round(y - 46 - ck.height / 2)); }
+    if (i === cur) { const ck = getUiIcon('check'); pixelRect(ctx, x + 16, y - 52, 12, 12, 3, '#4cc83a', { outline: '#1a5e12', hi: '#9cf060' }); if (ck) ctx.drawImage(ck, Math.round(x + 22 - ck.width / 2), Math.round(y - 46 - ck.height / 2)); }
     const nm = BOAT_NAMES[id];
     drawText(ctx, nm, x, wl + 14, { font: 'small', align: 'center', color: has ? '#ffffff' : '#cfeefa', outline: has ? '#0a5a9a' : '#2a6a96' });
     const rr = { x: x - sp / 2, y: y - 60, w: sp, h: 72 };

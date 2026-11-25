@@ -14,9 +14,14 @@ import { getBigIcon } from '../gfx/bigicons.js';
 import { drawNPC } from '../gfx/npcs.js';
 import {
   AERO, CURRENCY, fmtAero, aeroCached, aeroSurface, drawAeroFrame, drawAeroCard, drawAeroCoin, drawAeroGlow, drawSparkle,
-  drawAeroBubble, drawAeroBar, drawGlossOrb, drawAeroLeaf, drawFocusBrackets } from '../ui/aero.js';
+  drawAeroBubble, drawAeroBar, drawGlossOrb, drawAeroLeaf, drawFocusBrackets, pixelGlassPlate } from '../ui/aero.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawBaitGloss } from '../fishing/baitart.js';
+// [pixui30] bait 'in a bubble' = a stepped pixel glass plate (aero.js pixelGlassPlate) + the bait sprite on top
+function drawBaitPlate(ctx, art, cx, cy, px, t = 0, o = {}) {
+  pixelGlassPlate(ctx, cx, cy, px, { tint: o.tint || '#e8fbff', rim: o.rim || '#2fb8e0' });
+  drawBaitGloss(ctx, art, cx, cy, Math.round(px * 0.88), t, { ...o, bubble: false });
+}
 import { statBar, tag, rrect, burst } from './aerokit.js';
 import { TIERS, CATALOG_BY_ID, APP_DEF, formatShortTime } from './catalog.js';
 import { getMiniIcon } from '../desktop/icons.js';
@@ -48,17 +53,18 @@ function awningTex(w) {
   const c = makeCanvas(w, H);
   const g = ctxOf(c);
   const px = (x, y, col) => { g.fillStyle = col; g.fillRect(x, y, 1, 1); };
+  const bot = (x) => { const a = Math.abs((((x % S) + S) % S + 0.5) / S * 2 - 1); return BODY + (a < 0.5 ? SC : a < 0.78 ? SC - 2 : 1); };
   const LIME = ['#e2ff9a', '#9ee64e', '#6cc832', '#3e9e22'], WHITE = ['#ffffff', '#ffffff', '#eaf6fc', '#c4e0ee'];
   for (let x = 0; x < w; x++) {
     const i = Math.floor(x / S), lime = i % 2 === 0;
     const P = lime ? LIME : WHITE;
-    const u = ((x % S) + 0.5) / S * 2 - 1;
-    const bottom = BODY + Math.round(Math.sqrt(Math.max(0, 1 - u * u)) * SC);
+    const bottom = bot(x); // [pixui30] stepped (not round) scallops
     for (let y = 3; y < bottom; y++) {
       const k = (y - 3) / Math.max(1, bottom - 3);
       px(x, y, k < 0.18 ? P[0] : k < 0.5 ? P[1] : k < 0.82 ? P[2] : P[3]);
     }
     px(x, bottom, lime ? '#2a7a18' : '#7aaac6'); // scallop outline
+    for (const nx of [x - 1, x + 1]) for (let y = bottom + 1; y <= Math.min(bot(nx), BODY + SC); y++) if (nx >= 0 && nx < w) px(x, y - 1, lime ? '#2a7a18' : '#7aaac6');
     px(x, bottom + 1, 'rgba(10,60,100,0.18)'); // soft shadow
     if (x % S === 0) for (let y = 3; y < BODY; y++) px(x, y, 'rgba(30,90,40,0.25)');
   }
@@ -319,7 +325,7 @@ export class ShopPanel {
       drawFocusBrackets(ctx, cx, cy, 20, t, { col: '#ffd65a', ink: '#7a4a06' }); // [phase8:ui] no pulsing ring
     }
     ctx.globalAlpha = locked || out ? 0.55 : 1;
-    drawBaitGloss(ctx, art, cx, cy, sel || hov ? 36 : 34, t + x * 0.01, { tint: sel ? '#e2ffd0' : '#e8fbff', rim: sel ? '#4cc830' : '#2fb8e0', bob: hov || sel });
+    drawBaitPlate(ctx, art, cx, cy, sel || hov ? 36 : 34, t + x * 0.01, { tint: sel ? '#e2ffd0' : '#e8fbff', rim: sel ? '#4cc830' : '#2fb8e0', bob: hov || sel });
     ctx.globalAlpha = 1;
     if (sel) {
       const a = t * 2.4;
@@ -408,7 +414,7 @@ export class ShopPanel {
     const cx = R.x + R.w / 2, cy = y + 28;
     drawAeroGlow(ctx, cx, cy, 34, mix(d.art?.color || '#9fe8ff', '#ffffff', 0.4), 0.5);
     ctx.globalAlpha = o.locked ? 0.6 : 1;
-    drawBaitGloss(ctx, d.art, cx, cy, 52, t, { tint: '#eafcff' });
+    drawBaitPlate(ctx, d.art, cx, cy, 52, t, { tint: '#eafcff' });
     ctx.globalAlpha = 1;
     const owned = countOf(g.state, o.bait);
     if (owned > 0) {

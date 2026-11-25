@@ -1,7 +1,4 @@
-// [pixicons26] Every name here (and every name with a hand-drawn sprite in src/gfx/pixart.js, e.g. 'aerobuck', 'gem',
-// 'grouper') now draws as 2D PIXEL ART through src/gfx/pixicons.js; the low-poly models below are only a fallback for
-// names without a sprite. Hover = a one-art-pixel hop (2 frames), no 3D spin.
-// (was: [phase9:ui] 3D icons for the whole UI (no 2D pixel icons): glossy low-poly models for every small UI icon name
+// [phase9:ui] 3D icons for the whole UI (no 2D pixel icons): glossy low-poly models for every small UI icon name
 // (src/gfx/uiicons.js) and the Lab's stat glyphs, rendered smooth at full resolution through bigicons.modelFrame
 // ([icons15] detailed voxel renders, hand-built src/gfx/iconvox.js models first). Units -1..1, y up, +z toward the camera.
 //   ICON3D { name: () => model }        model = {mesh, over?, glass?, glassAlpha?, yaw, pitch, spin: 'full'|'wobble'}
@@ -16,7 +13,6 @@ import { UI3D_VOX } from './iconvox.js';
 import { mix, shade } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { HI } from './hires.js';
-import { hasPix, pixStill, pixFrame } from './pixicons.js'; // [pixicons26]
 
 const TAU = Math.PI * 2;
 const circ = (n, r, cx = 0, cy = 0, a0 = 0, sy = 1) => Array.from({ length: n }, (_, i) => { const a = a0 + (i / n) * TAU; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r * sy]; });
@@ -205,12 +201,11 @@ function mouseModel(side, hold = false) {
   };
 }
 
-export function has3D(name) { return hasPix(name) || !!ICON3D[name]; }
+export function has3D(name) { return !!(UI3D_VOX[name] || ICON3D[name]); } // [vicons30] hand-built voxel names too ('fish', 'gem', 'aerobuck' ...)
 
 // still render fitted into a w x h logical box (no layout changes for callers that sized around the 2D icons)
 const stills = new Map();
 export function icon3d(name, w, h = w) {
-  if (hasPix(name)) return pixStill(name, w, h); // [pixicons26]
   const make = UI3D_VOX[name] || ICON3D[name]; // [icons15] hand-built detailed models first
   if (!make) return null;
   const key = name + '|' + w + 'x' + h;
@@ -232,20 +227,12 @@ export function icon3d(name, w, h = w) {
 }
 
 export function icon3dFrame(name, px, turn = 0) {
-  if (hasPix(name)) return pixFrame(name, px, turn); // [pixicons26]
   const make = UI3D_VOX[name] || ICON3D[name]; // [icons15] hand-built detailed models first
   return make ? modelFrame('ui3d:' + name, make, px, turn) : null;
 }
 
 // Gentle idle rock (wobble models) or slow turn (round ones), a full spin while hovered.
 export function drawIcon3D(ctx, name, cx, cy, px, o = {}) {
-  if (hasPix(name)) { // [pixicons26] still art; hovered = a one-art-pixel hop every quarter second
-    const t = o.t ?? performance.now() / 1000, hov = o.hover || 0, ph = o.phase || 0;
-    const f = pixFrame(name, Math.round(px), hov > 0.5 ? (Math.floor(t * 4 + ph) % 2 ? 0.3 : 0.6) : 0);
-    if (!f) return false;
-    ctx.drawImage(f.canvas, Math.round((cx - f.ox) * 2) / 2, Math.round((cy - f.oy) * 2) / 2);
-    return true;
-  }
   const make = UI3D_VOX[name] || ICON3D[name]; // [icons15] hand-built detailed models first
   if (!make) return false;
   const t = o.t ?? performance.now() / 1000, hov = o.hover || 0, ph = o.phase || 0;

@@ -157,8 +157,8 @@ export class UI {
       for (const gh of this.ghosts) {
         const p = gh.p, r = p.rect, k = Math.max(0, 1 - ease.inCubic(1 - gh.k));
         ctx.save();
-        const cx = r.x + r.w / 2, cy = r.y + r.h / 2, s = 0.92 + 0.08 * k;
-        ctx.translate(cx, cy + (1 - k) * 10); ctx.scale(s, s); ctx.translate(-cx, -cy);
+        ctx.translate(0, Math.round((1 - k) * 10)); // [pixui30] whole-pixel slide (no scaling: pixels stay square)
+        void r;
         mul = Math.max(0.001, gh.k); // linear fade, eased shrink
         ctx.globalAlpha = 1;
         try { p.draw(ctx, this, 0); } catch { gh.k = 0; }
@@ -456,10 +456,8 @@ export class UI {
       const k = ease.outBack(Math.min(1, p.anim || 0));
       ctx.save();
       if (k < 1 && p.rect) {
-        const cx = p.rect.x + p.rect.w / 2, cy = p.rect.y + p.rect.h / 2;
-        ctx.translate(cx, cy + (1 - k) * 20);
-        ctx.scale(0.85 + 0.15 * k, 0.85 + 0.15 * k);
-        ctx.translate(-cx, -cy);
+        // [pixui30] the panel slides up by whole pixels and fades in (no scaling, so the pixel art stays crisp)
+        ctx.translate(0, Math.round((1 - k) * 20));
         ctx.globalAlpha = Math.min(1, (p.anim || 0) * 2);
       }
       p.draw(ctx, this, dt);
@@ -510,9 +508,8 @@ export class UI {
       {
         const pw = Math.round(w + 26), ph = Math.round(h + 12), pk = Math.min(1, ease.outBack ? ease.outBack(Math.min(1, t.t * 3)) : Math.min(1, t.t * 3));
         const ptone = pal === 'coral' ? { top: '#8a3a52', mid: '#5a1a30', bot: '#3a0a1c', edge: '#1e0410', text: '#ffffff', shadow: '#1e0410', glow: '#ff8aa8' } : 'deep';
-        const plate = aeroCached(`toastplate|${pw}|${ph}|${pal === 'coral' ? 'c' : 'd'}`, () => aeroSurface(pw, ph, { tone: ptone, a: [0.84, 0.9], r: 8, gloss: 0.45, glossH: Math.round(ph * 0.42), curve: 2, rim: 0.9, glow: 0.5, depth: 1, block: 4, bubbles: pw > 120 ? 2 : 0, seed: pw }));
-        const sw = Math.max(1, Math.round(pw * pk)), sh = Math.max(1, Math.round(ph * (2 - pk) * pk));
-        ctx.drawImage(plate, Math.round(x - 13 + (pw - sw) / 2), Math.round(cy - ph / 2 + (ph - sh) / 2), sw, sh);
+        const plate = aeroCached(`toastplate|${pw}|${ph}|${pal === 'coral' ? 'c' : 'd'}`, () => aeroSurface(pw, ph, { tone: ptone, a: [0.9, 0.94], r: 8, gloss: 0.35, glossH: Math.round(ph * 0.4), rim: 0.9, glow: 0.4, depth: 2, bubbles: pw > 120 ? 2 : 0, seed: pw }));
+        ctx.drawImage(plate, Math.round(x - 13), Math.round(cy - ph / 2 + (1 - Math.min(1, pk)) * 4)); // [pixui30] no squash
       }
       // the 3D icon spins in, then rocks gently
       const icon = getUiIcon(t.icon)?.__icon3d ? t.icon : 'info';
@@ -520,7 +517,7 @@ export class UI {
       let ly = cy - th / 2;
       lines.forEach((l, i) => {
         const c = sizes[i];
-        drawPop3D(ctx, l, x + D + 6 + c.width / 2, ly + c.height / 2, { t: this.time + i * 0.4, pop: Math.min(1, t.t * 2.6 - i * 0.15), palette: pal, scale: TS, phase: t.max * 3 + i, wobble: 0.6, sparkle: i === 0 });
+        drawPop3D(ctx, l, x + D + 6 + c.width / 2, ly + c.height / 2, { glow: false, t: this.time + i * 0.4, pop: Math.min(1, t.t * 2.6 - i * 0.15), palette: pal, scale: TS, phase: t.max * 3 + i, wobble: 0.6, sparkle: i === 0 });
         ly += c.height - 2;
       });
       ctx.restore();

@@ -12,6 +12,7 @@ import { rgba, RARITY, shade } from '../core/color.js';
 import { rng } from '../core/rng.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { drawWood, drawPaper, drawPlank, drawBar, drawStamp } from './panels.js';
+import { pixelGradient } from './aero.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { baitSprite } from '../fishing/baitart.js';
 import { BAITS } from '../game/shopdata.js';
@@ -369,9 +370,8 @@ export class BuildingPanel {
     const g = this.game;
     ctx.save();
     ctx.beginPath(); ctx.rect(pv.x, pv.y, pv.w, pv.h); ctx.clip();
-    const grd = ctx.createLinearGradient(0, pv.y, 0, pv.y + pv.h);
     const deep = g.ocean?.biome?.id === 'abyss';
-    grd.addColorStop(0, deep ? '#1a2050' : '#4ab8d0'); grd.addColorStop(1, deep ? '#0a0a20' : '#1a5578');
+    const grd = pixelGradient(ctx, 0, pv.y, 0, pv.y + pv.h, [[0, deep ? '#1a2050' : '#4ab8d0'], [1, deep ? '#0a0a20' : '#1a5578']], 5); // [pixui30] banded
     ctx.fillStyle = grd; ctx.fillRect(pv.x, pv.y, pv.w, pv.h);
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 3; i++) {

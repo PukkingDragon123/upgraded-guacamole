@@ -448,15 +448,12 @@ export class Finale {
         F.shake(7);
         F.cam?.flash?.('#ffffff', 0.25);
         const sy = this.surface ?? f.y;
-        if (this.surface !== null) {
-          F.particles.eruption(f.x, sy, 1.6);
-          F.particles.foam(f.x, sy, 14, { spread: 24, scale: 1.3 });
-        } else {
-          F.particles.ringWave?.(f.x, f.y, 40, '#ffffff', { w: 3 });
-          F.particles.bubbles(f.x, f.y, 16);
-        }
-        F.particles.aeroBubbles?.(f.x, sy, 14, { w: 12, speed: [40, 120], sizes: [2, 3, 4, 5, 6] });
-        F.particles.splashBurst?.(f.x, sy, 1.4);
+        // [fishui30] the big final leap: pixel splash crowns, a ring of droplets, mist, foam, ripple lines (no
+        // expanding rings); bigger for rarer / bigger fish
+        const pw = 1 + (({ uncommon: 1, rare: 2, epic: 3, legendary: 4 })[f.sp?.rarity] || 0) * 0.28 + (f.boss ? 0.8 : 0) + clamp((F.fishLen?.(f) || 30) / 80, 0, 0.8);
+        if (this.surface !== null) F.ffx?.leap(f.x, sy, pw);
+        else { F.particles.impact?.(f.x, f.y, 2, { ramp: 'aqua' }); F.particles.bubbles(f.x, f.y, 16); }
+        F.particles.aeroBubbles?.(f.x, sy, 8, { w: 12, speed: [40, 120], sizes: [2, 3, 4, 5] });
         F.sfx('splash_big');
         F.sfx('jump_out', { pitch: 0.9 });
         f.feel('surprised', 4);
@@ -516,6 +513,7 @@ export class Finale {
         f.feel('scared', 0.5);
         if (rng.chance(rdt * 20)) F.particles.bubbleTrail(f.x, f.y, 0, -80);
         if (this.surface !== null && rng.chance(rdt * 10)) F.particles.foam(f.x, this.surface, 1, { spread: 8 });
+        if (this.surface !== null && rng.chance(rdt * 7)) F.ffx?.surfaceThrash(f, 0.8 + (f.boss ? 0.8 : 0)); // [fishui30] it thrashes at the surface
         if (this.hasBoat) F.focusCam(f.x, f.y - 20, 1.6, 3);
         if (this.st > (this.compact ? 0.2 : 0.55)) this.go('erupt');
         break;

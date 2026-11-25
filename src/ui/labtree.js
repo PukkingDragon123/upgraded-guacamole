@@ -319,9 +319,9 @@ export function padlockTex(S) {
 const PORT_OFF = new Map();
 function drawGiver(ctx, id, cx, cy, r, t) {
   const col = { seal: '#8fd8ff', fizz: '#7affc8', marina: '#ffb43c', dot: '#c8a0ff', bloat: '#ff8a7a' }[id] || '#bff6ff';
-  ctx.drawImage(aeroSurface(r * 2 + 4, r * 2 + 4, { top: '#ffffff', mid: mix(col, '#ffffff', 0.55), bot: shade(col, -0.1), edge: shade(col, -0.6), a: [1, 1], r: 'pill', gloss: 0.6, glossH: r, curve: 1, rim: 0.8, glow: 0.3 }), Math.round(cx - r - 2), Math.round(cy - r - 2));
+  ctx.drawImage(aeroSurface(r * 2 + 4, r * 2 + 4, { top: '#ffffff', mid: mix(col, '#ffffff', 0.55), bot: shade(col, -0.1), edge: shade(col, -0.6), a: [1, 1], r: 12, gloss: 0.6, glossH: r, curve: 1, rim: 0.8, glow: 0.3 }), Math.round(cx - r - 2), Math.round(cy - r - 2));
   ctx.save();
-  ctx.beginPath(); ctx.arc(cx, cy, r - 1, 0, TAU); ctx.clip();
+  roundRectPath(ctx, Math.round(cx - r + 1), Math.round(cy - r + 1), r * 2 - 2, r * 2 - 2, 10); ctx.clip(); // [pixui30] stepped well
   try {
     if (id === 'seal') NPC.drawNPC(ctx, 'seal', { portrait: true, x: cx, y: cy, r: r - 1, t, mood: 'happy', id: 'lab-qg-seal' });
     else if (NPC.NPCS?.[id]) {

@@ -214,17 +214,16 @@ export class LabPanel {
     // the round emblem (an eco globe in a chrome ring) overlapping the bar, like the reference's medallion
     const ex = P.x + 28, ey = P.y + 17, R = 23;
     drawAeroGlow(ctx, ex, ey, R + 14, '#ffffff', 0.45 + 0.1 * Math.sin(t * 2));
-    ctx.drawImage(aeroCached(`labemblem9|${R}`, () => dualArt(R * 2 + 6, R * 2 + 6, (g2) => { // [phase9:ui] traced again at 2x
-      const S = R * 2 + 6;
-      const cx = S / 2;
-      const rg = g2.createLinearGradient(0, 0, 0, S);
-      rg.addColorStop(0, '#ffffff'); rg.addColorStop(0.45, '#cfe6f4'); rg.addColorStop(0.55, '#8fb4cc'); rg.addColorStop(1, '#e8f6ff');
-      g2.fillStyle = '#0a3f7a'; g2.beginPath(); g2.arc(cx, cx, R + 2, 0, TAU); g2.fill();
-      g2.fillStyle = rg; g2.beginPath(); g2.arc(cx, cx, R + 1, 0, TAU); g2.fill();
-      // little bubble studs around the ring
-      for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; g2.fillStyle = 'rgba(255,255,255,0.95)'; g2.beginPath(); g2.arc(cx + Math.cos(a) * (R - 1.5), cx + Math.sin(a) * (R - 1.5), 1.1, 0, TAU); g2.fill(); }
-      g2.fillStyle = '#0a3f7a'; g2.beginPath(); g2.arc(cx, cx, R - 4, 0, TAU); g2.fill();
-    })), Math.round(ex - R - 3), Math.round(ey - R - 3));
+    // [pixui30] the emblem is a stepped pixel plate (chrome band, stud pixels, deep well) instead of a round medallion
+    ctx.drawImage(aeroCached(`labemblem30|${R}`, () => {
+      const S = R * 2 + 6, c = document.createElement('canvas'); c.width = S; c.height = S;
+      const g2 = c.getContext('2d');
+      g2.drawImage(aeroSurface(S, S, { top: '#ffffff', mid: '#cfe6f4', bot: '#8fb4cc', edge: '#0a3f7a', r: 14, gloss: 0.4, glossH: 16, rim: 1, glow: 0.4 }), 0, 0);
+      g2.drawImage(aeroSurface(S - 10, S - 10, { top: '#0a3f7a', mid: '#0a3f7a', bot: '#0c4a8a', edge: '#062a52', r: 10, gloss: 0, rim: 0.3, glow: 0, inset: true }), 5, 5);
+      g2.fillStyle = '#ffffff';
+      for (let i = 0; i < 4; i++) { g2.fillRect(i % 2 ? S - 5 : 3, i < 2 ? 3 + 6 : S - 10, 2, 2); }
+      return c;
+    }), Math.round(ex - R - 3), Math.round(ey - R - 3));
     const orb = ecoOrb(R - 5, '#4cc83a', 'done');
     ctx.drawImage(orb, Math.round(ex - orb.width / 2), Math.round(ey - orb.height / 2));
     // a twinkle + the beaker bubbling on top

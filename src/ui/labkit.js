@@ -11,7 +11,7 @@
 import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { rgba, mix, shade, RARITY } from '../core/color.js';
-import { drawAeroButton, drawAeroCoin, fmtAero, AERO } from './aero.js';
+import { drawAeroButton, drawAeroCoin, fmtAero, AERO, drawAeroSurface, drawAeroBar, pixelRect, pixelShadow, notchOf } from './aero.js';
 import { labIcon, labIconCached, GLYPHS } from './labicons.js';
 import { ecoOrb, roundRectPath } from './labart.js';
 import { ITEMS } from '../build/items.js';
@@ -50,25 +50,11 @@ export function anyIcon(name, px = 12) {
   return getUiIcon(name) || (GLYPHS.includes(name) ? icon(name, px) : null);
 }
 
+// [pixui30] frosted card as pixel art: hard shadow, stepped corners, dark outline, light bevel, flat bands
 export function glassCard(ctx, x, y, w, h, o = {}) {
-  ctx.save();
-  ctx.fillStyle = rgba('#0a4a7a', 0.12);
-  roundRectPath(ctx, x + 1, y + 2, w, h, o.r ?? 8); ctx.fill();
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, rgba('#ffffff', o.alpha ?? 0.96)); g.addColorStop(0.5, rgba('#f2fbff', o.alpha ?? 0.93)); g.addColorStop(1, rgba(o.bottom || '#d6f0fb', o.alpha ?? 0.92));
-  ctx.fillStyle = g;
-  roundRectPath(ctx, x, y, w, h, o.r ?? 8); ctx.fill();
-  // gloss
-  ctx.save(); roundRectPath(ctx, x, y, w, h, o.r ?? 8); ctx.clip();
-  const gl = ctx.createLinearGradient(0, y, 0, y + Math.min(26, h * 0.4));
-  gl.addColorStop(0, rgba('#ffffff', 0.9)); gl.addColorStop(1, rgba('#ffffff', 0));
-  ctx.fillStyle = gl; ctx.fillRect(x, y, w, Math.min(26, h * 0.4));
-  ctx.restore();
-  ctx.strokeStyle = o.edge || '#7fbedd'; ctx.lineWidth = 1;
-  roundRectPath(ctx, x + 0.5, y + 0.5, w - 1, h - 1, o.r ?? 8); ctx.stroke();
-  ctx.strokeStyle = rgba('#ffffff', 0.9);
-  roundRectPath(ctx, x + 1.5, y + 1.5, w - 3, h - 3, Math.max(0, (o.r ?? 8) - 1)); ctx.stroke();
-  ctx.restore();
+  const al = o.alpha ?? 0.95;
+  pixelShadow(ctx, x, y, w, h, 1, 2, { n: notchOf(o.r ?? 8, w, h), alpha: 0.18, color: '#0a4a7a' });
+  drawAeroSurface(ctx, x, y, w, h, { top: '#ffffff', mid: '#f2fbff', bot: o.bottom || '#d6f0fb', a: [al, Math.max(0, al - 0.03)], edge: o.edge || '#5a9ec4', r: o.r ?? 8, gloss: 0.45, glossH: Math.min(20, Math.round(h * 0.3)), rim: 1, glow: 0.25, glowColor: '#bfeaff' });
 }
 
 export function pill(ui, ctx, x, y, w, h, label, o = {}) {
@@ -89,10 +75,7 @@ export function costTiles(ctx, ui, rows, x, y, w, o = {}) {
   const per = Math.max(1, Math.floor((w + gap) / (tw + gap)));
   rows.forEach((c, i) => {
     const tx = x + (i % per) * (tw + gap), ty = y + Math.floor(i / per) * (th + gap);
-    ctx.fillStyle = c.ok ? rgba('#e8fff0', 0.95) : rgba('#ffe8ea', 0.95);
-    roundRectPath(ctx, tx, ty, tw, th, 6); ctx.fill();
-    ctx.strokeStyle = c.ok ? rgba('#5ac87a', 0.9) : rgba('#ff7a8a', 0.9); ctx.lineWidth = 1;
-    roundRectPath(ctx, tx + 0.5, ty + 0.5, tw - 1, th - 1, 6); ctx.stroke();
+    pixelRect(ctx, tx, ty, tw, th, 3, c.ok ? '#e8fff0' : '#ffe8ea', { outline: c.ok ? '#3a9a5a' : '#d0485a', hi: '#ffffff' });
     let tip = '';
     if (c.kind === 'aero') { drawAeroCoin(ctx, tx + 9, ty + 10, 5, ui.time); tip = 'Aero Bucks'; }
     else if (c.kind === 'item') {
@@ -103,7 +86,7 @@ export function costTiles(ctx, ui, rows, x, y, w, o = {}) {
       const k = fishKeyInfo(c.id);
       if (k.kind === 'biome') { const ic = icon('biome:' + k.id, 10); if (ic) ctx.drawImage(ic, tx + 2, ty + 2); }
       drawFishThumb(ctx, c.id, tx + 10, ty + 11, 15, ui.time);
-      if (k.kind === 'rarity') { ctx.fillStyle = RARITY[k.id]?.color || '#ffffff'; ctx.beginPath(); ctx.arc(tx + 15, ty + 15, 2.5, 0, Math.PI * 2); ctx.fill(); }
+      if (k.kind === 'rarity') { ctx.fillStyle = '#0c3a52'; ctx.fillRect(tx + 12, ty + 12, 6, 6); ctx.fillStyle = RARITY[k.id]?.color || '#ffffff'; ctx.fillRect(tx + 13, ty + 13, 4, 4); }
       tip = fishLabel(c.id) + ' (kept, not in the tank)';
     }
     const txt = c.kind === 'aero' ? fmtAero(c.need) : `${Math.min(c.have, 999)}/${c.need}`;
@@ -115,12 +98,7 @@ export function costTiles(ctx, ui, rows, x, y, w, o = {}) {
 }
 
 export function statBar(ctx, x, y, w, k, color = AERO.aqua, h = 6) {
-  ctx.fillStyle = rgba('#0c3a52', 0.15); roundRectPath(ctx, x, y, w, h, h / 2); ctx.fill();
-  const fw = Math.max(h, Math.round(w * Math.max(0, Math.min(1, k))));
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, mix(color, '#ffffff', 0.5)); g.addColorStop(0.5, color); g.addColorStop(1, shade(color, -0.2));
-  ctx.fillStyle = g; roundRectPath(ctx, x, y, fw, h, h / 2); ctx.fill();
-  ctx.fillStyle = rgba('#ffffff', 0.7); ctx.fillRect(x + 2, y + 1, Math.max(0, fw - 4), 1);
+  drawAeroBar(ctx, x, y, w, h, k, { color }); // [pixui30] square pixel bar
 }
 
 export function orbIcon(ctx, key, cx, cy, r, color, look = 'done', alpha = 1) {
@@ -139,8 +117,7 @@ export function orbIcon(ctx, key, cx, cy, r, color, look = 'done', alpha = 1) {
 export function chip(ctx, x, y, ic, text, o = {}) {
   const tw = text ? measureText(text, 'small') : 0;
   const w = (ic ? ic.width + 3 : 0) + tw + 8, h = 14;
-  ctx.fillStyle = o.bg || rgba('#e6f7ff', 0.95); roundRectPath(ctx, x, y, w, h, 7); ctx.fill();
-  ctx.strokeStyle = o.edge || rgba('#7fbedd', 0.9); ctx.lineWidth = 1; roundRectPath(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 7); ctx.stroke();
+  pixelRect(ctx, x, y, w, h, 3, o.bg || '#e6f7ff', { outline: o.edge || '#4a8eb8', hi: '#ffffff' }); // [pixui30] stepped chip
   let cx = x + 4;
   if (ic) { ctx.drawImage(ic, Math.round(cx), Math.round(y + (h - ic.height) / 2)); cx += ic.width + 3; }
   if (text) drawText(ctx, text, cx, y + 5, { font: 'small', color: o.color || INK });
@@ -155,24 +132,19 @@ export function costTilesHeight(n, w, tileW = 58) {
 }
 
 // Card hero: a glossy display pedestal with a soft glow (draw the icon on top at (cx, cy)).
+// [pixui30] a stepped pixel plinth (two flat tiers, outline, light top row) and a banded light column above it
 export function pedestal(ctx, cx, cy, w, t = 0, color = '#bff6ff') {
-  const py = cy + Math.round(w * 0.42);
-  ctx.save();
-  ctx.fillStyle = rgba('#0a4a7a', 0.12);
-  ctx.beginPath(); ctx.ellipse(cx, py + 3, w * 0.55, w * 0.13, 0, 0, Math.PI * 2); ctx.fill();
-  const g = ctx.createLinearGradient(0, py - 4, 0, py + 6);
-  g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#a8dcf2');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.ellipse(cx, py, w * 0.5, w * 0.12, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#6fb4d8'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.fillStyle = rgba(color, 0.55);
-  ctx.beginPath(); ctx.ellipse(cx, py - 1, w * 0.36, w * 0.07, 0, 0, Math.PI * 2); ctx.fill();
-  // light beam up from the pedestal
-  const lg = ctx.createLinearGradient(0, py, 0, cy - w * 0.6);
-  lg.addColorStop(0, rgba(color, 0.35)); lg.addColorStop(1, rgba(color, 0));
-  ctx.fillStyle = lg;
-  ctx.beginPath(); ctx.moveTo(cx - w * 0.36, py); ctx.lineTo(cx + w * 0.36, py); ctx.lineTo(cx + w * 0.22, cy - w * 0.6); ctx.lineTo(cx - w * 0.22, cy - w * 0.6); ctx.closePath(); ctx.fill();
-  ctx.restore();
+  const py = Math.round(cy + w * 0.42), pw = Math.round(w * 0.9), tw = Math.round(w * 0.7);
+  cx = Math.round(cx);
+  const ga = ctx.globalAlpha;
+  // light column: two flat translucent bands (no gradient)
+  const top = Math.round(cy - w * 0.6), bw = Math.round(w * 0.5);
+  ctx.globalAlpha = ga * 0.18; ctx.fillStyle = color; ctx.fillRect(cx - (bw >> 1), top, bw, py - top);
+  ctx.globalAlpha = ga * 0.16; ctx.fillRect(cx - (bw >> 2), top + Math.round((py - top) * 0.3), bw >> 1, Math.round((py - top) * 0.7));
+  ctx.globalAlpha = ga;
+  pixelRect(ctx, cx - (pw >> 1), py + 2, pw, 6, 2, '#a8dcf2', { outline: '#3a7aa8', lo: '#7fbedd' });
+  pixelRect(ctx, cx - (tw >> 1), py - 3, tw, 6, 2, '#ffffff', { outline: '#3a7aa8', lo: '#cfeefc' });
+  ctx.fillStyle = rgba(color, 0.7); ctx.fillRect(cx - (tw >> 1) + 3, py - 2, tw - 6, 1);
   void t;
 }
 

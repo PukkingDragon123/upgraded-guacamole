@@ -15,7 +15,7 @@ import { getUiIcon } from '../gfx/uiicons.js';
 import { alagardReady, alagardBitmap, loadAlagard } from '../gfx/alagard.js';
 import * as NPC from '../gfx/npcs.js';
 import * as CHAR from '../gfx/character.js';
-import { aeroSurface, aeroCached, drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroCoin, drawAeroBar, drawLeafSprig, drawAeroBadge, drawAeroButton, drawPixelBrackets, toneOf, AERO } from './aero.js';
+import { aeroSurface, aeroCached, drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroCoin, drawAeroBar, drawLeafSprig, drawAeroBadge, drawAeroButton, drawPixelBrackets, toneOf, AERO, pixelRectPath } from './aero.js';
 import { icon, pill, iconBudget, INK, INK_SOFT, OK } from './labkit.js';
 import { drawGem } from './gemui.js'; // [cur26] Byte Gems
 import { drawAnimIcon, drawPadlock } from './labrows.js';
@@ -67,16 +67,10 @@ export function drawPortrait(ctx, id, cx, cy, r, t = 0, o = {}) {
   cx = Math.round(cx); cy = Math.round(cy);
   const col = NPC_COL[id] || '#bff6ff';
   drawAeroGlow(ctx, cx, cy, r * 1.5, mix(col, '#ffffff', 0.5), 0.35);
-  ctx.drawImage(aeroCached(`qportbg|${r}|${col}`, () => {
-    const S = r * 2 + 4, c = document.createElement('canvas'); c.width = S; c.height = S;
-    const g = c.getContext('2d');
-    const gr = g.createRadialGradient(S / 2 - r * 0.3, S / 2 - r * 0.4, 1, S / 2, S / 2, r);
-    gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.55, mix(col, '#ffffff', 0.55)); gr.addColorStop(1, shade(col, -0.15));
-    g.fillStyle = gr; g.beginPath(); g.arc(S / 2, S / 2, r, 0, TAU); g.fill();
-    return c;
-  }), cx - r - 2, cy - r - 2);
+  // [pixui30] the portrait sits in a stepped pixel well (no circle): banded light fill, dark outline, frame band on top
+  ctx.drawImage(aeroCached(`qportbg30|${r}|${col}`, () => aeroSurface(r * 2 + 2, r * 2 + 2, { top: '#ffffff', mid: mix(col, '#ffffff', 0.55), bot: shade(col, -0.15), edge: shade(col, -0.6), r: 12, gloss: 0, rim: 0.6, glow: 0.3, inset: true })), cx - r - 1, cy - r - 1);
   ctx.save();
-  ctx.beginPath(); ctx.arc(cx, cy, r - 1, 0, TAU); ctx.clip();
+  pixelRectPath(ctx, cx - r + 1, cy - r + 1, r * 2 - 2, r * 2 - 2, 10); ctx.clip();
   try {
     if (id === 'seal' && NPC.NPCS?.seal) NPC.drawNPC(ctx, 'seal', { portrait: true, x: cx, y: cy, r: r - 1, t, mood: o.mood || 'happy', talk: o.talk || 0, id: 'qp-seal' + (o.key || '') });
     else if (NPC.NPCS?.[id] && id !== 'seal') {
@@ -97,27 +91,20 @@ export function drawPortrait(ctx, id, cx, cy, r, t = 0, o = {}) {
     }
   } catch { /* the NPC art is optional */ }
   ctx.restore();
-  // glass rim + gloss
-  ctx.drawImage(aeroCached(`qportfg|${r}|${col}`, () => {
-    const S = r * 2 + 4, c = document.createElement('canvas'); c.width = S; c.height = S;
-    const g = c.getContext('2d');
-    g.strokeStyle = shade(col, -0.55); g.lineWidth = 1.5; g.beginPath(); g.arc(S / 2, S / 2, r - 0.5, 0, TAU); g.stroke();
-    g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = 1; g.beginPath(); g.arc(S / 2, S / 2, r - 2, Math.PI * 1.05, Math.PI * 1.75); g.stroke();
-    const hg = g.createLinearGradient(0, S / 2 - r, 0, S / 2);
-    hg.addColorStop(0, 'rgba(255,255,255,0.55)'); hg.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = hg; g.beginPath(); g.ellipse(S / 2 - r * 0.15, S / 2 - r * 0.5, r * 0.62, r * 0.36, -0.3, 0, TAU); g.fill();
-    return c;
-  }), cx - r - 2, cy - r - 2);
+  // a raised pixel frame band over the edge (outline, light top-left, shade bottom-right)
+  ctx.drawImage(aeroCached(`qportfg30|${r}|${col}`, () => aeroSurface(r * 2 + 2, r * 2 + 2, { ring: 1, top: '#ffffff', mid: mix(col, '#ffffff', 0.4), bot: shade(col, -0.1), edge: shade(col, -0.62), r: 12, gloss: 0, rim: 1, glow: 0 })), cx - r - 1, cy - r - 1);
 }
 
 // a slim glossy progress bar on a light glass track
 function miniBar(ctx, x, y, w, h, k) {
   x = Math.round(x); y = Math.round(y); w = Math.round(w);
-  ctx.fillStyle = rgba('#5a9ec4', 0.28); roundRectPath(ctx, x, y, w, h + 1, (h + 1) / 2); ctx.fill();
-  const fw = Math.round(w * clamp01(k));
-  if (fw >= 2) {
-    ctx.fillStyle = '#4cbf2c'; roundRectPath(ctx, x, y, fw, h + 1, (h + 1) / 2); ctx.fill();
-    ctx.fillStyle = '#9cf060'; ctx.fillRect(x + 1, y, Math.max(0, fw - 2), 1);
+  // [pixui30] square pixel bar: dark track outline, flat green fill with a light top row
+  ctx.fillStyle = rgba('#0b4f8f', 0.55); ctx.fillRect(x, y, w, h + 1);
+  ctx.fillStyle = rgba('#cfeefc', 0.9); ctx.fillRect(x + 1, y + 1, w - 2, Math.max(1, h - 1));
+  const fw = Math.round((w - 2) * clamp01(k));
+  if (fw >= 1) {
+    ctx.fillStyle = '#4cbf2c'; ctx.fillRect(x + 1, y + 1, fw, Math.max(1, h - 1));
+    ctx.fillStyle = '#9cf060'; ctx.fillRect(x + 1, y + 1, fw, 1);
   }
 }
 
@@ -617,14 +604,12 @@ export class QuestPanel {
     // emblem: a glossy compass-orb with a star
     const ex = P.x + 26, ey = P.y + 18;
     drawAeroGlow(ctx, ex, ey, 30, '#ffffff', 0.5);
-    ctx.drawImage(aeroCached('questemblem', () => {
+    // [pixui30] the emblem is a stepped pixel badge: white plate + gold inner plate (no circles)
+    ctx.drawImage(aeroCached('questemblem30', () => {
       const c = document.createElement('canvas'); c.width = 46; c.height = 46;
       const g2 = c.getContext('2d');
-      g2.fillStyle = '#1a5e12'; g2.beginPath(); g2.arc(23, 23, 22, 0, TAU); g2.fill();
-      const rg = g2.createLinearGradient(0, 0, 0, 46); rg.addColorStop(0, '#ffffff'); rg.addColorStop(0.5, '#d6eef8'); rg.addColorStop(1, '#ffffff');
-      g2.fillStyle = rg; g2.beginPath(); g2.arc(23, 23, 21, 0, TAU); g2.fill();
-      const og = g2.createRadialGradient(18, 16, 2, 23, 23, 17); og.addColorStop(0, '#fff6c8'); og.addColorStop(0.6, '#ffc83a'); og.addColorStop(1, '#e08a1a');
-      g2.fillStyle = og; g2.beginPath(); g2.arc(23, 23, 17, 0, TAU); g2.fill();
+      g2.drawImage(aeroSurface(46, 46, { tone: 'white', edge: '#1a5e12', r: 14, gloss: 0.4, glossH: 16, rim: 1, glow: 0.3 }), 0, 0);
+      g2.drawImage(aeroSurface(34, 34, { top: '#fff6c8', mid: '#ffc83a', bot: '#e08a1a', edge: '#8a4a06', r: 10, gloss: 0.3, glossH: 12, rim: 1, glow: 0.3 }), 6, 6);
       return c;
     }), ex - 23, ey - 23);
     drawAnimIcon(ctx, 'star', ex, ey, 22, t, 0, { hover: 0.3 });
@@ -798,7 +783,7 @@ export class QuestPanel {
       // a compact grey slab: the giver behind frosted glass and a padlock
       const lcy = r.y + r.h / 2;
       drawPortrait(ctx, q.giver, r.x + 20, lcy, 12, t, { key: 'ql' + (i % 24) });
-      ctx.fillStyle = rgba('#aec2d2', 0.55); ctx.beginPath(); ctx.arc(r.x + 20, lcy, 12, 0, TAU); ctx.fill();
+      ctx.fillStyle = rgba('#aec2d2', 0.55); pixelRectPath(ctx, r.x + 8, lcy - 12, 24, 24, 8); ctx.fill(); // [pixui30] stepped plate
       drawPadlock(ctx, r.x + 29, lcy + 8, 1, 0, 0);
       const after = q.after && QUEST_BY_ID[q.after];
       if (!main && after) {

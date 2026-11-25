@@ -12,7 +12,6 @@ import { hash3, clamp } from '../core/math.js';
 import { itemPixel, itemPixelScaled } from './itempix.js'; // [phase8:ui] hand-drawn pixel art for most items
 import { voxelModelFrame } from '../gfx/bigicons.js'; // [icons15] detailed voxel items
 import { lpAvailable } from '../gfx/lowpoly.js';
-import { pixKeyName, pixStill } from '../gfx/pixicons.js'; // [pixicons26] 2D pixel art items
 import { ctxOf } from '../core/canvas.js';
 
 export const SPIN = 16;
@@ -384,25 +383,6 @@ function modelOf(id) {
 const cache = new Map();
 // force = render even when over budget (used for one-off large previews)
 export function itemSprite(id, { scale = 1, frame = 0, force = false, voxel = false } = {}) {
-  // [pixicons26] every item with a hand-drawn sprite (itempix art, chests) is 2D pixel art, integer-scaled; the
-  // turntable frame is ignored (no 3D spin)
-  const pn = !voxel && pixKeyName('item:' + id);
-  if (pn) {
-    const px = Math.max(10, Math.round(42 * scale));
-    const pk = 'pix|' + pn + '|' + px;
-    let q = cache.get(pk);
-    if (!q) {
-      const c = pixStill(pn, px, px, { shadow: true });
-      if (c) {
-        const d = ctxOf(c).getImageData(0, 0, c.width, c.height).data;
-        let by = c.height;
-        outer: for (let y = c.height - 1; y >= 0; y--) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 100) { by = y + 1; break outer; }
-        q = { canvas: c, glow: null, ox: c.width / 2, oy: by, w: c.width, h: c.height, pixel: true };
-        cache.set(pk, q);
-      }
-    }
-    if (q) return q;
-  }
   // [phase8:ui] items with hand-made pixel art return it (integer-scaled, same {canvas, ox, oy, w, h} framing)
   // [phase9:ui] 3D first: the voxel model wins whenever one exists (2D pixel items only as a last resort)
   if (!voxel && itemPixel(id) && !hasItemModel(id)) {
@@ -462,16 +442,6 @@ export function itemSprite(id, { scale = 1, frame = 0, force = false, voxel = fa
 const pkgCache = new Map();
 // Package body + lid rendered with identical framing (lid drawn on top at the same offset).
 export function packageParts(tier, scale = 1, frame = 0, force = true, full = false) {
-  if (full) { // [pixicons26] whole-package previews (Satchel, shop, toasts) are the hand-drawn pixel chest
-    const pn = pixKeyName('item:' + tier);
-    const c = pn && pixStill(pn, Math.max(10, Math.round(40 * scale)), Math.max(10, Math.round(40 * scale)), { shadow: true });
-    if (c) {
-      const d = ctxOf(c).getImageData(0, 0, c.width, c.height).data;
-      let by = c.height;
-      outer: for (let y = c.height - 1; y >= 0; y--) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 100) { by = y + 1; break outer; }
-      return { full: c, glow: null, body: null, lid: null, ox: c.width / 2, oy: by, w: c.width, h: c.height, top: [Math.round(c.width / 2), 0], lidAt: [Math.round(c.width / 2), Math.round(c.height / 3)] };
-    }
-  }
   const key = tier + '|' + scale + '|' + frame + (full ? '|f' : '');
   let p = pkgCache.get(key);
   if (p) return p;

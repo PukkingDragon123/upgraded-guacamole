@@ -1,6 +1,4 @@
-// [pixicons26] Lab icons are HAND-DRAWN 2D PIXEL ART first (src/gfx/pixicons.js): rods (recoloured per look), boats,
-// tanks, biome globes, bait, materials, critters, the grouper and every stat glyph; buildings and tank foods keep their
-// own art. (was: Lab icons: glossy low-poly 3D rods and globe (phase 6, src/gfx/iconmeshes.js; voxel fallback), voxel boats, aquarium
+// Lab icons: glossy low-poly 3D rods and globe (phase 6, src/gfx/iconmeshes.js; voxel fallback), voxel boats, aquarium
 // tanks and ocean globes, voxel buildings / bait (from their own
 // modules), and a set of hand-made pixel glyphs for stat nodes. Every icon is cached per (key, size).
 //   labIcon(key, px) -> canvas (fits a px x px box) | null
@@ -22,22 +20,6 @@ import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
 import { foodIcon } from '../aquarium/food.js'; // [food24] tank foods
 import { rodIcon, getBigIcon, voxMisses, voxelModelFrame } from '../gfx/bigicons.js'; // [phase6:ui] glossy low-poly 3D rods / globe
 import { lpAvailable } from '../gfx/lowpoly.js'; // [phase10:ui]
-import { hasPix, pixStill, pixKeyName } from '../gfx/pixicons.js'; // [pixicons26]
-import { baitSpriteName } from '../gfx/pixart.js';
-
-const TANK_PIX = { jar: 'tank_jar', bowl: 'aquarium', smalltank: 'tank_smalltank', bigtank: 'fishmgr', reeftank: 'tank_reeftank', wallaquarium: 'tank_wallaquarium' };
-// the pixel sprite for a Lab icon key (null = no sprite: rods go through rodIcon, buildings / foods keep their art)
-function labPixName(key) {
-  const [kind, id] = key.includes(':') ? key.split(':') : [null, key];
-  if (kind === 'boat') return hasPix('boat_' + id) ? 'boat_' + id : 'boat_skiff';
-  if (kind === 'tank') return TANK_PIX[id] || 'fishmgr';
-  if (kind === 'biome') return 'globe:' + id;
-  if (kind === 'bait') return baitSpriteName(id) || 'bait';
-  if (kind === 'mat') return pixKeyName('item:' + id);
-  if (kind === 'fish' || key === 'fish') return 'grouper';
-  if (!kind && hasPix(key)) return key;
-  return null;
-}
 
 // ---------------------------------------------------------------- pixel glyphs
 const PAL = {
@@ -202,9 +184,9 @@ function boatModel(id) {
 function tankModel(id) {
   const m = new VoxelModel(28, 24, 12);
   const water = m.color('#4ac8f4', { jitter: 0.06 }), waterD = m.color('#2a96d8', { jitter: 0.05 }), rim = m.color('#f4fbff', { jitter: 0.02 });
-  const frame = m.color('#c8dcec', {}), sand = m.color('#f2dc9a', { jitter: 0.12 }), fish = m.color('#ff8a2a', {}), fishT = m.color('#ffc04a', {});
+  const frame = m.color('#c8dcec', {}), sand = m.color('#f2dc9a', { jitter: 0.12 }), fish = m.color('#c4943e', {}), fishT = m.color('#ffc94a', {}), fishS = m.color('#4a3416', {}), lip = m.color('#fb8a94', {}); // [vicons30] little groupers
   const plant = m.color('#5ccf4a', { jitter: 0.1 }), coralP = m.color('#ff74b4', {}), coralY = m.color('#ffd23a', {}), cork = m.color('#c89058', { jitter: 0.1 }), glass = m.color('#bff2ff', { emissive: 0.15 });
-  const fishAt = (x, y, z) => { m.box(x, y, z, x + 2, y + 1, z, fish); m.set(x - 1, y, z, fishT); m.set(x - 1, y + 1, z, fishT); m.set(x + 2, y + 1, z, m.color('#1c2c44', {})); };
+  const fishAt = (x, y, z) => { m.box(x, y, z, x + 2, y + 1, z, fish); m.set(x, y + 1, z, fishS); m.set(x - 1, y, z, fishT); m.set(x - 1, y + 1, z, fishT); m.set(x + 2, y + 1, z, m.color('#1c2c44', {})); m.set(x + 3, y, z, lip); };
   if (id === 'jar' || id === 'bowl') {
     const r = id === 'jar' ? 6 : 8.5, cy = id === 'jar' ? 10 : 10;
     if (id === 'jar') { m.cylinder(14, 6, 2, 17, r, water, 'y'); m.cylinder(14, 6, 18, 19, r - 1, rim, 'y'); m.cylinder(14, 6, 20, 21, r - 1.5, cork, 'y'); m.cylinder(14, 6, 2, 3, r, sand, 'y'); }
@@ -355,8 +337,6 @@ function twin(c, big) {
 function buildIcon(key, px) {
   let c = null;
   try {
-    const pn = !key.startsWith('rod:') && labPixName(key);
-    if (pn && (c = pixStill(pn, px, px, { shadow: true }))) return c; // [pixicons26]
     const [kind, id] = key.includes(':') ? key.split(':') : [null, key];
     if (kind === 'rod' && ROD_BY_ID[id]) c = rodIcon(ROD_BY_ID[id], px) || fitVoxel(() => rodModel(ROD_BY_ID[id]), px, key);
     else if (kind === 'boat') c = fitVoxel(() => boatModel(id), px, key);
@@ -374,7 +354,8 @@ function buildIcon(key, px) {
     } else if (kind === 'mat') c = itemIcon(id, px);
     else if (key === 'globe') c = getBigIcon('map', { size: px })?.canvas || fitVoxel(() => globeModel('oscean'), px, 'globe');
     else if (key === 'crab' || key === 'snail') c = fitVoxel(() => critterModel(key), px, key);
-    else if (key === 'fish' || kind === 'fish') c = voxelFishIcon(id || 'pixel', px, px); // [phase3:fish] voxel, never a 2D glyph
+    else if (key === 'fish' || (kind === 'fish' && !id)) c = icon3d('fish', px, px); // [vicons30] the generic fish: the voxel grouper
+    else if (kind === 'fish') c = voxelFishIcon(id, px, px); // [phase3:fish] a species: its voxel fish
     else if (!kind && has3D(key) && (c = icon3d(key, px, px))) { /* [phase9:ui] 3D model icon */ }
     else if (GLYPH_ART[key]) {
       const g = glyphCanvas(key);

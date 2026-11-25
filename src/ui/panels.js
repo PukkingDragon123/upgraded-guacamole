@@ -232,7 +232,7 @@ export function drawBottle(ctx, x, y, w, h, opts = {}) {
 
 // ---------------------------------------------------------------- speech bubble
 
-const INSETS = { 0: [], 1: [1], 2: [2, 1], 3: [3, 1, 1], 4: [4, 2, 1, 1], 5: [5, 3, 2, 1, 1], 6: [6, 4, 3, 2, 1, 1] };
+const INSETS = { 0: [], 1: [1], 2: [2, 1], 3: [3, 2, 1] };
 function rr(w, h, r) {
   const ins = INSETS[r] || [];
   return (x, y) => {
@@ -262,7 +262,7 @@ function bubbleTex(w, h, tx, ty, style) {
   }
   const ox = Math.max(0, tip ? -Math.floor(tip[0]) + 1 : 0), oy = Math.max(0, tip ? -Math.floor(tip[1]) + 1 : 0);
   const CW = Math.max(w, tip ? Math.ceil(tip[0]) + 2 : 0) + ox + 2, CH = Math.max(h, tip ? Math.ceil(tip[1]) + 2 : 0) + oy + 3;
-  const body = rr(w, h, h >= 20 ? 6 : h >= 14 ? 4 : 2);
+  const body = rr(w, h, h >= 20 ? 3 : h >= 14 ? 2 : 1); // [pixui30] stepped 1-3 px notches
   const circles = [];
   let tri = null;
   if (tip && style === 'thought') {
@@ -285,7 +285,7 @@ function bubbleTex(w, h, tx, ty, style) {
     const bx = x - ox, by = y - oy;
     if (body(bx, by)) return true;
     if (inTri(bx + 0.5, by + 0.5)) return true;
-    return circles.some(([cx, cy, r]) => Math.hypot(bx + 0.5 - cx, by + 0.5 - cy) <= r);
+    return circles.some(([cx, cy, r]) => Math.abs(bx + 0.5 - cx) <= r && Math.abs(by + 0.5 - cy) <= r); // [pixui30] square thought puffs
   };
   const edgeOf = (m, x, y) => !m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1);
   const b = new PixelBuffer(CW, CH);
@@ -370,11 +370,12 @@ export function drawSlider(ctx, x, y, w, value, opts = {}) {
   }
   const hot = opts.hover || opts.down;
   if (hot) {
-    ctx.fillStyle = 'rgba(191,244,255,0.35)';
-    ctx.fillRect(kx - 7, y + 2, 15, 11);
+    ctx.fillStyle = 'rgba(191,244,255,0.55)';
     ctx.fillRect(kx - 5, y, 11, 15);
   }
-  drawGlossOrb(ctx, kx + 0.5, y + 7.5, opts.down ? 5 : 5.5, hot ? '#d8f8ff' : '#a8e4ff');
+  // [pixui30] a stepped pixel thumb (9 x 13, 1 px notches) with a grip line
+  ctx.drawImage(aeroCached(`sthumb|${hot ? 1 : 0}|${opts.down ? 1 : 0}`, () => aeroSurface(9, 13, { tone: hot ? 'white' : 'frost', top: '#ffffff', bot: hot ? '#bfeaff' : '#9fd4f0', edge: '#0a3e74', r: 2, gloss: 0.5, glossH: 5, rim: 1, glow: 0.2 })), kx - 4, y + 1 + (opts.down ? 1 : 0));
+  ctx.fillStyle = '#5a9ec4'; ctx.fillRect(kx - 1, y + 5 + (opts.down ? 1 : 0), 3, 1); ctx.fillRect(kx - 1, y + 8 + (opts.down ? 1 : 0), 3, 1);
   return { knob: { x: kx - 6, y: y + 1, w: 13, h: 13 }, x, y, w, h: SLIDER_H };
 }
 
@@ -394,7 +395,8 @@ export function drawToggle(ctx, x, y, on, opts = {}) {
     g.fillStyle = on ? 'rgba(255,255,255,0.9)' : 'rgba(60,111,136,0.7)';
     if (on) g.fillRect(8, 8, 1, 6);
     else { g.fillRect(17, 8, 3, 1); g.fillRect(17, 13, 3, 1); g.fillRect(16, 9, 1, 4); g.fillRect(20, 9, 1, 4); }
-    drawGlossOrb(g, on ? TOGGLE_W - 7 : 7, 11, 6.5, on ? '#ffffff' : '#e8f4fa');
+    // [pixui30] a stepped square knob (no orb)
+    g.drawImage(aeroSurface(12, 12, { tone: 'white', bot: on ? '#d8f4ff' : '#c4dcea', edge: on ? '#1a5e12' : '#3a6a8a', r: 2, gloss: 0.5, glossH: 5, rim: 1, glow: 0.2 }), on ? TOGGLE_W - 13 : 1, 5);
     return cc;
   });
   ctx.drawImage(c, x, y);

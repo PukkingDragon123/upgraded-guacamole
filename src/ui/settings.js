@@ -112,7 +112,7 @@ export class SettingsPanel {
       SIZES.forEach(([id, label, tip], i) => {
         const on = cur === id;
         const bx = x0 + i * bw;
-        if (on) drawAeroGlow(ctx, bx + bw / 2, cy, Math.round(bw * 0.6), '#c8ff9a', 0.5);
+        void on; // [pixui30] (no glow halo: the green pixel button already marks the choice)
         if (ui.button(ctx, bx, cy - Math.round(bh / 2), bw - 2, bh, label, { style: on ? 'green' : 'white', active: on, tip, sound: 'ui_toggle', font: 'normal', fixedFont: id === 'normal' }) && !on) {
           s.uiScale = id;
           setUiScale(id);

@@ -1,21 +1,18 @@
-// [pixicons26] Dev preview: every hand-drawn 2D pixel-art UI icon on the full-res 2x layer (src/gfx/pixart.js sprites,
-// src/gfx/pixicons.js engine) through the public icon APIs.
-// node tools/build.mjs --dev icongallery -> dist/dev/icongallery.html?page=0|1|2|3|9&px=44&spin=1 (spin = hover hop frame)
-//   page 9: every authored sprite at 44 / 22 / 11 px (&off=N pages through them, 120 per page)
+// [icons15] Dev preview: every detailed voxel UI icon on the full-res 2x layer (src/gfx/voxicon.js, bigicons.js).
+// node tools/build.mjs --dev icongallery -> dist/dev/icongallery.html?page=0|1|2|3&px=44&spin=1
 //   page 0: menu / HUD icons (ICON_MODELS) at 44 / 32 / 22 px + rods + gems + coin
 //   page 1: icons3d (getUiIcon 3D glyphs) at px      page 2: items (itemSprite) + fishing icons + chests + decor
 //   page 3: Lab icons (labIcon) at px
 import { hiCtx } from '../gfx/hires.js';
 import { drawText } from '../gfx/font.js';
 import { iconFrame, rodIcon, gemIcon, decorFrame, cutGemFrame, modelFrame } from '../gfx/bigicons.js';
-import { ICON_VOX } from '../gfx/iconvox.js';
+import { ICON_VOX, UI3D_VOX } from '../gfx/iconvox.js';
 import { ICON_MODELS } from '../gfx/iconmeshes.js';
 import { ICON3D, icon3dFrame } from '../gfx/icons3d.js';
 import { icon3d as fishIcon } from '../fishing/icons3d.js';
 import { ART_IDS, itemSprite } from '../build/itemart.js';
 import { RARITY } from '../core/color.js';
 import { RODS } from '../game/rods.js';
-import { PIX_NAMES, pixFrame, pixSprite } from '../gfx/pixicons.js';
 
 export async function run(params) {
   const cv = document.getElementById('screen');
@@ -44,18 +41,8 @@ export async function run(params) {
     g.fillStyle = gr; g.fillRect(0, 0, W, H);
     const put = (f, x, y) => { if (f) g.drawImage(f.canvas || f, Math.round(x - (f.ox ?? (f.width || f.canvas.width) / 2)), Math.round(y - (f.oy ?? (f.height || f.canvas.height) / 2))); };
     const label = (s, x, y) => drawText(g, String(s).slice(0, 10), x, y, { font: 'small', align: 'center', color: '#0c3a52' });
-    if (page === 9) { // every authored sprite: 44 px frame, 22 px, 11 px and the native grid
-      const off = Number(params.get('off') || 0);
-      const names = PIX_NAMES().slice(off, off + 120);
-      names.forEach((n, i) => {
-        const x = 40 + (i % 12) * 77, y = 36 + Math.floor(i / 12) * 104;
-        put(pixFrame(n, 44), x, y);
-        put(pixFrame(n, 22), x - 16, y + 46);
-        put(pixFrame(n, 11), x + 16, y + 46);
-        label(n, x, y + 62);
-      });
-    } else if (page === 0) {
-      const ids = ['lab', 'quests', 'aquarium', 'fishmgr', 'journal', 'inventory', 'wardrobe', 'build', 'map', 'shop', 'bait', 'multiplayer', 'settings', 'coin', ...Object.keys(ICON_MODELS).filter((k) => !['lab', 'quests', 'aquarium', 'journal', 'inventory', 'wardrobe', 'map', 'shop', 'bait', 'multiplayer', 'settings', 'coin'].includes(k))].slice(0, 24);
+    if (page === 0) {
+      const ids = ['lab', 'quests', 'aquarium', 'fishmgr', 'journal', 'inventory', 'wardrobe', 'build', 'map', 'shop', 'bait', 'multiplayer', 'settings', 'coin', 'fish', 'gem', ...Object.keys(ICON_MODELS).filter((k) => !['lab', 'quests', 'aquarium', 'journal', 'inventory', 'wardrobe', 'map', 'shop', 'bait', 'multiplayer', 'settings', 'coin'].includes(k))].slice(0, 24);
       ids.forEach((id, i) => {
         const x = 34 + (i % 12) * 77, y = 40 + Math.floor(i / 12) * 150;
         put(iconFrame(id, 44, spin ? t * 0.3 : 0), x, y);
@@ -68,7 +55,7 @@ export async function run(params) {
       ['round', 'diamond', 'square', 'drop', 'heart', 'clover', 'oval', 'hex'].forEach((c, i) => put(cutGemFrame('#35c8ff', c, 16), 260 + i * 26, 452));
       ['leaves', 'leaves_l', 'shell', 'starfish', 'bubbles', 'pearl', 'coral'].forEach((n, i) => put(decorFrame(n, 30, 0), 500 + i * 40, 460));
     } else if (page === 1) {
-      const names = Object.keys(ICON3D);
+      const names = [...new Set([...Object.keys(UI3D_VOX), ...Object.keys(ICON3D)])]; // [vicons30] hand-built voxel names first
       const cols = Math.floor((W - 20) / (PX + 16));
       names.forEach((n, i) => {
         const x = 20 + (i % cols) * (PX + 16) + PX / 2, y = 18 + Math.floor(i / cols) * (PX + 14) + PX / 2;

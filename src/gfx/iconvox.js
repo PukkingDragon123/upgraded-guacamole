@@ -4,6 +4,9 @@
 //
 //   ICON_VOX { id: () => def }   menu / HUD icons (override the low-poly meshes of src/gfx/iconmeshes.js)
 //   UI3D_VOX { name: () => def } the same models for icons3d names (getUiIcon / tank rail glyphs)
+//   [vicons30] the generic FISH is a grouper (grouperIcon / grouperInto: Bubbles' olive-gold spotted kind, pink lips,
+//   googly eye, spiny dorsal; also in the fishbowl, the cube tank, the FishDex emblem and the multiplayer pair);
+//   currencies: 'aerobuck' (glossy water drop) and 'gem' (the faceted violet Byte Gem with cyan byte pixels)
 //   ROD_VOX(rod) -> def          a fishing rod from rod.look {kind, shaft, grip, reel, tip, glow}
 //   CHEST_VOX(kind) -> def       a treasure chest (crate | iron | golden | orb): planks, domed lid, straps, lock
 //   GEM_VOX(color) -> null       (gems keep the low-poly cut; voxelised at full detail)
@@ -189,7 +192,7 @@ function scroll() {
   return { vm: m, yaw: 0.38, pitch: 0.3, spin: 'wobble' };
 }
 
-// ---------------------------------------------------------------- FishDex: a blue hardcover book with a gold fish
+// ---------------------------------------------------------------- FishDex: a blue hardcover book with a gold grouper emblem
 function book() {
   const m = new VoxelModel(38, 48, 18), p = palOf(m);
   const cov = p('#2f7ae8', GL), covD = p('#1d58b8', GL), covL = p('#5aa4ff', GL);
@@ -210,19 +213,24 @@ function book() {
   // front cover: a gold-framed window with a fish, a title bar
   for (let y = 15; y <= 37; y++) for (let x = 10; x <= 29; x++) {
     const edge = x === 10 || x === 29 || y === 15 || y === 37;
-    if (edge) m.set(x, y, 15, gold);
+    if (edge) { m.set(x, y, 15, gold); m.set(x, y, 16, gold); }
     else m.set(x, y, 14, (x + y) % 7 === 0 ? p('#c8ecff', SOFT) : p('#8ad0ff', SOFT));
   }
-  const fish = p('#ffd23a', GL), fishD = p('#e89a1a', GL), eye = p('#1a1430', MATTE), white = p('#ffffff', { emissive: 0.4 });
-  for (let y = 19; y <= 33; y++) for (let x = 12; x <= 28; x++) {
-    const bx = (x + 0.5 - 21.5) / 5.6, by = (y + 0.5 - 26) / 3.8;
-    const body = bx * bx + by * by <= 1;
-    const tx = x + 0.5 - 15.4, tail = tx < 0 && tx > -3.6 && Math.abs(y + 0.5 - 26) < -tx * 1.1 + 0.6;
-    const fin = Math.abs(x + 0.5 - 21) < 2.5 && y + 0.5 > 29 && y + 0.5 < 31.5 - Math.abs(x + 0.5 - 21) * 0.6;
-    if (body || tail || fin) m.set(x, y, 15, by < -0.35 || tail ? fishD : fish);
+  // [vicons30] the emblem: a gold grouper (chunky head, spiny dorsal, fan tail, spots, big pink lips, googly eye)
+  const fish = p('#ffcf4a', GL), fishD = p('#d8901e', GL), spotC = p('#8a5418', GL), lipC = p('#ff8a8a', GL), lipD = p('#d8566a', GL);
+  const eye = p('#1a1430', MATTE), white = p('#ffffff', { emissive: 0.4 });
+  for (let y = 17; y <= 35; y++) for (let x = 11; x <= 28; x++) {
+    const X = x + 0.5, Y = y + 0.5;
+    const body = ((X - 19.5) / 5.6) ** 2 + ((Y - 25.6) / 4.6) ** 2 <= 1 || ((X - 23.2) / 3.8) ** 2 + ((Y - 25.9) / 4.6) ** 2 <= 1;
+    const tail = X < 14.6 && X > 11 && Math.abs(Y - 25.8) < (14.8 - X) * 1.25 + 1.1;
+    const dors = X > 16 && X < 23.5 && Y > 29.4 && Y < 32 - Math.abs(X - 19.5) * 0.3 && (x & 1) === 0;
+    const lip = X > 26.4 && X < 28.6 && Y > 22.6 && Y < 26.4;
+    const at = (c) => { m.set(x, y, 15, c); m.set(x, y, 16, c); }; // 2 voxels thick: survives the small-size downsample
+    if (lip) at(Math.abs(Y - 24.5) < 0.6 ? lipD : lipC);
+    else if (body || tail || dors) at(dors || tail && (X < 12.4 || Math.abs(Y - 25.8) > (14.8 - X) * 1.25) ? fishD : body && h3(x, y, 2, 31) > 0.82 && Y < 28 ? spotC : Y > 28.6 ? fishD : fish);
   }
-  m.set(25, 27, 16, eye); m.set(25, 28, 16, white);
-  m.box(13, 8, 15, 26, 10, 15, gold); m.box(15, 9, 16, 24, 9, 16, goldL);
+  m.box(24, 27, 16, 25, 28, 17, white); m.set(25, 27, 17, eye); // googly eye
+  m.box(13, 8, 15, 26, 10, 16, gold); m.box(15, 9, 17, 24, 9, 17, goldL);
   glint(m, 27, 40, 15, p('#ffffff', { emissive: 0.7 }));
   // ribbon bookmark
   const rib = p('#ff4a5a', SOFT);
@@ -369,54 +377,157 @@ function baitHook() {
   return { vm: m, yaw: 0.3, pitch: 0.24, spin: 'wobble' };
 }
 
-// ---------------------------------------------------------------- Multiplayer: two toy grouper friends [grouper23]
-// (two chunky wind-up toy groupers, Bubbles' kind: big coral lips puckered at each other, white bulging eyes, spiny backs)
-function grouperToy(m, p, cx, cy, cz, k, dir, tint) {
-  const back = p(mix('#665022', tint, 0.25), GL), side = p(mix('#bb8a3a', tint, 0.25), GL), belly = p('#f6e0a0', GL), spot = p('#2c1d0c', GL);
-  const fin = p('#6d5524', GL), finE = p('#ffc94a', GL), lip = p('#f08a68', GL), lipD = p('#c8604a', GL), mouth = p('#3a0a14', MATTE);
-  const eye = p('#fdfbf3', GL), pup = p('#140d06', GL), shine = p('#ffffff', { emissive: 0.7 }), brow = p('#2a1a0a', MATTE), key = p('#b9c4d4', METAL);
-  // tail fan and spiny dorsal fin
-  m.ellipsoid(cx - dir * 9.8 * k, cy + 0.5 * k, cz, 2.6 * k, 5 * k, 1.3, (x, y) => (Math.abs(x + 0.5 - (cx - dir * 9.8 * k)) > 1.7 * k || Math.abs(y + 0.5 - cy - 0.5 * k) > 4 * k ? finE : fin));
-  for (let i = 0; i < 5; i++) {
-    const x = cx - dir * (5 - i * 1.9) * k, hgt = (i === 4 ? 2.4 : 3.4) * k;
-    m.box(x, cy + 5.6 * k, cz - 0.5, x, cy + 5.6 * k + hgt, cz + 0.5, finE);
-    if (i < 4) m.box(x + dir, cy + 5.6 * k, cz, x + dir, cy + 5.6 * k + hgt * 0.6, cz, fin);
-  }
-  // the chunky body: olive back, golden flanks, pale belly, dark spots
-  m.ellipsoid(cx, cy, cz, 8.6 * k, 7.4 * k, 6.6 * k, (x, y, z) => {
-    const yy = y + 0.5 - cy;
-    if (yy < -3.6 * k) return belly;
-    if (h3(x, y, z, 7) > 0.93) return spot;
-    return yy > 3 * k ? back : side;
-  });
-  // pectoral fin and a little silver wind-up key on the near flank
-  m.ellipsoid(cx - dir * 2.5 * k, cy - 2 * k, cz + 6.4 * k, 2.6 * k, 2 * k, 1, (x) => (Math.abs(x + 0.5 - (cx - dir * 2.5 * k)) > 1.6 * k ? finE : fin));
-  m.box(cx - dir * 5 * k, cy + 1.5 * k, cz + 5 * k, cx - dir * 5 * k, cy + 1.5 * k, cz + 7.5 * k, key);
-  m.ellipsoid(cx - dir * 5 * k, cy + 3.2 * k, cz + 8 * k, 1.3 * k, 1.9 * k, 0.8, key);
-  m.ellipsoid(cx - dir * 5 * k, cy - 0.2 * k, cz + 8 * k, 1.3 * k, 1.9 * k, 0.8, key);
-  // big pouty lips (puckered forward) with a dark mouth line
-  m.ellipsoid(cx + dir * 8.4 * k, cy - 1.4 * k, cz, 3 * k, 2 * k, 4 * k, lip);
-  m.ellipsoid(cx + dir * 8.9 * k, cy - 4.2 * k, cz, 3.3 * k, 2.2 * k, 4.3 * k, (x, y) => (y + 0.5 < cy - 5.2 * k ? lipD : lip));
-  m.box(cx + dir * 7 * k, cy - 3 * k, cz - 2 * k, cx + dir * 11.5 * k, cy - 3 * k, cz + 2 * k, mouth);
-  // bulging toy eyes with big pupils and painted brows
-  for (const s of [1, -1]) {
-    const ex = cx + dir * 3.8 * k, ey = cy + 5 * k, ez = cz + s * 3.4 * k;
-    m.sphere(ex, ey, ez, 3.3 * k, eye);
-    if (s > 0) {
-      m.ellipsoid(ex + dir * 1 * k, ey + 0.2 * k, ez + 2.6 * k, 1.8 * k, 1.9 * k, 1, pup);
-      m.set(Math.floor(ex + dir * 0.4 * k), Math.floor(ey + 1.1 * k), Math.floor(ez + 3.4 * k), shine);
+// ---------------------------------------------------------------- the generic FISH: a grouper (Bubbles' kind) [vicons30]
+// A chunky olive-gold grouper: deep body with a big head, dark chocolate spots and saddles on golden flanks, a pale
+// belly, gold-freckled head, spiny dorsal (gold-tipped spines over an olive membrane), a soft rear dorsal, a gold-rimmed
+// fan tail, big pink pouty lips and a googly eye (white dome, off-centre pupil, glint). Faces +x (dir = -1 flips).
+//   grouperInto(m, p, cx, cy, cz, k, dir, o?)   k = scale (1 = ~46 voxels from tail tip to lips); o.noFar = no far eye,
+//                                               o.lite = no pelvic / anal fins (small sizes), o.short = chibi (shorter trunk + tail)
+const GR = {
+  back: '#76602a', side: '#c4943e', sideL: '#e2b65a', belly: '#f6e2a4', spot: '#2c1d0c', saddle: '#5a4018', fresh: '#ffd65a',
+  fin: '#806226', finD: '#4a3816', finE: '#ffc94a', spine: '#ffe27a', lip: '#fb8a94', lipL: '#ffc4c4', lipD: '#d0566c',
+  mouth: '#3a0a14', eye: '#fdfbf3', eyeD: '#e2dccb', pupil: '#120a06', gill: '#5a3e18',
+};
+function grouperInto(m, p, cx, cy, cz, k = 1, dir = 1, o = {}) {
+  const X = (d) => cx + dir * d * k, Y = (d) => cy + d * k, Z = (d) => cz + d * k;
+  const c = {}; for (const key in GR) c[key] = p(GR[key], key === 'eye' || key === 'lip' || key === 'lipL' ? GL : key.startsWith('fin') || key === 'spine' ? SOFT : GL);
+  const shine = p('#ffffff', { emissive: 0.8 });
+  const g = 4.2; // spot grid (body units)
+  const bodyCol = (x, y, z) => {
+    const u = dir * (x + 0.5 - cx) / k, v = (y + 0.5 - cy) / k;
+    if (v < -5.2 + u * 0.12) return c.belly;
+    // round dark spots on a jittered grid over the flank (projected along z, so they read as dots from the side)
+    const gx = Math.floor(u / g), gy = Math.floor(v / g), jx = (gx + 0.2 + 0.6 * h3(gx, gy, 0, 11)) * g, jy = (gy + 0.2 + 0.6 * h3(gx, gy, 1, 11)) * g;
+    if (v > -4.4 && u < 15 && h3(gx, gy, 2, 11) > 0.52 && Math.hypot(u - jx, v - jy) < 1.15 + 0.35 * h3(gx, gy, 3, 11)) return c.spot;
+    if (v > 5.8 && Math.abs(((u + 40) % 8) - 4) < 0.8) return c.saddle; // soft saddles over the back
+    if (u > 8 && h3(x, y, z, 13) > 0.9) return c.fresh; // gold freckles on the head
+    return v > 4.4 ? c.back : v < -2.5 ? c.sideL : c.side;
+  };
+  // tail fan (flat, gold rim, spotted membrane) on a thick peduncle
+  const sh = o.short ? 3.5 : 0, tl = o.short ? 6 : 7.5; // chibi proportions for small groups
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12, hx = -17 + sh - t * tl, hh = 2.6 + t * 6.2, hw = 1.3;
+    for (let y = Math.floor(Y(-hh - 0.5)); y <= Math.ceil(Y(hh + 0.5)); y++) {
+      const v = (y + 0.5 - cy) / k - 0.3;
+      if (Math.abs(v) > hh - (t > 0.85 ? Math.abs(v) * 0.08 : 0)) continue;
+      const edge = t > 0.82 || Math.abs(v) > hh - 1.4;
+      for (let z = Math.floor(Z(-hw)); z <= Math.ceil(Z(hw)); z++) {
+        const x = Math.round(X(hx));
+        m.put(x, y, z, edge ? c.finE : h3(x, y, z, 5) > 0.82 ? c.spot : c.fin);
+      }
     }
-    m.box(ex - 2.2 * k, ey + 3.9 * k, ez + (s > 0 ? 1 : -1), ex + 2.2 * k, ey + 4.5 * k, ez + (s > 0 ? 2 : -1), brow);
+  }
+  tube(m, [[X(-11 + sh), Y(0.4), cz, 5.4 * k], [X(-15 + sh), Y(0.3), cz, 3.6 * k], [X(-18 + sh), Y(0.3), cz, 2.6 * k]], (u, x, y, z) => bodyCol(x, y, z));
+  // the body: a deep rounded trunk + a big blunt head
+  m.ellipsoid(X(-2 + sh / 2), Y(0), cz, (13.5 - sh / 2) * k, 9.6 * k, 6.8 * k, bodyCol);
+  m.ellipsoid(X(7.5), Y(0.4), cz, 9.5 * k, 9.2 * k, 7.2 * k, bodyCol);
+  // gill cover line
+  skin(m, (x, y, z, v) => { const u = dir * (x + 0.5 - cx) / k, w = (y + 0.5 - cy) / k; return Math.abs(u - (4.2 + 0.03 * w * w)) < 0.55 && w > -5 && w < 5 && Math.abs(z + 0.5 - cz) > 4 * k ? c.gill : null; });
+  // top of the body per x (for the fins)
+  const topAt = (x) => { for (let y = m.ny - 1; y >= 0; y--) if (m.get(x, y, Math.floor(cz))) return y; return Math.floor(cy); };
+  const botAt = (x) => { for (let y = 0; y < m.ny; y++) if (m.get(x, y, Math.floor(cz))) return y; return Math.floor(cy); };
+  // spiny dorsal: gold-tipped spines with olive membrane between them
+  for (let d = -6; d <= 7; d++) {
+    const x = Math.round(X(d)), y0 = topAt(x), s = (d + 6) / 13;
+    const hgt = Math.max(1, Math.round((3.2 + 2.6 * Math.sin(Math.min(1, s * 1.4) * Math.PI * 0.9)) * k));
+    const spine = (d & 1) === 0;
+    for (let y = y0; y <= y0 + hgt - (spine ? 0 : 1); y++) m.put(x, y, Math.round(cz), spine ? (y >= y0 + hgt - Math.max(1, Math.round(k)) + 1 ? c.spine : c.finE) : c.fin);
+  }
+  // soft rear dorsal + anal fin (rounded, spotted, gold edge)
+  for (const [a, b, H, top] of (o.lite ? [[-15, -7, 4.8, true]] : [[-15, -7, 4.8, true], [-14, -8, 3.6, false]]).map(([a, b, H, t]) => [a + sh, b + sh * 0.5, H, t])) for (let d = a; d <= b; d++) {
+    const x = Math.round(X(d)), s = (d - a) / (b - a), hgt = Math.round(H * k * Math.sqrt(Math.max(0, Math.sin(s * Math.PI))) + 0.4);
+    const y0 = top ? topAt(x) : botAt(x);
+    for (let i = 0; i <= hgt; i++) { const y = top ? y0 + i : y0 - i; for (let z = Math.round(cz - 0.6 * k); z <= Math.round(cz + 0.6 * k); z++) m.put(x, y, z, i >= hgt - 0.5 ? c.finE : h3(x, y, z, 9) > 0.8 ? c.spot : c.fin); }
+  }
+  // pelvic fin under the head (not on the small pair: it reads as legs), pectoral fin on the near flank
+  if (!o.lite) m.ellipsoid(X(4.5), Y(-8.6), Z(1.5), 2.4 * k, 1.3 * k, 1.1 * k, (x) => (dir * (x + 0.5 - X(4)) < -1.2 * k ? c.finE : c.fin));
+  m.ellipsoid(X(1), Y(-2.2), Z(6.6), 3.6 * k, 2.6 * k, 1 * Math.max(1, k), (x, y) => (dir * (x + 0.5 - X(1)) < -2.2 * k || y + 0.5 < Y(-4.2) ? c.finE : c.fin));
+  // big pouty pink lips (upper smaller, lower bigger and pushed out) with a dark mouth line
+  m.ellipsoid(X(16.6), Y(-0.3), cz, 3.4 * k, 2.5 * k, 5 * k, (x, y) => (y + 0.5 > Y(1) ? c.lipL : c.lip));
+  m.ellipsoid(X(17.6), Y(-4), cz, 4 * k, 2.9 * k, 5.6 * k, (x, y) => (y + 0.5 < Y(-5.6) ? c.lipD : y + 0.5 > Y(-2.6) ? c.lipL : c.lip));
+  m.box(Math.min(X(14.6), X(21)), Y(-2.2), Z(-4), Math.max(X(14.6), X(21)), Y(-2.2), Z(4), c.mouth);
+  // the googly eye: a white dome bulging from the head, a big pupil looking forward-down, a glint
+  const ex = X(8.8), ey = Y(5), ez = Z(4.9), er = 4.2 * k;
+  m.sphere(ex, ey, ez, er, (x, y, z) => (y + 0.5 < ey - er * 0.55 ? c.eyeD : c.eye));
+  const D = [dir * 0.48, -0.3, 0.83], dl = Math.hypot(...D);
+  m.recolor((x, y, z, v) => {
+    if (v !== c.eye && v !== c.eyeD) return null;
+    const nx = x + 0.5 - ex, ny = y + 0.5 - ey, nz = z + 0.5 - ez, n = Math.hypot(nx, ny, nz) || 1;
+    return (nx * D[0] + ny * D[1] + nz * D[2]) / (n * dl) > 0.78 ? c.pupil : null;
+  });
+  m.set(Math.floor(ex + dir * er * 0.2), Math.floor(ey + er * 0.25), Math.floor(ez + er * 0.95), shine);
+  if (!o.noFar) m.sphere(ex - dir * 0.3 * k, ey + 0.4 * k, Z(-4.4), er * 0.86, c.eye); // the far eye peeking over the head
+  return m;
+}
+function grouperIcon() {
+  const m = new VoxelModel(54, 34, 26), p = palOf(m);
+  grouperInto(m, p, 27, 15.5, 12.5, 1, 1);
+  return { vm: m, yaw: 0.42, pitch: 0.26, spin: 'wobble' };
+}
+
+// Multiplayer: two groupers puckering up at each other under a little heart
+function heartInto(m, p, cx, cy, cz, r, t = 1.4) {
+  const ht = p('#ff4a7a', { ...GL, emissive: 0.25 }), htL = p('#ff9ab4', { ...GL, emissive: 0.35 }), htD = p('#c8204e', GL);
+  for (let y = Math.floor(cy - r * 1.2); y <= Math.ceil(cy + r); y++) for (let x = Math.floor(cx - r * 1.2); x <= Math.ceil(cx + r * 1.2); x++) {
+    const u = (x + 0.5 - cx) / r, v = (y + 0.5 - cy) / r;
+    // two round lobes over a point (a clear notch on top, so it reads as a heart at small sizes)
+    const lobe = Math.hypot(Math.abs(u) - 0.5, v - 0.28) < 0.56;
+    const point = v <= 0.3 && v >= -1.05 && Math.abs(u) <= (v + 1.05) * 0.95;
+    if (!lobe && !point) continue;
+    const th = Math.round(t * Math.sqrt(Math.max(0.15, 1 - (u * u + v * v) / 2)));
+    for (let z = Math.round(cz - th); z <= Math.round(cz + th); z++) m.put(x, y, z, v > 0.35 && u < -0.15 ? htL : v < -0.7 ? htD : ht);
+  }
+}
+// build into a scratch layer (sharing dst's palette) and stamp it turned by `ang` radians about z through (px, py)
+function tiltInto(dst, build, px, py, ang) {
+  const T = new VoxelModel(dst.nx, dst.ny, dst.nz);
+  T.palette = dst.palette;
+  build(T);
+  const c = Math.cos(ang), s = Math.sin(ang);
+  for (let z = 0; z < dst.nz; z++) for (let y = 0; y < dst.ny; y++) for (let x = 0; x < dst.nx; x++) {
+    const dx = x + 0.5 - px, dy = y + 0.5 - py;
+    const v = T.get(Math.floor(px + dx * c + dy * s), Math.floor(py - dx * s + dy * c), z);
+    if (v) dst.set(x, y, z, v);
   }
 }
 function friends() {
-  const m = new VoxelModel(52, 42, 36), p = palOf(m);
-  grouperToy(m, p, 35, 24, 12, 0.92, -1, '#8fa86a');
-  grouperToy(m, p, 16, 13, 20, 0.98, 1, '#ffb050');
-  // a little heart between them
-  const ht = p('#ff4a7a', { ...GL, emissive: 0.25 });
-  for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.box(28 + x, 14 + y, 24, 28 + x, 14 + y, 25, ht);
-  return { vm: m, yaw: 0.3, pitch: 0.24, spin: 'wobble' };
+  const m = new VoxelModel(64, 46, 22), p = palOf(m), k = 0.74, a = 0.14, o = { lite: true, short: true };
+  tiltInto(m, (T) => grouperInto(T, p, 17.5, 15, 10.5, k, 1, o), 17.5, 15, a);
+  tiltInto(m, (T) => grouperInto(T, p, 46.5, 15, 10.5, k, -1, o), 46.5, 15, -a);
+  heartInto(m, p, 32, 33, 11, 6.6, 1.8);
+  return { vm: m, yaw: 0.3, pitch: 0.22, spin: 'wobble' };
+}
+
+// ---------------------------------------------------------------- Byte Gem (currency): a faceted violet crystal with
+// cyan "byte" pixels glowing under the crown [vicons30]
+function byteGem() {
+  const m = new VoxelModel(40, 34, 40), p = palOf(m);
+  const cx = 20, cz = 20, R = 18.5, g = 21, top = 30; // girdle at y = g, table at y = top, culet at y = 0
+  const F = { ...GL, spec: 1.2, specPow: 12, smooth: 0.45 };
+  const cols = ['#b07cff', '#8a4ef0', '#d4a8ff', '#6a32c8', '#9c62f6', '#7a40dc', '#c494ff', '#5c2aa8'].map((h) => p(h, F));
+  const tab = p('#e2c8ff', F), tabL = p('#f6ecff', { ...F, emissive: 0.2 }), gir = p('#4a1e94', F);
+  const cyan = p('#7ff4ff', { ...GL, emissive: 0.75 }), cyanD = p('#30c8e8', { ...GL, emissive: 0.45 }), wh = p('#ffffff', { emissive: 0.9 });
+  const oct = (dx, dz) => Math.max(Math.abs(dx), Math.abs(dz), (Math.abs(dx) + Math.abs(dz)) * 0.7071);
+  for (let y = 0; y <= top; y++) {
+    const r = y <= g ? 1.2 + (R - 1.2) * Math.pow(y / g, 0.95) : R - (R - R * 0.6) * ((y - g) / (top - g));
+    for (let z = 0; z < 40; z++) for (let x = 0; x < 40; x++) {
+      const dx = x + 0.5 - cx, dz = z + 0.5 - cz;
+      if (oct(dx, dz) > r) continue;
+      const a = Math.atan2(dz, dx), sec = ((Math.round((a / TAU) * 8) % 8) + 8) % 8;
+      const half = ((Math.floor((a / TAU) * 16 + 0.5) % 2) + 2) % 2; // star / bezel facets split each sector
+      let c;
+      if (y === top) c = oct(dx, dz) < r * 0.45 ? tabL : tab;
+      else if (y === g || y === g + 1) c = gir;
+      else if (y > g) c = cols[(sec + half * 2) % 8];
+      else c = cols[(sec + 3 + half) % 8];
+      m.put(x, y, z, c);
+    }
+  }
+  // the "byte" glints: little square cyan pixels on the crown + a 2x2 bit on the table, and a white sparkle
+  skin(m, (x, y, z) => (y > g + 1 && y < top && h3(x >> 1, y >> 1, z >> 1, 21) > 0.86 ? (h3(x, y, z, 22) > 0.5 ? cyan : cyanD) : null));
+  for (const [x, z] of [[14, 24], [15, 24], [14, 25], [15, 25], [24, 16], [25, 16]]) m.set(x, top, z, cyan);
+  glint(m, 12, top - 2, 30, wh, true);
+  return { vm: m, yaw: 0.4, pitch: 0.42, spin: 'full' };
 }
 
 // ---------------------------------------------------------------- Settings: a steel-blue cog with a small green one
@@ -469,16 +580,7 @@ function tools() {
   return { vm: m, yaw: 0.34, pitch: 0.3, spin: 'wobble' };
 }
 
-// ---------------------------------------------------------------- Aquarium: a fishbowl (glass) with sand, weed, a goldfish
-function goldfish(m, p, cx, cy, cz, k = 1, flip = false) {
-  const o = p('#ff8a2a', GL), oL = p('#ffc06a', GL), oD = p('#e05a1a', GL), fin = p('#ffb04a', SOFT), eye = p('#1a1226', GL), wh = p('#ffffff', { emissive: 0.7 });
-  const s = flip ? -1 : 1;
-  m.ellipsoid(cx, cy, cz, 6 * k, 4.4 * k, 3.2 * k, (x, y, z) => (y < cy - 1.5 * k ? oL : ((x + y) % 4 === 0 && y > cy) ? oD : o));
-  for (let i = 0; i < 6; i++) { const t = i / 5; m.ellipsoid(cx - s * (6.5 + t * 3.5) * k, cy + (t - 0.5) * 2 * k * 1.6, cz, 1.4 * k, (1.6 + t * 2.2) * k, 1 * k, fin); }
-  m.ellipsoid(cx - s * 0.5 * k, cy + 4.4 * k, cz, 2.6 * k, 1.6 * k, 0.8 * k, fin);
-  m.set(Math.floor(cx + s * 3.4 * k), Math.floor(cy + 1 * k), Math.floor(cz + 2.8 * k), eye);
-  m.set(Math.floor(cx + s * 3.4 * k), Math.floor(cy + 1.6 * k), Math.floor(cz + 2.6 * k), wh);
-}
+// ---------------------------------------------------------------- Aquarium: a fishbowl (glass) with sand, weed and a grouper
 function fishbowl() {
   const m = new VoxelModel(50, 44, 46), p = palOf(m);
   const F = layer(m), fp = palOf(F), G = layer(m), gp = palOf(G);
@@ -489,7 +591,7 @@ function fishbowl() {
   const weed = p('#3cc85a', SOFT), weedD = p('#228a44', SOFT);
   for (const [x, z, h, ph] of [[14, 16, 18, 0], [18, 13, 14, 1.5], [33, 15, 16, 3], [36, 19, 11, 2]]) tube(m, Array.from({ length: 5 }, (_, i) => [x + Math.sin(i * 1.3 + ph) * 1.6, 7 + (i / 4) * h, z, 1.3]), (u, xx, y) => (y % 3 === 0 ? weedD : weed));
   glint(m, 31, 27, 34, p('#ffffff', { emissive: 0.6 }));
-  goldfish(F, fp, 26, 17, 35, 1.05);
+  grouperInto(F, fp, 26, 17, 33, 0.5, 1, { lite: true }); // [vicons30] the generic fish is a grouper
   for (const [x, y, z] of [[34, 23, 36], [35, 26, 35], [33, 29, 34]]) F.sphere(x, y, z, 0.9, fp('#e8fbff', { ...GL, emissive: 0.5 }));
   const gl = gp('#d8f6ff', GLASS), gw = gp('#ffffff', { ...GLASS, emissive: 0.6 }), rim = gp('#c4ecff', GLASS);
   shellE(G, cx, cy, cz, rx, ry, rx, 1.3, (x, y, z, dx, dy, dz) => (dx < -0.3 && dy > 0.1 && dz > 0.5 && dx > -0.75 ? gw : gl), (x, y) => y <= 30 && y >= 2);
@@ -512,7 +614,7 @@ function cubeTank() {
   m.box(x0 - 1, 0, z0 - 1, x1 + 1, y0 - 1, z1 + 1, (x, y) => (y === y0 - 1 ? frL : fr));
   m.box(x0 - 1, y1, z0 - 1, x1 + 1, y1 + 2, z1 + 1, (x, y) => (y === y1 + 2 ? frL : fr));
   for (const x of [x0 - 1, x1]) for (const z of [z0 - 1, z1]) m.box(x, y0, z, x + 1, y1 - 1, z + 1, frD);
-  goldfish(F, fp, 25, 21, z1 + 1, 1.15);
+  grouperInto(F, fp, 24, 20, z1 - 1, 0.56, 1, { lite: true }); // [vicons30]
   const gl = gp('#d8f6ff', GLASS), gw = gp('#ffffff', { ...GLASS, emissive: 0.6 });
   G.box(x0, y0, z1, x1, y1 - 1, z1, (x, y) => (x - y > -20 && x - y < -14 ? gw : gl));
   G.box(x0, y0, z0, x0, y1 - 1, z1, gl); G.box(x1, y0, z0, x1, y1 - 1, z1, gl); G.box(x0, y0, z0, x1, y1 - 1, z0, gl);
@@ -629,11 +731,12 @@ export const ICON_VOX = {
   lab: () => flask(), quests: scroll, journal: book, inventory: satchel, wardrobe: shirt, map: globe, shop: stall, bait: baitHook,
   multiplayer: friends, settings: settingsCog, build: tools, aquarium: fishbowl, fishmgr: cubeTank, coin: aeroDrop,
   skills: () => flask(), research: () => flask(), tank: fishbowl, fishdex: book, satchel, friends, baitshop: stall, appsea: stall, store: stall,
-  crafting: tools,
+  crafting: tools, fish: grouperIcon, grouper: grouperIcon, aerobuck: aeroDrop, aerobucks: aeroDrop, gem: byteGem, bytegem: byteGem,
 };
 
 // icons3d names that use the same detailed models
 export const UI3D_VOX = {
   beaker: () => flask(), book: book, map: globe, globe, shop: stall, tank: fishbowl, settings: settingsCog, hammer: tools,
   scroll, bait: baitHook, people: friends, box: () => CHEST_VOX('crate'), coin: aeroDrop, aero: aeroDrop, coins: aeroDrop, coin_big: aeroDrop, aero_big: aeroDrop,
+  aerobuck: aeroDrop, aerobucks: aeroDrop, gem: byteGem, bytegem: byteGem, fish: grouperIcon, grouper: grouperIcon, friends, multiplayer: friends, // [vicons30]
 };

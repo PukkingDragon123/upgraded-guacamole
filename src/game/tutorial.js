@@ -1312,7 +1312,7 @@ export class Tutorial {
     if (kind === 'crank') {
       const rr = R * 0.64;
       ctx.strokeStyle = rgba(ink, 0.35); ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.stroke();
+      const ri = Math.round(rr); AE.pixelRectPath?.(ctx, Math.round(cx) - ri + 0.5, Math.round(cy) - ri + 0.5, ri * 2, ri * 2, 12); ctx.stroke(); // [pixui30] stepped track
       const a = t * 7;
       for (let i = 0; i < 4; i++) { ctx.fillStyle = rgba('#2fb8e8', 1 - i * 0.22); ctx.fillRect(Math.round(cx + Math.cos(a - i * 0.35) * rr) - 1, Math.round(cy + Math.sin(a - i * 0.35) * rr) - 1, 3, 3); }
       const m = UIC.getUiIcon?.('mouse_l');

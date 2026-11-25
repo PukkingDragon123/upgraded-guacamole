@@ -364,8 +364,8 @@ export class CratePop {
     f.hooked = true; f.rollCtl = true; f.shield = false; f.flash = 0;
     if (this.surprise === 'mimic') f.mimic = 0.7;
     const sy = this.surface ?? f.y;
-    F.particles.eruption?.(f.x, sy, 0.9);
-    F.particles.splashBurst?.(f.x, sy, 1);
+    if (this.surface !== null) F.ffx?.leap(f.x, sy, this.surprise ? 1.3 : 0.9); // [fishui30] pixel splash crowns, no rings
+    else F.particles.splashBurst?.(f.x, sy, 1);
     F.sfx('splash_big', { vol: 0.7 });
     F.sfx('jump_out', { pitch: 1.2 });
     F.shake(4);

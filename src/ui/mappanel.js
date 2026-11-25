@@ -1819,11 +1819,7 @@ export class MapPanel {
       ctx.drawImage(mn.canvas, Math.round(sx - mn.w / 2), Math.round(sy - mn.h / 2));
       for (let i = 0; i < 6; i++) if ((tt * 0.7 + hash1(i, 71)) % 1 < 0.25) drawSparkle(ctx, view.x + hash1(i, 72) * view.w, view.y + hash1(i, 73) * view.h * 0.4, 2, 0.8);
     } else {
-      ctx.save();
-      ctx.translate(view.x, view.y);
-      drawArcLines(ctx, sx - view.x, sy - view.y, 46, 6, { gap: 7, a0: 1.75, a1: 3.0, alpha: 0.5, w: view.w, h: view.h });
-      ctx.restore();
-      drawSunFlare(ctx, sx, sy, 30, 1);
+      drawSunFlare(ctx, sx, sy, 30, 1); // [pixui30] (no arc rings around the sun)
     }
     for (let i = 0; i < 9; i++) {
       const ph = (tt * (0.03 + hash1(i, 81) * 0.03) + hash1(i, 82)) % 1;

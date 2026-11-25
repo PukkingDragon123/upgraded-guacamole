@@ -10,12 +10,13 @@ import { drawText, measureText, registerInlineIcon } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawCharacter } from '../gfx/character.js';
-import { discSprite, glowSprite, pixelLine, gbubbleSprite } from '../gfx/particles.js';
-import { glossText, drawGlassPill, glossFor, word3D } from './cinematics.js';
+import { discSprite, pixelLine } from '../gfx/particles.js';
+import { word3D } from './cinematics.js';
 import { drawIcon3d } from './icons3d.js'; // [phase9:fishing] 3D HUD icons, 3D voxel words
 import { drawMeter } from './meter.js'; // [simple24] the meter, catch bar and SHOCK button
 import { voxelFishIcon } from '../fish/fishicon.js';
 import { gemIcon } from '../gfx/bigicons.js';
+import { PAL, pxFrame, pxHalo, pxDiamond, pxCaret, unitOf } from './pixui.js'; // [fishui30] square pixel-art HUD kit
 
 const INK = '#0c3a52';
 
@@ -156,37 +157,38 @@ function mixHex(a, b, t) {
 }
 
 // ------------------------------------------------------------------ bite cue [simple24]: CLICK NOW!
-// A big glossy "!" bubble above the biting fish with the bite window draining as a pixel bar under it, a 3D mouse
-// clicking beside it and the 3D word CLICK!. No rings.
+// [fishui30] A square gold pixel sign over the biting fish: a big 3D "!", the bite window draining as a segmented pixel
+// bar at its foot, a stepped tail pointing down at the fish, a stepped square halo pulsing round it; a 3D mouse
+// clicking and the 3D word CLICK! beside it. No bubbles, no round glows.
 export function drawBiteCue(ctx, F) {
-  const f = F.fish, hs = F.hs;
+  const f = F.fish;
   const k = clamp01(F.biteT / Math.max(0.01, F.biteMax));
   const [sx, sy] = F.toScreen(f.x, f.y);
   const z = F.zoom();
   const t = F.t;
-  const S = F.H / 540;
-  const cx = Math.round(clamp(sx, 80 * S, F.W - 80 * S)), cy = Math.round(clamp(sy - 22 * f.scale * z - 46 * S, 70 * S, F.H - 120 * S));
-  const pop = 1 + Math.max(0, 0.35 - (1 - k) * 2.5) + Math.sin(t * 30) * 0.05;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.55 + 0.3 * Math.sin(t * 20);
-  ctx.drawImage(glowSprite(Math.round(34 * S), '#ffe27a'), cx - Math.round(34 * S), cy - Math.round(34 * S));
-  ctx.restore();
-  const br = Math.round(20 * S);
-  const b = gbubbleSprite(br);
-  ctx.drawImage(b, cx - br, cy - br);
-  word3D(ctx, '!', cx, cy, { t, scale: 2.3 * S * pop, pal: 'sun', wobble: 1.5, depth: 6 });
-  // the window draining: a chunky pixel bar under the bubble
-  const w = Math.round(64 * S), h = Math.max(4, Math.round(6 * S)), x = cx - w / 2, y = cy + br + Math.round(8 * S);
-  ctx.fillStyle = INK; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
-  ctx.fillStyle = '#163a56'; ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = k < 0.35 ? (Math.floor(t * 10) % 2 ? '#ffffff' : '#ff6a5a') : '#ffd23a'; ctx.fillRect(x, y, Math.round(w * k), h);
-  ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(x, y, Math.round(w * k), 1);
+  const S = F.H / 540, u = unitOf(S);
+  const w = Math.round(46 * S), h = Math.round(56 * S);
+  const cx = Math.round(clamp(sx, 80 * S, F.W - 80 * S)), cy = Math.round(clamp(sy - 22 * f.scale * z - 58 * S, 70 * S, F.H - 130 * S));
+  const pop = 1 + Math.max(0, 0.35 - (1 - k) * 2.5);
+  const jx = k < 0.35 ? Math.round(Math.sin(t * 50) * u) : 0;
+  const x = cx - w / 2 + jx, y = cy - h / 2;
+  pxHalo(ctx, cx, cy, w, h, '#ffe46a', 0.55 + 0.35 * (Math.floor(t * 8) % 2), u);
+  pxFrame(ctx, x, y, w, h, { u, step: 2, fill: ['#fff3a0', '#ffd23a', '#f0a018'], rim: ['#fffbd0', '#ffd23a', '#b86a08'] });
+  pxCaret(ctx, cx + jx, y + h + 6 * u, 6 * u, 'down', '#f0a018');
+  word3D(ctx, '!', cx + jx, cy - Math.round(6 * S), { t, scale: 1.7 * S * pop, pal: 'sun', wobble: 1.5, depth: 6 });
+  // the window: 8 segments at the sign's foot, the last ones blink red
+  const n = 8, bw = w - 10 * u, sw = Math.floor(bw / n), bx = Math.round(cx - (sw * n) / 2) + jx, by = y + h - 10 * u, bh = 4 * u;
+  ctx.fillStyle = PAL.ink; ctx.fillRect(bx - u, by - u, sw * n + u, bh + 2 * u);
+  const lit = Math.ceil(k * n);
+  for (let i = 0; i < n; i++) {
+    const on = i < lit;
+    ctx.fillStyle = !on ? '#6a4a10' : k < 0.35 ? (Math.floor(t * 10) % 2 ? '#ffffff' : '#ff5a4a') : '#ffffff';
+    ctx.fillRect(bx + i * sw, by, sw - u, bh);
+  }
   // CLICK! + a 3D mouse pressing its button
   const down = Math.floor(t * 5) % 2 === 0;
-  drawIcon3d(ctx, down ? 'mouse_lit' : 'mouse', cx + Math.round(48 * S), cy + (down ? 2 : 0), Math.round(30 * S), Math.sin(t * 3) * 0.4);
-  word3D(ctx, 'CLICK!', cx, y + h + Math.round(18 * S), { t, scale: 0.9 * S, pal: 'sun', wobble: 1.2 });
-  void hs;
+  drawIcon3d(ctx, down ? 'mouse_lit' : 'mouse', cx + w / 2 + Math.round(22 * S), cy - Math.round(8 * S) + (down ? 2 : 0), Math.round(30 * S), Math.sin(t * 3) * 0.4);
+  word3D(ctx, 'CLICK!', cx + w / 2 + Math.round(24 * S), cy + Math.round(22 * S), { t, scale: 0.8 * S, pal: 'sun', wobble: 1.2 });
 }
 
 // Short message near the cursor (external callers: tutorial, overlay toasts) as a glass pill.
@@ -215,7 +217,7 @@ export function drawFightBands(ctx, F, B) {
   ctx.save();
   ctx.globalAlpha = B.hudIn;
   drawEdges(ctx, F, B);
-  if (!B.boss) drawNamePill(ctx, F, B, 10, 10); // a boss has its own bar
+  if (!B.boss) drawNamePill(ctx, F, B, 10, 8); // a boss has its own bar
   ctx.restore();
   F.gear.draw(ctx, B, 1);
   drawMeter(ctx, F, B);
@@ -226,62 +228,64 @@ export function drawFightHud(ctx, F, B) {
   drawFightBands(ctx, F, B);
 }
 
-// ------------------------------------------------------------------ edges: vignette, stun, strain
+// ------------------------------------------------------------------ edges: stun, beat, strain
+// [fishui30] Flat stepped bands at the screen edges (three rects of falling alpha), no radial / gradient vignette.
 function drawEdges(ctx, F, B) {
   const W = F.W, H = F.H, t = F.t;
-  const v = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.75);
-  v.addColorStop(0, 'rgba(190,240,255,0)');
-  v.addColorStop(1, 'rgba(190,240,255,0.22)');
-  ctx.fillStyle = v;
-  ctx.fillRect(0, 0, W, H);
   if (B.stunned) {
     const k = clamp01(B.stunT / B.stunMax);
     const fl = Math.floor(t * 20) % 3 === 0 ? 1.4 : 1;
-    edgeTint(ctx, W, H, 1, 0, '127,244,255', 0.14 * k * fl);
-    edgeTint(ctx, W, H, -1, 0, '127,244,255', 0.14 * k * fl);
+    edgeTint(ctx, W, H, 'l', '#7ff4ff', 0.16 * k * fl);
+    edgeTint(ctx, W, H, 'r', '#7ff4ff', 0.16 * k * fl);
   }
-  if (B.beat) edgeTint(ctx, W, H, 0, 1, '255,226,122', 0.12 + 0.06 * Math.sin(t * 16));
-  if (B.marker > 0.8) edgeTint(ctx, W, H, 1, 0, '255,79,94', (B.marker - 0.8) * 1.2 * (0.6 + 0.4 * Math.sin(t * 20)));
-  if (B.marker < -0.8) edgeTint(ctx, W, H, -1, 0, '255,140,70', (-B.marker - 0.8) * 1.0 * (0.6 + 0.4 * Math.sin(t * 12)));
+  if (B.beat) edgeTint(ctx, W, H, 'b', '#ffe27a', 0.14 + 0.06 * (Math.floor(t * 8) % 2));
+  if (B.marker > 0.8) edgeTint(ctx, W, H, 'r', '#ff4f5e', (B.marker - 0.8) * 1.4 * (Math.floor(t * 10) % 2 ? 1 : 0.6));
+  if (B.marker < -0.8) edgeTint(ctx, W, H, 'l', '#ff8c46', (-B.marker - 0.8) * 1.2 * (Math.floor(t * 6) % 2 ? 1 : 0.6));
 }
 
-function edgeTint(ctx, W, H, dx, dy, rgb, a) {
+function edgeTint(ctx, W, H, side, col, a) {
   if (a <= 0.01) return;
-  const band = Math.round(Math.min(W, H) * 0.2);
-  const sides = [[dx, 'r'], [-dx, 'l'], [dy, 'b'], [-dy, 't']];
-  for (const [w, s] of sides) {
-    if (w <= 0.15) continue;
-    const al = a * Math.min(1, w * 1.2);
-    let g;
-    if (s === 'r') { g = ctx.createLinearGradient(W, 0, W - band, 0); }
-    else if (s === 'l') { g = ctx.createLinearGradient(0, 0, band, 0); }
-    else if (s === 'b') { g = ctx.createLinearGradient(0, H, 0, H - band); }
-    else { g = ctx.createLinearGradient(0, 0, 0, band); }
-    g.addColorStop(0, `rgba(${rgb},${al})`);
-    g.addColorStop(1, `rgba(${rgb},0)`);
-    ctx.fillStyle = g;
-    if (s === 'r') ctx.fillRect(W - band, 0, band, H);
-    else if (s === 'l') ctx.fillRect(0, 0, band, H);
-    else if (s === 'b') ctx.fillRect(0, H - band, W, band);
-    else ctx.fillRect(0, 0, W, band);
+  const band = Math.round(Math.min(W, H) * 0.05);
+  const a0 = ctx.globalAlpha;
+  ctx.fillStyle = col;
+  for (let i = 0; i < 3; i++) {
+    ctx.globalAlpha = a0 * a * (1 - i * 0.3);
+    const o = i * band, d = band;
+    if (side === 'r') ctx.fillRect(W - o - d, 0, d, H);
+    else if (side === 'l') ctx.fillRect(o, 0, d, H);
+    else if (side === 'b') ctx.fillRect(0, H - o - d, W, d);
+    else ctx.fillRect(0, o, W, d);
   }
+  ctx.globalAlpha = a0;
 }
 
-// ------------------------------------------------------------------ name pill
+// ------------------------------------------------------------------ name banner
+// [fishui30] A square pixel plaque top-left: a rarity-coloured tab, the name in crisp pixel text, the rarity in small
+// caps with diamond pips, and a square GIANT / weight badge beside it.
 function drawNamePill(ctx, F, B, x, y) {
-  const sp = F.sp, rar = RARITY[sp.rarity] || RARITY.common, t = F.t;
-  const S = Math.max(1, F.H / 540);
-  const w = Math.min(F.W * 0.5, sp.name.length * 13 * S + 30);
-  const cy = y + Math.round(14 * S);
-  word3D(ctx, sp.name, x + w / 2, cy, { t, scale: 0.8 * S, pal: glossFor(sp.rarity), wobble: 0.6 });
-  const n = rar.stars || 1, gs = Math.round(12 * S);
-  for (let i = 0; i < n; i++) {
-    const g = gemIcon(rar.color || '#59c3ff', gs);
-    if (g) ctx.drawImage(g, Math.round(x + w / 2 - (n * (gs + 2)) / 2 + i * (gs + 2)), Math.round(cy + 14 * S + Math.sin(t * 4 + i) * 1.5));
-  }
+  const sp = F.sp, rar = RARITY[sp.rarity] || RARITY.common;
+  const S = Math.max(1, F.H / 540), u = unitOf(S);
+  x = Math.round(x * S); y = Math.round(y * S);
+  const name = sp.name, nw = measureText(name, 'normal', 2 * u);
+  const rl = (rar.name || 'Common').toUpperCase(), rw = measureText(rl, 'small', u);
+  const n = rar.stars || 1, dr = 3 * u, dgap = dr * 2 + 3 * u;
+  const tab = 8 * u, pad = 6 * u;
+  const w = tab + pad * 2 + Math.max(nw, rw + 6 * u + n * dgap), h = 34 * u;
+  pxFrame(ctx, x, y, w, h, { u, step: 2, fill: PAL.navy, rim: PAL.rim });
+  // the rarity tab down the left side
+  ctx.fillStyle = rar.dark || '#5d6b78'; ctx.fillRect(x + 2 * u, y + 3 * u, tab, h - 6 * u);
+  ctx.fillStyle = rar.color; ctx.fillRect(x + 2 * u, y + 3 * u, tab - 2 * u, h - 6 * u);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(x + 2 * u, y + 3 * u, u, h - 6 * u);
+  const tx = x + 2 * u + tab + pad;
+  drawText(ctx, name, tx, y + 5 * u, { scale: 2 * u, color: '#ffffff', shadow: PAL.ink });
+  drawText(ctx, rl, tx, y + 23 * u, { font: 'small', scale: u, color: rar.color, shadow: PAL.ink });
+  for (let i = 0; i < n; i++) pxDiamond(ctx, tx + rw + 6 * u + i * dgap + dr, y + 25 * u, dr, rar.color, { lite: '#ffffff' });
   if (F.fish?.rec?.giant || B.heavy > 0) {
     const tag = F.fish?.rec?.giant ? 'GIANT' : `${Math.round(B.kg * 10) / 10} kg`;
-    word3D(ctx, tag, x + w + 30 * S, cy, { t: t + 1, scale: 0.55 * S, pal: B.heavy > 0 ? 'red' : 'sun', wobble: 0.6 });
+    const red = B.heavy > 0;
+    const bw = measureText(tag, 'normal', u) + 10 * u, bh = 15 * u;
+    pxFrame(ctx, x + w + 4 * u, y + Math.round((h - bh) / 2), bw, bh, { u, step: 1, fill: red ? ['#ff8a74', '#f0584a', '#c03440'] : ['#fff3a0', '#ffd23a', '#e8920a'], rim: red ? ['#ffc2b0', '#f0584a', '#801a28'] : ['#fffbd0', '#ffd23a', '#a85a06'] });
+    drawText(ctx, tag, x + w + 4 * u + bw / 2, y + Math.round((h - bh) / 2) + 4 * u, { align: 'center', scale: u, color: '#ffffff', shadow: red ? '#801a28' : '#6a3a06' });
   }
 }
 

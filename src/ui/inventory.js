@@ -21,7 +21,12 @@ import { PROJECTS, PERK_NAMES } from '../build/research.js';
 import { drawItem } from '../build/itemdraw.js';
 import { BAITS, baitList, ensureBait, equipBait } from '../store/bait.js';
 import { drawBaitGloss } from '../fishing/baitart.js';
-import { AERO, aeroCached, aeroSurface, drawAeroFrame, drawAeroCard, drawAeroBar, drawAeroBadge, drawAeroGlow, drawSparkle, ecoBackdrop, toneFrom, fmtAero, uiFont, capH, uiScaleMode } from './aero.js';
+// [pixui30] bait 'in a bubble' = a stepped pixel glass plate (aero.js pixelGlassPlate) + the bait sprite on top
+function drawBaitPlate(ctx, art, cx, cy, px, t = 0, o = {}) {
+  pixelGlassPlate(ctx, cx, cy, px, { tint: o.tint || '#e8fbff', rim: o.rim || '#2fb8e0' });
+  drawBaitGloss(ctx, art, cx, cy, Math.round(px * 0.88), t, { ...o, bubble: false });
+}
+import { AERO, aeroCached, aeroSurface, drawAeroFrame, drawAeroCard, drawAeroBar, drawAeroBadge, drawAeroGlow, drawSparkle, ecoBackdrop, toneFrom, fmtAero, uiFont, capH, uiScaleMode, pixelGlassPlate } from './aero.js';
 import { panelRect } from './ui.js';
 
 const BIGUI = () => uiScaleMode() !== 'normal'; // [phase6:ui] bigger text + tiles on the Big / Huge UI sizes
@@ -309,7 +314,7 @@ export class InventoryPanel {
       ctx.translate(cx, py);
       ctx.scale(k, k);
       ctx.translate(-cx, -py);
-      if (e.kind === 'bait' && e.def) drawBaitGloss(ctx, e.def.art, cx, py - 36 + bob, 64, t, {});
+      if (e.kind === 'bait' && e.def) drawBaitPlate(ctx, e.def.art, cx, py - 36 + bob, 64, t, {});
       else drawItem(ctx, e.id, cx, py + 2 + bob, { box: [sc.w - 60, sc.h - 34], t: t * 1.2, spin: true, big: true, rec: e.rec, building: e.kind === 'blueprint', look: st.character });
       ctx.restore();
       if (rIdx(e.rarity) >= 2 && Math.random() < dt * (rIdx(e.rarity) * 3)) g.particles?.sparkle(cx + rng.float(-50, 50), sc.y + rng.float(14, 96), '#ffffff', { layer: 'ui' });

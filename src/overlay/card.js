@@ -5,6 +5,7 @@ import { clamp01, ease } from '../core/math.js';
 import { RARITY, rgba } from '../core/color.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { drawWood, drawPaper, drawFrame, drawStamp } from '../ui/panels.js';
+import { pixelGradient } from '../ui/aero.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { spriteFromAscii } from '../gfx/pixel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
@@ -78,8 +79,7 @@ export function drawCatchCard(ctx, card, W, H, cursor) {
   const fr = drawFrame(ctx, r.x + 14, r.y + 41, r.w - 28, 54, { style: sp.rarity === 'legendary' ? 'gold' : 'wood' });
   ctx.save();
   ctx.beginPath(); ctx.rect(fr.x, fr.y, fr.w, fr.h); ctx.clip();
-  const bg = ctx.createLinearGradient(0, fr.y, 0, fr.y + fr.h);
-  bg.addColorStop(0, '#8ae0f0'); bg.addColorStop(1, '#2a8ab8');
+  const bg = pixelGradient(ctx, 0, fr.y, 0, fr.y + fr.h, [[0, '#8ae0f0'], [1, '#2a8ab8']], 4); // [pixui30] banded
   ctx.fillStyle = bg; ctx.fillRect(fr.x, fr.y, fr.w, fr.h);
   const c = compiled(sp.look, rec.variant, sp.id);
   // constant scale (every new scale would rasterize the rig again); the fish pops in by jumping up instead

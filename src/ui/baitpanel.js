@@ -7,7 +7,7 @@ import { drawText, wrapText, measureText } from '../gfx/font.js';
 import { rgba } from '../core/color.js';
 import { getMiniIcon } from '../desktop/icons.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { drawAeroFrame, drawGlossOrb, drawAeroCoin, fmtAero, drawPixelBrackets } from './aero.js';
+import { drawAeroFrame, drawGlossOrb, drawAeroCoin, fmtAero, drawPixelBrackets, pixelGlassPlate } from './aero.js';
 import { getBigIcon } from '../gfx/bigicons.js';
 import { centerRect } from './ui.js';
 import {
@@ -17,6 +17,11 @@ import {
 import { APP_DEF } from '../store/catalog.js';
 import { openStore } from '../store/index.js';
 import { drawBaitGloss, baitIcon } from '../fishing/baitart.js';
+// [pixui30] bait 'in a bubble' = a stepped pixel glass plate (aero.js pixelGlassPlate) + the bait sprite on top
+function drawBaitPlate(ctx, art, cx, cy, px, t = 0, o = {}) {
+  pixelGlassPlate(ctx, cx, cy, px, { tint: o.tint || '#e8fbff', rim: o.rim || '#2fb8e0' });
+  drawBaitGloss(ctx, art, cx, cy, Math.round(px * 0.88), t, { ...o, bubble: false });
+}
 import { pill, glassCard, statBar, button, orbButton, wordArt, tag, INK, INK_SOFT, GRASS, rrect } from '../store/aerokit.js';
 import { unlocked } from '../game/lab.js';
 import { ITEMS, countItem, takeItems } from '../build/items.js';
@@ -102,7 +107,7 @@ export class BaitPanel {
     glassCard(ctx, lx, ly, lw, lh, { r: 8 });
     const cx = lx + lw / 2;
     if (cur) {
-      drawBaitGloss(ctx, cur.art, cx, ly + 44, 70, t, { tint: '#e8fbff' });
+      drawBaitPlate(ctx, cur.art, cx, ly + 44, 70, t, { tint: '#e8fbff' });
       pill(ctx, cx + 14, ly + 66, 30, 12, { color: GRASS });
       drawText(ctx, 'x' + cur.count, cx + 29, ly + 69, { align: 'center', color: '#ffffff', font: 'small' });
       const lines = wrapText(cur.name, lw - 12);
@@ -134,7 +139,7 @@ export class BaitPanel {
       const rr = { x: x + 1, y: y + 1, w: cell - 2, h: cell - 2 };
       const hov = ui.hover(rr), on = cur?.id === e.id;
       if (on || hov) { rrect(ctx, rr.x, rr.y, rr.w, rr.h, 8); ctx.fillStyle = on ? 'rgba(120,230,90,0.35)' : 'rgba(255,255,255,0.45)'; ctx.fill(); }
-      drawBaitGloss(ctx, e.def.art, x + cell / 2, y + cell / 2 - 1, 38, this.t + i * 0.37, { tint: on ? '#e2ffd0' : '#e8fbff', rim: on ? '#4cc830' : '#2fb8e0', bob: hov || on });
+      drawBaitPlate(ctx, e.def.art, x + cell / 2, y + cell / 2 - 1, 38, this.t + i * 0.37, { tint: on ? '#e2ffd0' : '#e8fbff', rim: on ? '#4cc830' : '#2fb8e0', bob: hov || on });
       if (e.def.app) { const mi = getMiniIcon(APP_DEF[e.def.app]?.icon || 'notes'); if (mi) ctx.drawImage(mi, x + 2, y + 2, 11, 11); }
       if (e.custom) tag(ctx, x + 2, y + 2, 'MY', '#ff7ab4');
       const cnt = 'x' + e.count, cw = measureText(cnt, 'small') + 6;
@@ -204,7 +209,7 @@ export class BaitPanel {
     const lx = r.x + 10, ly = r.y + 34, lw = 140, lh = H - 44;
     glassCard(ctx, lx, ly, lw, lh, { r: 8 });
     const cx = lx + lw / 2;
-    drawBaitGloss(ctx, art, cx, ly + 46, 78, t, { tint: '#fff6e8', rim: art.color || '#2fb8e0' });
+    drawBaitPlate(ctx, art, cx, ly + 46, 78, t, { tint: '#fff6e8', rim: art.color || '#2fb8e0' });
     const lines = wrapText(rec.name, lw - 12);
     lines.slice(0, 2).forEach((l, i) => drawText(ctx, l, cx, ly + 90 + i * 10, { align: 'center', color: INK }));
     this.drawStats(ctx, lx + 10, ly + 114, lw - 26, rec.mods, modsOfDef(base));
@@ -226,7 +231,7 @@ export class BaitPanel {
       const bx = ox + 56 + i * 26 + 12, by = y + 9;
       const on = id === rec.base, rr = { x: bx - 12, y: by - 12, w: 24, h: 24 };
       const hov = ui.hover(rr);
-      drawBaitGloss(ctx, BAITS[id].art, bx, by, 22, t, { tint: on ? '#e2ffd0' : '#ffffff', rim: on ? '#4cc830' : '#7ac8e8', bob: on });
+      drawBaitPlate(ctx, BAITS[id].art, bx, by, 22, t, { tint: on ? '#e2ffd0' : '#ffffff', rim: on ? '#4cc830' : '#7ac8e8', bob: on });
       if (hov) ui.tip = BAITS[id].name;
       if (ui.clicked(rr)) { this.recipe.base = id; g.audio.play('ui_click'); }
     });

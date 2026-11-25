@@ -1,8 +1,4 @@
-// Big icons for the game menu / HUD hotbar. [pixicons26] Every icon with a hand-drawn 2D pixel sprite
-// (src/gfx/pixart.js, rendered by src/gfx/pixicons.js: 1 px selective outline, integer nearest-neighbour scaling on the
-// 2x layer, hover = a one-art-pixel hop frame) is drawn from it: menu ids, icons3d names, items, chests, bait, rods,
-// gems, cut gems, globes, chrome ornaments. The voxel pipeline below only remains as a fallback for keys without a
-// sprite (it used to be: [icons15] DETAILED VOXEL PIXEL ART in the bait-art
+// Big glossy icons for the game menu / HUD hotbar. [icons15] Every icon is DETAILED VOXEL PIXEL ART in the bait-art
 // style: hand-built VoxelModels (src/gfx/iconvox.js) or low-poly meshes (src/gfx/iconmeshes.js, icons3d.js) voxelised
 // at ~1 voxel per 2 device px by src/gfx/voxicon.js and rendered with voxel.js renderVoxels (hue-shifted ramps, glossy
 // normals, AO, dark outline, soft shadow), cached per (size, angle). Hover animations spin ('full', 12 angles) or wobble
@@ -30,8 +26,6 @@ import { ICON_MODELS, ROD_MODEL, GEM_MODEL, DECOR_MODELS, CUT_GEM_MODEL, ORB_MOD
 import { itemPixel, itemPixelScaled } from '../build/itempix.js'; // [phase8:ui]
 import { voxelizeLayers, modelLayers, layersExtent, renderLayers, iconRes } from './voxicon.js'; // [icons15] detailed voxel icons
 import { ICON_VOX, ROD_VOX, GEM_VOX } from './iconvox.js'; // [icons15] hand-built detailed models
-import { hasPix, pixFrame, pixSpin, pixKeyName, pixRegister, pixStill } from './pixicons.js'; // [pixicons26] 2D pixel art
-import { rodDef } from './pixart.js';
 
 export const MENU_ICON_IDS = ['lab', 'aquarium', 'journal', 'inventory', 'wardrobe', 'map', 'bait', 'appsea', 'multiplayer', 'settings', 'quests', 'shop', 'coin'];
 export const BIG_ICON_IDS = [...MENU_ICON_IDS, 'skills', 'build', 'research', 'store', 'boatyard', 'mycomputer', 'recycle'];
@@ -860,12 +854,8 @@ function frameOf(key, make, px, turn) { return detailFrame(frameCache, key, make
 
 //   modelFrame(key, make, px, turn, force) -> {canvas (logical, `.hi` twin), ox, oy} | null     (turn as in iconFrame)
 const hiFrames = new Map();
-export function modelFrame(key, make, px, turn = 0, force = false) {
-  const pn = pixKeyName(key); // [pixicons26]
-  if (pn) return pixFrame(pn, px, turn);
-  return detailFrame(hiFrames, key, make, px, turn, force, 6, true);
-}
-export function modelSpin(key, make) { const pn = pixKeyName(key); if (pn) return pixSpin(pn); const d = prepModel(key, make); return d?.spin || null; }
+export function modelFrame(key, make, px, turn = 0, force = false) { return detailFrame(hiFrames, key, make, px, turn, force, 6, true); }
+export function modelSpin(key, make) { const d = prepModel(key, make); return d?.spin || null; }
 
 const legacyMake = new Map();
 // hand-built model, else the low-poly mesh, else the phase 3 voxel model (all through the detailed pipeline)
@@ -874,13 +864,11 @@ const iconMake = (id) => ICON_VOX[id] || ICON_MODELS[id] || (MODELS[id] ? (legac
   return { vm: d.m, yaw: -(d.yaw ?? 30) / 57.2958, pitch: (d.pitch ?? 25) / 57.2958, spin: 'wobble', keepView: true };
 }).get(id)) : null);
 export function iconSpinMode(id) {
-  if (hasPix(id)) return pixSpin(id); // [pixicons26]
   if (!iconMake(id)) return null;
   return prepModel(id, iconMake(id))?.spin || null;
 }
 
 export function iconFrame(id, px, turn = 0) {
-  if (hasPix(id)) return pixFrame(id, px, turn); // [pixicons26]
   if (!iconMake(id)) return null;
   return frameOf(id, iconMake(id), px, turn);
 }
@@ -896,12 +884,6 @@ function cropFrame(f, px, pad = 6) {
 
 export function rodIcon(rod, px = 32) {
   if (!rod) return null;
-  { // [pixicons26] a hand-drawn rod recoloured from its look
-    const name = 'rod:' + (rod.id || rod.look?.shaft || 'x');
-    if (!rodLooks.has(name)) { rodLooks.add(name); pixRegister(name, rodDef(rod.look || {})); }
-    const c = pixStill(name, px, px, { shadow: true });
-    if (c) return c;
-  }
   const k = 'rod:' + (rod.id || rod.color || 'x') + '|' + px;
   let c = frameCache.get(k);
   if (c === undefined) {
@@ -913,9 +895,7 @@ export function rodIcon(rod, px = 32) {
   return c;
 }
 
-const rodLooks = new Set();
 export function gemIcon(color, px = 16) {
-  { const c = pixStill('gem:' + color, px, px); if (c) return c; } // [pixicons26]
   const k = 'gemc:' + color + '|' + px;
   let c = frameCache.get(k);
   if (c === undefined) {
@@ -930,16 +910,12 @@ export function gemIcon(color, px = 16) {
 // voxel ornaments for the chrome (leaves, shell, starfish, bubbles, pearl, coral) and Lab cut gems
 //   decorFrame(name, px, turn) -> {canvas (`.hi`), ox, oy} | null
 //   cutGemFrame(color, cut, px, dim, turn) -> {canvas (`.hi`), ox, oy} | null
-// (the chrome's leaves stay voxel: aero.js rotates / stretches them, which pixel art does not survive)
-const DECOR_PIX = { shell: 'shell', starfish: 'starfish', bubbles: 'bubbles', pearl: 'pearl', coral: 'coral_decor' };
 export function decorFrame(name, px, turn = 0) {
-  { const pn = name.startsWith('orb:') ? name : DECOR_PIX[name]; if (pn && hasPix(pn)) return pixFrame(pn, px, turn, { shadow: false }); } // [pixicons26]
   if (name.startsWith('orb:')) return modelFrame('decor:' + name, () => ORB_MODEL(name.slice(4)), px, turn);
   const make = DECOR_MODELS[name];
   return make ? modelFrame('decor:' + name, make, px, turn) : null;
 }
 export function cutGemFrame(color, cut = 'round', px = 12, dim = false, turn = 0) {
-  { const f = pixFrame('cut:' + (dim ? mix(color, '#4a5670', 0.55) : color) + '|' + cut, px, turn, { shadow: false }); if (f) return f; } // [pixicons26]
   return modelFrame('cutgem:' + color + '|' + cut + '|' + (dim ? 1 : 0), () => CUT_GEM_MODEL(color, cut, dim), px, turn, true);
 }
 setDecorRenderer(decorFrame);
@@ -959,15 +935,6 @@ export function voxelModelFrame(key, make, px, turn = 0, force = false) {
 
 export function getBigIcon(id, opts = {}) {
   const px = typeof opts.size === 'number' ? opts.size : SIZES[opts.size] || (opts.small ? SMALL : BIG);
-  if (hasPix(id)) { // [pixicons26] the hand-drawn sprite, bottom-centre anchored
-    const state = opts.state === 'hover' || opts.state === 'active' ? opts.state : 'normal';
-    const key = 'pix|' + id + '|' + state + '|' + px;
-    let e = cache.get(key);
-    if (!e) {
-      const f = pixFrame(id, px, 0, { state });
-      if (f) { e = { canvas: f.canvas, cx: f.ox, by: Math.round(f.by) }; cache.set(key, e); return e; }
-    } else return e;
-  }
   if (iconMake(id)) {
     const state = opts.state === 'hover' || opts.state === 'active' ? opts.state : 'normal';
     const key = 'lp|' + id + '|' + state + '|' + px;
