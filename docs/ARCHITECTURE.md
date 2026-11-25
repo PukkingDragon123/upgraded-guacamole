@@ -1172,3 +1172,22 @@ presentation; `partRect` / `meterRect` / `meterLayout` keep their contract, the 
   - Perf: tools/perf.mjs --only fight is within its run-to-run noise (base 26.5 / 40.5 fps, new 37.3 / 39.5 fps on the
     same machine); a direct bench of `drawCinematicHudInner` (the whole fight HUD, 100 draws) is 2.1-3.7 ms (old) vs
     2.6-3.8 ms (new) per draw on the 2x layer.
+
+## QA polish pass [polish32]
+User direction: "make game polish". Presentation only (no gameplay / balance / save changes).
+- Toasts (`ui.js`): a repeated message while it is still up counts up ("... x2") with a nudge instead of stacking a
+  duplicate plate; long messages get a wider plate (up to 3 lines, no mid-sentence cut); beside an open window only as
+  many toasts show as fit (the rest wait with their clock held; none over the catch card when there is no room); in the
+  tank they sit left of the dock column. `ui.toastBottom` (eased) = where the top-right stack ends.
+- HUD quest tracker (`hud.questSlot`): slides down under the toast stack, eases left of the depth gauge while diving,
+  and steps aside while the tank's Feed tray / Gear panel / build mode are open.
+- Square pixel chrome leftovers: `drawGlassPill` (catch card chips, box-reel label) is a stepped pixel pill; the gear
+  with no battle (sliding in / out, a boss intro) draws the voxel housing, not the old round RPM gauge + pill.
+- Readability: Lab tab labels share one face; chapter reward chips show amounts; light label text always gets its
+  shadow (grey COMMON labels); Workshop rarity tag has a dark rim; FishDex shows two lines of description; cutscene
+  name plates are deeper with an outlined name; the multiplayer lock veil blocks hover tips / clicks under it.
+- Tutorial: target brackets hug the target rect (were a square sized by its longest side); progress dots hidden in the
+  tank view (they sat on the build toolbar); the NEW BUTTON words bow out when a window opens over them.
+- Spinning fish thumbnails (Satchel) snap through edge-on instead of vanishing for a second.
+- Text: "Need more Aero Bucks...", the chapter 1 cutscene line says Nano Tank (was "goldfish jar").
+

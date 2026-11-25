@@ -423,13 +423,13 @@ export class UI {
       const below = a.rect.y + a.rect.h + Math.round(8 * k), floor = Math.min(g.screen.H, g.hud?.topY?.() ?? g.screen.H) - 4;
       const fitBelow = Math.floor((floor - below) / slotH), fitTop = Math.floor((a.rect.y - y) / slotH);
       if (fitTop < this.toasts.length) {
-        if (fitBelow >= 1 && fitBelow >= fitTop) { y = below; maxShow = fitBelow; top = false; } else maxShow = Math.max(1, fitTop);
+        if (fitBelow >= 1 && fitBelow >= fitTop) { y = below; maxShow = fitBelow; top = false; } else maxShow = Math.max(a.id === 'reveal' ? 0 : 1, fitTop); // (the catch card's moment: news waits)
       }
     }
     let right = W - Math.round(10 * k) - 6; // [polish17] room inside the plate so 3D letters never touch its edge
     // [polish32] in the tank the dock column owns the right edge: toasts sit left of it
     if (g.state.view === 'aquarium') { try { const d = g.aquarium?.fullLayout?.()?.dock; if (d && d.x > W * 0.5) right = Math.min(right, d.x - Math.round(8 * k) - 6); } catch { /* optional */ } }
-    const shown = this.toasts.slice(-maxShow);
+    const shown = maxShow > 0 ? this.toasts.slice(-maxShow) : [];
     for (const t of this.toasts) t.held = !shown.includes(t);
     let bot = 0;
     for (const t of shown) {

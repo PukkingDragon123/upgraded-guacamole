@@ -80959,7 +80959,7 @@ Water-droplet money from fish and your tank.`;
                 y = below;
                 maxShow = fitBelow;
                 top = false;
-              } else maxShow = Math.max(1, fitTop);
+              } else maxShow = Math.max(a.id === "reveal" ? 0 : 1, fitTop);
             }
           }
           let right = W11 - Math.round(10 * k) - 6;
@@ -80970,7 +80970,7 @@ Water-droplet money from fish and your tank.`;
             } catch {
             }
           }
-          const shown = this.toasts.slice(-maxShow);
+          const shown = maxShow > 0 ? this.toasts.slice(-maxShow) : [];
           for (const t of this.toasts) t.held = !shown.includes(t);
           let bot = 0;
           for (const t of shown) {
