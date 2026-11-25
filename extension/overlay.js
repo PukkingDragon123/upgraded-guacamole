@@ -67374,7 +67374,7 @@ kmlmk..
         const surf = this.world.surfaceY;
         if (surf !== null && surf !== void 0) {
           const Z = Math.max(0.5, this.zoom()), S12 = this.H / 540;
-          const want = surf + (this.H / 2 - (this.H * 0.11 + 56 * S12)) / Z, low = f.y - (this.H / 2 - 175 * S12) / Z;
+          const want = surf + (this.H / 2 - (this.H * 0.11 + 56 * S12)) / Z, low = f.y - (this.H / 2 - 230 * S12) / Z;
           const k = clamp01((want - low + 40 / Z) / (40 / Z));
           if (k > 0) fy = lerp(fy, Math.max(low, Math.min(fy, want)), k);
         }
@@ -67797,10 +67797,11 @@ kmlmk..
       const Z = Math.max(1, Math.round(Math.hypot(m.a, m.b)));
       ctx2.save();
       ctx2.setTransform(1, 0, 0, 1, 0, 0);
+      const n2 = Math.max(10, Math.ceil(Math.hypot(tb[0] - rx2, tb[1] - ry2) * Z * 1.3));
       for (let pass = 0; pass < 2; pass++) {
         ctx2.fillStyle = pass ? "#d8e6f2" : "#1c2a3a";
-        for (let i = 0; i <= 10; i++) {
-          const u = i / 10;
+        for (let i = 0; i <= n2; i++) {
+          const u = i / n2;
           const wx = (1 - u) * (1 - u) * rx2 + 2 * (1 - u) * u * tb[2] + u * u * tb[0];
           const wy = (1 - u) * (1 - u) * ry2 + 2 * (1 - u) * u * tb[3] + u * u * tb[1];
           const x = Math.round(m.a * wx + m.c * wy + m.e), y = Math.round(m.b * wx + m.d * wy + m.f);
