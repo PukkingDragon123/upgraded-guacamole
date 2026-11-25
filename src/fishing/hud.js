@@ -167,28 +167,30 @@ export function drawBiteCue(ctx, F) {
   const z = F.zoom();
   const t = F.t;
   const S = F.H / 540, u = unitOf(S);
-  const w = Math.round(46 * S), h = Math.round(56 * S);
-  const cx = Math.round(clamp(sx, 80 * S, F.W - 80 * S)), cy = Math.round(clamp(sy - 22 * f.scale * z - 58 * S, 70 * S, F.H - 130 * S));
+  const w = Math.round(54 * S), h = Math.round(64 * S);
+  const lift = (F.fishLen?.(f) || 30) * 0.24 * z;
+  const cx = Math.round(clamp(sx, 80 * S, F.W - 110 * S)), cy = Math.round(clamp(sy - lift - h / 2 - 16 * S, F.H * 0.11 + h / 2 + 8 * S, F.H - 140 * S));
   const pop = 1 + Math.max(0, 0.35 - (1 - k) * 2.5);
   const jx = k < 0.35 ? Math.round(Math.sin(t * 50) * u) : 0;
   const x = cx - w / 2 + jx, y = cy - h / 2;
   pxHalo(ctx, cx, cy, w, h, '#ffe46a', 0.55 + 0.35 * (Math.floor(t * 8) % 2), u);
-  pxFrame(ctx, x, y, w, h, { u, step: 2, fill: ['#fff3a0', '#ffd23a', '#f0a018'], rim: ['#fffbd0', '#ffd23a', '#b86a08'] });
-  pxCaret(ctx, cx + jx, y + h + 6 * u, 6 * u, 'down', '#f0a018');
-  word3D(ctx, '!', cx + jx, cy - Math.round(6 * S), { t, scale: 1.7 * S * pop, pal: 'sun', wobble: 1.5, depth: 6 });
+  pxFrame(ctx, x - u, y - u, w + 2 * u, h + 2 * u, { u, step: 2, fill: ['#ffe46a', '#ffc81e', '#e8920a'], rim: ['#fffbd0', '#ffc81e', '#a85a06'] });
+  pxFrame(ctx, x + 3 * u, y + 3 * u, w - 6 * u, h - 6 * u, { u, step: 1, fill: PAL.navy, rim: PAL.rim });
+  pxCaret(ctx, cx + jx, y + h + 7 * u, 6 * u, 'down', '#ffc81e');
+  word3D(ctx, '!', cx + jx, cy - Math.round(7 * S), { t, scale: 2.1 * S * pop, pal: 'sun', wobble: 1.5, depth: 6 });
   // the window: 8 segments at the sign's foot, the last ones blink red
-  const n = 8, bw = w - 10 * u, sw = Math.floor(bw / n), bx = Math.round(cx - (sw * n) / 2) + jx, by = y + h - 10 * u, bh = 4 * u;
+  const n = 8, bw = w - 14 * u, sw = Math.floor(bw / n), bx = Math.round(cx - (sw * n) / 2) + jx, by = y + h - 12 * u, bh = 4 * u;
   ctx.fillStyle = PAL.ink; ctx.fillRect(bx - u, by - u, sw * n + u, bh + 2 * u);
   const lit = Math.ceil(k * n);
   for (let i = 0; i < n; i++) {
     const on = i < lit;
-    ctx.fillStyle = !on ? '#6a4a10' : k < 0.35 ? (Math.floor(t * 10) % 2 ? '#ffffff' : '#ff5a4a') : '#ffffff';
+    ctx.fillStyle = !on ? '#0e3558' : k < 0.35 ? (Math.floor(t * 10) % 2 ? '#ffffff' : '#ff5a4a') : '#ffd23a';
     ctx.fillRect(bx + i * sw, by, sw - u, bh);
   }
   // CLICK! + a 3D mouse pressing its button
   const down = Math.floor(t * 5) % 2 === 0;
-  drawIcon3d(ctx, down ? 'mouse_lit' : 'mouse', cx + w / 2 + Math.round(22 * S), cy - Math.round(8 * S) + (down ? 2 : 0), Math.round(30 * S), Math.sin(t * 3) * 0.4);
-  word3D(ctx, 'CLICK!', cx + w / 2 + Math.round(24 * S), cy + Math.round(22 * S), { t, scale: 0.8 * S, pal: 'sun', wobble: 1.2 });
+  drawIcon3d(ctx, down ? 'mouse_lit' : 'mouse', cx + w / 2 + Math.round(26 * S), cy - Math.round(12 * S) + (down ? 2 : 0), Math.round(34 * S), Math.sin(t * 3) * 0.4);
+  word3D(ctx, 'CLICK!', cx + w / 2 + Math.round(50 * S), cy + Math.round(20 * S), { t, scale: 0.9 * S, pal: 'sun', wobble: 1.2 });
 }
 
 // Short message near the cursor (external callers: tutorial, overlay toasts) as a glass pill.

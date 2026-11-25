@@ -1021,3 +1021,59 @@ chrome of [phase8:ui] / [phase9:ui] / [phase10:ui] (icons, voxel ornaments and 3
   labicons / itemart, the labrows vector padlocks / chains, the labtree padlock sprite), the fishing HUD (src/fishing/*,
   owned by the fishing agent: it can switch to the PIXEL KIT), pixel leaves / voxel ornaments on the window frames, and
   the 3D voxel pop-up text. Sub-pixel (0.5 logical) stamps in the Lab tree land on whole device pixels on the 2x layer.
+
+## Fishing HUD as ocean pixel art + real struggle effects [fishui30]
+User direction: "make the fishing UI a lot better - show like water and seaweed effect, bubbles and real struggle splashes
+etc, no ugly UI, UI all is 100 percent pixel art, no round". Gameplay, balance and the lesson are unchanged (pure
+presentation; `partRect` / `meterRect` / `meterLayout` keep their contract, the shock button's hit box is now square).
+- Kit (`src/fishing/pixui.js`): `pxFrame` (stepped corners, 1 px ink, flat banded fill, lit top-left / shaded
+  bottom-right bevel, a few fillRects, no cache), `pxHalo` (a stepped square halo replacing round glow sprites),
+  `pxDiamond` (pips / rarity), `pxCaret` (stepped pointer), `pxStripes` (hazard stripes), `PAL` (ink, steel rim, navy
+  bands, water / calm / coral / amber / gold / steel / lime / kelp ramps), `unitOf(S)`. Square only: no arcs, circles
+  or gradients. (The UI-chrome kit in aero.js [pixui30] is the same rules for windows; the fishing console keeps its own
+  water palette.)
+- Meter (`meter.js`): one stepped steel console holds the meter and the catch tube. The meter is a strip of pixel
+  WATER: banded depth with dithered seams, a sandy floor with tick marks, the calm teal sweet zone between bracket posts
+  (twinkles + a light wash while you hold it, gold on a beat), coral / amber dithered danger ends (cached per zone
+  width), scrolling caustic dashes and surface crests (two periodic strips, one blit each, parallax), kelp fronds at
+  both ends (8 cached sway frames, faster with the commotion), 9 deterministic rising bubbles. The marker is the fish's
+  voxel icon swimming IN the strip (4 sheared slices = a tail wiggle, faster on lunges / stuns), hanging on a 1 px line
+  from a caret on the console, leaving foam dashes + bubbles as a wake when it moves; crates ride as themselves. Lunge
+  chevrons run through the water; the beat notch is a gold glass pillar; twists [deep28] use square lamps / halos.
+  Catch tube: calm water filling a glass tube with a sloshing meniscus, bubbles, a red ghost of lost progress, the %
+  in crisp pixel text riding the head. SHOCK button: an octagon (stepped diagonals) with a steel bezel, a banded gold
+  face and a bronze side (depth / press), the gold RISING inside it while it recharges (sloshing top line), diamond
+  charge pips, a MK plaque, a pixel SPACE keycap. 3D voxel words (NOW!, SPIN!, LOCKED, ...) stay.
+- HUD (`hud.js`): the name banner is a stepped plaque (rarity tab, the name in pixel text, rarity caps + diamonds, a
+  square GIANT / kg badge); the bite cue is a square gold-rimmed navy sign with a 3D "!", an 8-segment draining window,
+  a stepped tail at the fish, a square halo, 3D mouse + CLICK!; the screen-wide radial vignette is gone and stun / beat
+  / strain tints are three flat stepped bands at the edges. Gear (`gear.js`): the voxel housing is an OCTAGON (octagon
+  norm `oct`, lamps / rivets placed with `octPt`, square lamp blocks); the controls plaque uses `pxFrame`; the gear
+  itself is unchanged. MAX LINE (`fishing.js drawMaxLineHud`): a coral sign board with hazard stripes and a stepped
+  pointer up to the hook. Depth gauge (`ocean.js drawDepthHud`): stepped frame, flat two-band zones with dithered
+  seams, bracket marks for the camera window, a pixel depth tag with a stepped pointer. Title banners use `pxHalo`.
+- World struggle (`src/fishing/fightfx.js`, `Fishing.ffx`): pooled particles in typed arrays (POOL 560: drop, mist,
+  bubble, foam, ripple, churn, streak, spark, frond, sand, glint; a short ring-cursor scan, the oldest recycled) plus
+  fixed pools of splash CROWNS (24) and underwater WASHES (16) drawn from cached 6-frame pixel sprite sheets (crowns:
+  centre jet, two curling sheets with beads, a foam skirt, 4 sizes; washes: lumpy whitewater blown out behind the
+  tail, 3 sizes). Drawn in screen space through the world transform (whole screen pixels at any zoom), constant colour
+  strings + globalAlpha, no per-frame allocation besides getTransform. `fight(B, dt)` (after Battle.update) times
+  THRASH beats to the pull (wander, jitter): a wash + bubbles + streaks at the tail, and near the surface a crown,
+  droplets with trails, mist, foam riding the live waterline (`water.levelAt`), short pixel ripple lines (`_-^-_`)
+  running out along the surface and a water-sim impulse (no `sim.ring`, so no expanding rings); bubbles stream from the
+  mouth with the pull; the line slices the surface with spray; lunges (`lunge`) are a bigger burst; shocks (`shock`)
+  crackle zig-zag sparks through the water (re-jagged every 2 frames), electrify bubbles and skitter along the surface;
+  stuns crackle; kelp stalks are planted on the seabed round the fish when the floor is near (re-planted if the fight
+  drifts) and sway / lean away with the `commotion`, torn fronds drift off. Flavours: crates SLOSH (alternating side
+  splashes, glugging seams), a mimic's CHOMP sprays a fan, a legs crate kicks bubbles (sand near the floor), bosses
+  scale up and a phase change erupts. Intensity `I` from rarity tier, power, weight, boss; size from `fishLen`.
+  The landing: `Finale` 'erupt' calls `ffx.leap(x, surface, power)` (crowns x3, a droplet ring, mist, foam, ripples,
+  bubbles, the surface heaves) instead of the ring-making eruption; the haul to the surface thrashes (`surfaceThrash`);
+  `CratePop` leaps too; the hook-set calls `ffx.hookset`. The rod tip FLEXES toward the fish with the strain
+  (`flexTip`, `drawRodFlex`: a short graphite curve from the model's tip; the line leaves the bent tip) and the line
+  buzz grows with the strain (`lineBuzz`) with a faint afterimage.
+- Camera (presentation only): when the surface is near, the fight camera eases up so the waterline sits just under the
+  letterbox while the fish stays clear of the meter, so the splashes are seen.
+- Perf (`tools/perf.mjs --only fight`, headless software raster, A/B against the same tree with the old fishing files):
+  old 29.7 / 33.0 fps (cpu 47 / 42 ms per frame), new 38.8 / 36.3 fps (cpu 35 / 38 ms): no cost (the dropped full-screen
+  radial vignette and soft glow sprites pay for the effects).

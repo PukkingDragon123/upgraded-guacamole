@@ -53,6 +53,8 @@ import { word3D } from './cinematics.js';
 import { rodStats, equippedRod } from '../game/rods.js';
 import { SPECIES } from '../fish/species.js';
 import { FightFX } from './fightfx.js'; // [fishui30] the struggle in the world: splashes, bubbles, sparks, kelp
+import { pxFrame, pxCaret, pxStripes, PAL as PXPAL } from './pixui.js'; // [fishui30] the MAX LINE sign board
+import { drawText } from '../gfx/font.js';
 
 // A bare hook: no bait equipped. Fish still notice it, just much less eagerly.
 const BARE = { kind: 'bare', type: 'bare', id: null, label: 'Bare hook', mods: { attract: 0.55, rarity: 1, sizeBonus: 0, giantMul: 1, luck: 0 } };
@@ -1358,16 +1360,21 @@ export class Fishing {
   }
 
   // on screen: a 3D voxel MAX LINE sign under the hook (pinned to the screen edge when the hook is out of view)
+  // [fishui30] on a square pixel sign board: hazard stripes along the top, a stepped pointer up to the hook
   drawMaxLineHud(ctx) {
     const h = this.hook, a = this.maxK, t = this.t;
-    const S = this.H / 540;
+    const S = this.H / 540, u = Math.max(1, Math.round(S));
     let [sx, sy] = this.toScreen(h.x, h.y);
-    sx = clamp(sx, 90 * S, this.W - 90 * S);
-    sy = clamp(sy + 30 * S, 40 * S, this.H - 70 * S);
+    sx = clamp(sx, 96 * S, this.W - 96 * S);
+    sy = clamp(sy + 22 * S, 40 * S, this.H - 80 * S);
+    const w = Math.round(150 * S), bh = Math.round(48 * S), x = Math.round(sx - w / 2), y = Math.round(sy);
     ctx.save();
     ctx.globalAlpha = a;
-    word3D(ctx, 'MAX LINE', sx, sy, { t, pop: a, scale: 0.75 * S, pal: 'red', wobble: 0.8, rot: Math.sin(t * 3) * 0.03 });
-    word3D(ctx, 'LAB: LONGER LINE', sx, sy + 22 * S, { t: t + 1, scale: 0.42 * S, pal: 'white', wobble: 0.4, alpha: 0.9 });
+    pxCaret(ctx, sx, y - 5 * u, 5 * u, 'up', '#ffd23a');
+    pxFrame(ctx, x, y, w, bh, { u, step: 2, fill: ['#ff8a74', '#f0584a', '#c03440'], rim: ['#ffc2b0', '#f0584a', '#801a28'] });
+    pxStripes(ctx, x + 3 * u, y + 3 * u, w - 6 * u, 5 * u, '#ffd23a', PXPAL.ink, 4 * u, t * 12);
+    word3D(ctx, 'MAX LINE', sx, y + Math.round(22 * S), { t, pop: a, scale: 0.55 * S, pal: 'white', wobble: 0.6, rot: Math.sin(t * 3) * 0.02 });
+    drawText(ctx, 'LAB: LONGER LINE', sx, y + bh - 11 * u, { font: 'small', align: 'center', scale: u, color: '#fff3e0', shadow: '#801a28' });
     ctx.restore();
   }
 

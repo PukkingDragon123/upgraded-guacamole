@@ -24840,16 +24840,16 @@ void main() {
     const cols = ["#b07cff", "#8a4ef0", "#d4a8ff", "#6a32c8", "#9c62f6", "#7a40dc", "#c494ff", "#5c2aa8"].map((h) => p(h, F2));
     const tab = p("#e2c8ff", F2), tabL = p("#f6ecff", { ...F2, emissive: 0.2 }), gir = p("#4a1e94", F2);
     const cyan = p("#7ff4ff", { ...GL, emissive: 0.75 }), cyanD = p("#30c8e8", { ...GL, emissive: 0.45 }), wh = p("#ffffff", { emissive: 0.9 });
-    const oct = (dx, dz) => Math.max(Math.abs(dx), Math.abs(dz), (Math.abs(dx) + Math.abs(dz)) * 0.7071);
+    const oct2 = (dx, dz) => Math.max(Math.abs(dx), Math.abs(dz), (Math.abs(dx) + Math.abs(dz)) * 0.7071);
     for (let y = 0; y <= top; y++) {
       const r = y <= g ? 1.2 + (R2 - 1.2) * Math.pow(y / g, 0.95) : R2 - (R2 - R2 * 0.6) * ((y - g) / (top - g));
       for (let z = 0; z < 40; z++) for (let x = 0; x < 40; x++) {
         const dx = x + 0.5 - cx, dz = z + 0.5 - cz;
-        if (oct(dx, dz) > r) continue;
+        if (oct2(dx, dz) > r) continue;
         const a = Math.atan2(dz, dx), sec = (Math.round(a / TAU4 * 8) % 8 + 8) % 8;
         const half = (Math.floor(a / TAU4 * 16 + 0.5) % 2 + 2) % 2;
         let c;
-        if (y === top) c = oct(dx, dz) < r * 0.45 ? tabL : tab;
+        if (y === top) c = oct2(dx, dz) < r * 0.45 ? tabL : tab;
         else if (y === g || y === g + 1) c = gir;
         else if (y > g) c = cols[(sec + half * 2) % 8];
         else c = cols[(sec + 3 + half) % 8];
@@ -33354,9 +33354,9 @@ kmlmk..
     const y0 = x00 + (x10 - x00) * fy, y1 = x01 + (x11 - x01) * fy;
     return y0 + (y1 - y0) * fz;
   }
-  function fbm3(x, y, z, oct = 3, seed = 0) {
+  function fbm3(x, y, z, oct2 = 3, seed = 0) {
     let v = 0, a = 0.5, f = 1, n2 = 0;
-    for (let i = 0; i < oct; i++) {
+    for (let i = 0; i < oct2; i++) {
       v += noise3(x * f, y * f, z * f, seed + i * 13) * a;
       n2 += a;
       a *= 0.5;
@@ -36798,11 +36798,11 @@ kmlmk..
         const stem = m.color("#4aa84a", { jitter: 0 });
         const cx = 32, cz = 20;
         sandMound(m, cx, cz + 6, 26, 20, 2, 5);
-        const oct = (x, z, r) => {
+        const oct2 = (x, z, r) => {
           const dx = Math.abs(x - cx), dz = Math.abs(z - cz);
           return Math.max(dx, dz, (dx + dz) * 0.7071) <= r;
         };
-        shape2(m, cx - 14, 0, cz - 14, cx + 14, 58, cz + 14, (x, y, z) => oct(x, z, 12.5 - y * 0.07), (x, y) => y < 6 ? stone : y % 6 === 0 ? plasterD : plaster);
+        shape2(m, cx - 14, 0, cz - 14, cx + 14, 58, cz + 14, (x, y, z) => oct2(x, z, 12.5 - y * 0.07), (x, y) => y < 6 ? stone : y % 6 === 0 ? plasterD : plaster);
         m.box(cx - 3, 6, cz + 11, cx + 2, 15, cz + 13, wood);
         m.box(cx - 2, 16, cz + 11, cx + 1, 16, cz + 12, wood);
         for (const wy of [28, 42]) {
@@ -37911,14 +37911,14 @@ kmlmk..
         const umb = m.color("#ff4a8a", { smooth: 0.3 });
         const duck = duckPal(m);
         const cx = 31, cz = 28, R2 = 22;
-        const oct = (x, z, r) => {
+        const oct2 = (x, z, r) => {
           const dx = Math.abs(x - cx), dz = Math.abs(z - cz);
           return Math.max(dx, dz, (dx + dz) * 0.7071) <= r;
         };
-        shape2(m, cx - R2, 0, cz - R2, cx + R2, 18, cz + R2, (x, y, z) => oct(x, z, R2), (x, y, z) => y === 4 || y === 14 ? band : cedar[Math.floor((Math.atan2(z + 0.5 - cz, x + 0.5 - cx) + Math.PI) * 6) % 2]);
-        shape2(m, cx - R2 - 1, 19, cz - R2 - 1, cx + R2 + 1, 20, cz + R2 + 1, (x, y, z) => oct(x, z, R2 + 0.8) && !oct(x, z, R2 - 3.5), rim);
-        m.sub(() => shape2(m, cx - R2, 5, cz - R2, cx + R2, 20, cz + R2, (x, y, z) => oct(x, z, R2 - 3.2), 1));
-        shape2(m, cx - R2, 15, cz - R2, cx + R2, 15, cz + R2, (x, y, z) => oct(x, z, R2 - 3.2), water);
+        shape2(m, cx - R2, 0, cz - R2, cx + R2, 18, cz + R2, (x, y, z) => oct2(x, z, R2), (x, y, z) => y === 4 || y === 14 ? band : cedar[Math.floor((Math.atan2(z + 0.5 - cz, x + 0.5 - cx) + Math.PI) * 6) % 2]);
+        shape2(m, cx - R2 - 1, 19, cz - R2 - 1, cx + R2 + 1, 20, cz + R2 + 1, (x, y, z) => oct2(x, z, R2 + 0.8) && !oct2(x, z, R2 - 3.5), rim);
+        m.sub(() => shape2(m, cx - R2, 5, cz - R2, cx + R2, 20, cz + R2, (x, y, z) => oct2(x, z, R2 - 3.2), 1));
+        shape2(m, cx - R2, 15, cz - R2, cx + R2, 15, cz + R2, (x, y, z) => oct2(x, z, R2 - 3.2), water);
         const nb = frame === 0 ? 6 : 22;
         for (let i = 0; i < nb; i++) {
           const a = h35(i, frame, 1, 4) * Math.PI * 2, r = Math.sqrt(h35(i, frame, 2, 4)) * (R2 - 6);
@@ -41673,11 +41673,11 @@ kmlmk..
     if (bubbleSprites.size > 300) bubbleSprites.delete(bubbleSprites.keys().next().value);
     return c;
   }
-  function ridge(w, base, amp, freq, seed, oct = 4, sharp = 0) {
+  function ridge(w, base, amp, freq, seed, oct2 = 4, sharp = 0) {
     const out = new Float32Array(w + 1);
     for (let x = 0; x <= w; x++) {
       let v = 0, a = 1, f = freq, n2 = 0;
-      for (let o = 0; o < oct; o++) {
+      for (let o = 0; o < oct2; o++) {
         let s = Math.sin(x * f + seed * 1.7 + o * 2.1) * 0.5 + Math.sin(x * f * 1.93 + seed * 0.7 + o) * 0.5;
         if (sharp) s = lerp(s, 1 - Math.abs(s) * 2, sharp);
         v += s * a;
@@ -59691,6 +59691,26 @@ kmlmk..
     tri5(s + 1, -1, ink);
     tri5(s, 0, col);
   }
+  function pxStripes(ctx2, x, y, w, h, a, b, s = 4, t = 0) {
+    x = Math.round(x);
+    y = Math.round(y);
+    const off = Math.floor(t) % (s * 2);
+    for (let yy = 0; yy < h; yy++) {
+      for (let xx = -s * 2; xx < w; xx += s * 2) {
+        const sx = xx + (yy + off) % (s * 2);
+        const x0 = Math.max(0, sx), x1 = Math.min(w, sx + s);
+        if (x1 > x0) {
+          ctx2.fillStyle = a;
+          ctx2.fillRect(x + x0, y + yy, x1 - x0, 1);
+        }
+        const x2 = Math.max(0, sx + s), x3 = Math.min(w, sx + s * 2);
+        if (x3 > x2) {
+          ctx2.fillStyle = b;
+          ctx2.fillRect(x + x2, y + yy, x3 - x2, 1);
+        }
+      }
+    }
+  }
 
   // src/fishing/meter.js
   var INK2 = PAL2.ink;
@@ -60382,27 +60402,29 @@ kmlmk..
     const z = F2.zoom();
     const t = F2.t;
     const S12 = F2.H / 540, u = unitOf(S12);
-    const w = Math.round(46 * S12), h = Math.round(56 * S12);
-    const cx = Math.round(clamp(sx, 80 * S12, F2.W - 80 * S12)), cy = Math.round(clamp(sy - 22 * f.scale * z - 58 * S12, 70 * S12, F2.H - 130 * S12));
+    const w = Math.round(54 * S12), h = Math.round(64 * S12);
+    const lift = (F2.fishLen?.(f) || 30) * 0.24 * z;
+    const cx = Math.round(clamp(sx, 80 * S12, F2.W - 110 * S12)), cy = Math.round(clamp(sy - lift - h / 2 - 16 * S12, F2.H * 0.11 + h / 2 + 8 * S12, F2.H - 140 * S12));
     const pop = 1 + Math.max(0, 0.35 - (1 - k) * 2.5);
     const jx = k < 0.35 ? Math.round(Math.sin(t * 50) * u) : 0;
     const x = cx - w / 2 + jx, y = cy - h / 2;
     pxHalo(ctx2, cx, cy, w, h, "#ffe46a", 0.55 + 0.35 * (Math.floor(t * 8) % 2), u);
-    pxFrame(ctx2, x, y, w, h, { u, step: 2, fill: ["#fff3a0", "#ffd23a", "#f0a018"], rim: ["#fffbd0", "#ffd23a", "#b86a08"] });
-    pxCaret(ctx2, cx + jx, y + h + 6 * u, 6 * u, "down", "#f0a018");
-    word3D(ctx2, "!", cx + jx, cy - Math.round(6 * S12), { t, scale: 1.7 * S12 * pop, pal: "sun", wobble: 1.5, depth: 6 });
-    const n2 = 8, bw = w - 10 * u, sw = Math.floor(bw / n2), bx = Math.round(cx - sw * n2 / 2) + jx, by = y + h - 10 * u, bh = 4 * u;
+    pxFrame(ctx2, x - u, y - u, w + 2 * u, h + 2 * u, { u, step: 2, fill: ["#ffe46a", "#ffc81e", "#e8920a"], rim: ["#fffbd0", "#ffc81e", "#a85a06"] });
+    pxFrame(ctx2, x + 3 * u, y + 3 * u, w - 6 * u, h - 6 * u, { u, step: 1, fill: PAL2.navy, rim: PAL2.rim });
+    pxCaret(ctx2, cx + jx, y + h + 7 * u, 6 * u, "down", "#ffc81e");
+    word3D(ctx2, "!", cx + jx, cy - Math.round(7 * S12), { t, scale: 2.1 * S12 * pop, pal: "sun", wobble: 1.5, depth: 6 });
+    const n2 = 8, bw = w - 14 * u, sw = Math.floor(bw / n2), bx = Math.round(cx - sw * n2 / 2) + jx, by = y + h - 12 * u, bh = 4 * u;
     ctx2.fillStyle = PAL2.ink;
     ctx2.fillRect(bx - u, by - u, sw * n2 + u, bh + 2 * u);
     const lit2 = Math.ceil(k * n2);
     for (let i = 0; i < n2; i++) {
       const on = i < lit2;
-      ctx2.fillStyle = !on ? "#6a4a10" : k < 0.35 ? Math.floor(t * 10) % 2 ? "#ffffff" : "#ff5a4a" : "#ffffff";
+      ctx2.fillStyle = !on ? "#0e3558" : k < 0.35 ? Math.floor(t * 10) % 2 ? "#ffffff" : "#ff5a4a" : "#ffd23a";
       ctx2.fillRect(bx + i * sw, by, sw - u, bh);
     }
     const down = Math.floor(t * 5) % 2 === 0;
-    drawIcon3d(ctx2, down ? "mouse_lit" : "mouse", cx + w / 2 + Math.round(22 * S12), cy - Math.round(8 * S12) + (down ? 2 : 0), Math.round(30 * S12), Math.sin(t * 3) * 0.4);
-    word3D(ctx2, "CLICK!", cx + w / 2 + Math.round(24 * S12), cy + Math.round(22 * S12), { t, scale: 0.8 * S12, pal: "sun", wobble: 1.2 });
+    drawIcon3d(ctx2, down ? "mouse_lit" : "mouse", cx + w / 2 + Math.round(26 * S12), cy - Math.round(12 * S12) + (down ? 2 : 0), Math.round(34 * S12), Math.sin(t * 3) * 0.4);
+    word3D(ctx2, "CLICK!", cx + w / 2 + Math.round(50 * S12), cy + Math.round(20 * S12), { t, scale: 0.9 * S12, pal: "sun", wobble: 1.2 });
   }
   function drawMessage(ctx2, F2, m) {
     const a = Math.min(1, (m.max - m.t) * 3);
@@ -60743,7 +60765,7 @@ kmlmk..
       const x = lerp(W4 + 240, W4 / 2, k);
       ctx2.save();
       ctx2.globalAlpha = a;
-      drawGlow(ctx2, x, cy, 70, it2.color || "#8ff0ff", 0.3 * a);
+      pxHalo(ctx2, x, cy, 220, 44, it2.color || "#8ff0ff", 0.35 * a, 2);
       word3D(ctx2, it2.text, x, cy, { t, pal: it2.pal || palOf2(it2.color), scale: W4 < 700 ? 1 : 1.25, rot: (1 - k) * -0.25 + Math.sin(t * 3) * 0.03 });
       ctx2.restore();
     }
@@ -61323,8 +61345,16 @@ kmlmk..
     return { m, c: [C4, C4, ZC + 0.5] };
   }
   var lampR = (RV) => RV + 5.5;
+  var oct = (dx, dy) => {
+    const ax = Math.abs(dx), ay = Math.abs(dy);
+    return Math.max(ax, ay, (ax + ay) * 0.7071);
+  };
+  var octPt = (a, r) => {
+    const c = Math.cos(a), s = Math.sin(a), k = r / oct(c, s);
+    return [c * k, s * k];
+  };
   function housingModel(RV) {
-    const C4 = RV + 11, N2 = 2 * C4, NZ = ZC * 2 + 1;
+    const C4 = RV + 13, N2 = 2 * C4, NZ = ZC * 2 + 1;
     const m = new VoxelModel(N2, N2, NZ);
     const P6 = memoPal(m);
     const back = P6("#174d72", ENAMEL), backL = P6("#21638f", ENAMEL), backD = P6("#134466", ENAMEL);
@@ -61332,7 +61362,7 @@ kmlmk..
     const lens = P6("#0f3550", GEMM), lensL = P6("#3f7896", GEMM), riv = P6("#dcebf5");
     const r0 = RV + 2.6, r1 = RV + 8.6, lr = lampR(RV);
     for (let y = 0; y < N2; y++) for (let x = 0; x < N2; x++) {
-      const dx = x + 0.5 - C4, dy = y + 0.5 - C4, r = Math.hypot(dx, dy);
+      const dx = x + 0.5 - C4, dy = y + 0.5 - C4, r = oct(dx, dy);
       if (r > r1) continue;
       const a = Math.atan2(dy, dx);
       if (r < r0) {
@@ -61348,14 +61378,16 @@ kmlmk..
       let c = r < r0 + 1.1 ? ringL : r > r1 - 1.2 ? ring : Math.floor(r) % 2 ? ring : ringB;
       m.set(x, y, ZC + z1, c);
       const la = Math.round(a / (TAU / N_LAMPS)) * (TAU / N_LAMPS);
-      const ld = Math.hypot(dx - Math.cos(la) * lr, dy - Math.sin(la) * lr);
+      const [lx, ly] = octPt(la, lr);
+      const ld = Math.max(Math.abs(dx - lx), Math.abs(dy - ly));
       if (ld < 2.2) {
         m.set(x, y, ZC + 4, ld < 1.6 ? lens : ringD);
         if (ld < 0.9) m.set(x, y, ZC + 4, lensL);
       }
       const ra = (Math.round(a / (TAU / N_LAMPS) - 0.5) + 0.5) * (TAU / N_LAMPS);
-      const rd = Math.hypot(dx - Math.cos(ra) * lr, dy - Math.sin(ra) * lr);
-      if (rd < 1.2) m.set(x, y, ZC + 5, riv);
+      const [qx, qy] = octPt(ra, lr);
+      const rd = Math.max(Math.abs(dx - qx), Math.abs(dy - qy));
+      if (rd < 1) m.set(x, y, ZC + 5, riv);
     }
     return { m, c: [C4, C4, ZC + 0.5] };
   }
@@ -61363,11 +61395,10 @@ kmlmk..
     const m = new VoxelModel(5, 5, 3);
     const c = m.color(hex4, { spec: 1.2, specPow: 8, smooth: 0.8, jitter: 0, light: 1 }), w = m.color("#ffffff", { light: 1, jitter: 0 });
     for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) {
-      const d = Math.hypot(x - 2, y - 2);
-      if (d > 2.3) continue;
+      if ((x === 0 || x === 4) && (y === 0 || y === 4)) continue;
       m.set(x, y, 0, c);
       m.set(x, y, 1, c);
-      if (d < 1.5) m.set(x, y, 2, x === 1 && y === 3 ? w : c);
+      if (x > 0 && x < 4 && y > 0 && y < 4) m.set(x, y, 2, x === 1 && y === 3 ? w : c);
     }
     return { m, c: [2.5, 2.5, 0] };
   }
@@ -61870,7 +61901,8 @@ kmlmk..
         const on = j < lit2 || j === chase;
         if (!on) continue;
         const phi = Math.PI / 2 - j * (TAU / N_LAMPS);
-        const [ox, oy] = projOff(Math.cos(phi) * lr, Math.sin(phi) * lr, 4.5, VPX);
+        const [px2, py] = octPt(phi, lr);
+        const [ox, oy] = projOff(px2, py, 4.5, VPX);
         const head = j === lit2 - 1 && spd < 0.98;
         const spr2 = lampSprite(head || blink && j % 2 ? "white" : col, k);
         const w = spr2.width / k;
@@ -62080,26 +62112,15 @@ kmlmk..
     // [gear25] The controls label: crisp pixel text on a small navy voxel plaque bolted under the housing.
     drawPlaque(ctx2, cx, cy, text) {
       const tw = Math.ceil(measureText(text, "small")), th = Math.ceil(lineHeight("small"));
-      const w = tw + 16, h = th + 5, x = Math.round(cx - w / 2), y = Math.round(cy - h / 2);
-      ctx2.fillStyle = "#081c2c";
-      ctx2.fillRect(x + 1, y - 1, w - 2, h + 2);
-      ctx2.fillRect(x - 1, y + 1, w + 2, h - 2);
-      ctx2.fillRect(x, y, w, h);
-      ctx2.fillStyle = "#16486a";
-      ctx2.fillRect(x + 1, y + 1, w - 2, h - 2);
-      ctx2.fillStyle = "#2f78a8";
-      ctx2.fillRect(x + 1, y + 1, w - 2, 1);
-      ctx2.fillRect(x + 1, y + 1, 1, h - 3);
-      ctx2.fillStyle = "#0e3550";
-      ctx2.fillRect(x + 2, y + h - 2, w - 3, 1);
-      ctx2.fillRect(x + w - 2, y + 2, 1, h - 4);
-      for (const bx of [x + 3, x + w - 5]) {
+      const w = tw + 18, h = th + 7, x = Math.round(cx - w / 2), y = Math.round(cy - h / 2);
+      pxFrame(ctx2, x, y, w, h, { u: 1, step: 2, fill: PAL2.navy, rim: PAL2.rim });
+      for (const bx of [x + 4, x + w - 6]) {
         ctx2.fillStyle = "#dcebf5";
         ctx2.fillRect(bx, y + Math.floor(h / 2) - 1, 2, 2);
         ctx2.fillStyle = "#6a879f";
         ctx2.fillRect(bx + 1, y + Math.floor(h / 2), 1, 1);
       }
-      drawText(ctx2, text, cx, y + 3, { font: "small", align: "center", color: "#bff4ff", shadow: "#081c2c" });
+      drawText(ctx2, text, cx, y + 4, { font: "small", align: "center", color: "#e8fbff", shadow: "#081c2c" });
     }
     // Big glossy RPM number on a glass pill in the gauge's gap, with a spin prompt while the gear is too slow.
     drawReadout(ctx2, cx, cy, L2, B2, st) {
@@ -65625,7 +65646,7 @@ kmlmk..
         }
       }
       if (s >= 10) {
-        const hc = s * 1.7 * Math.sin(Math.PI * clamp01(p * 1.15));
+        const hc = s * (si >= 3 ? 1.25 : 1.6) * Math.sin(Math.PI * clamp01(p * 1.15));
         const cw = Math.max(1, Math.round(s * 0.1));
         for (let y = 0; y < hc; y++) {
           if (fall > 0.2 && y > hc * 0.4 && hash2(y, f, si + 9) < fall) continue;
@@ -65686,7 +65707,7 @@ kmlmk..
         const h1 = hash2(i, 1, si * 7), h2 = hash2(i, 2, si * 7), h39 = hash2(i, 3, si * 7);
         const bx = ox + (0.15 + 0.85 * h1) * s * (0.55 + p * 1.35), by = oy + (h2 - 0.5) * s * (0.35 + p * 0.75);
         let r = s * (0.12 + 0.16 * h39) * (1 - p * 0.55);
-        const ring = p > 0.45 && h39 > 0.45;
+        const ring = false;
         if (r < 0.8) r = 0.8;
         const R2 = Math.round(r);
         for (let yy = -R2; yy <= R2; yy++) for (let xx = -R2; xx <= R2; xx++) {
@@ -65696,9 +65717,9 @@ kmlmk..
           put(bx + xx, by + yy, xx < 0 && yy < 0 || xx === 0 && yy === -R2 ? 3 : yy > 0 ? 1 : 2);
         }
       }
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < (p < 0.6 ? 3 : 0); i++) {
         const y = oy + (hash2(i, 9, si) - 0.5) * s * 0.6, x0 = ox + s * 0.2 * p, len = s * (0.6 + p * 1.2) * (0.6 + hash2(i, 8, si) * 0.5);
-        for (let x = 0; x < len; x++) if (hash2(x, i + f, si) > p * 0.7) put(x0 + x + s * p * 0.6, y, x < len * 0.3 ? 3 : 2);
+        for (let x = 0; x < len; x++) put(x0 + x + s * p * 0.6, y, x < len * 0.3 ? 3 : 2);
       }
       for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
         const v = mask[y * fw + x];
@@ -65757,7 +65778,7 @@ kmlmk..
       this.crCur = 0;
       this.ws = { x: new Float32Array(16), y: new Float32Array(16), t: new Float32Array(16), life: new Float32Array(16), si: new Uint8Array(16), on: new Uint8Array(16), dir: new Int8Array(16) };
       this.wsCur = 0;
-      this.kelp = { n: 0, x: new Float32Array(6), y: new Float32Array(6), h: new Float32Array(6), ph: new Float32Array(6) };
+      this.kelp = { n: 0, cx: 0, x: new Float32Array(6), y: new Float32Array(6), h: new Float32Array(6), ph: new Float32Array(6) };
       this.commotion = 0;
       this.lean = 0;
       this.leanX = 0;
@@ -65775,6 +65796,7 @@ kmlmk..
       this.I = 1;
       this.sizeK = 1;
       this.kelpA = 0;
+      this.kelpT = 0;
     }
     // ---------------------------------------------------------------- helpers
     get game() {
@@ -65864,32 +65886,39 @@ kmlmk..
       const len = F2.fishLen?.(f) || 30;
       this.sizeK = clamp(len / 40, 0.6, 3);
       this.I = clamp(0.55 + (B2.pi4 || 0) * 0.18 + (B2.power || 0) * 0.5 + (B2.heavy || 0) * 0.2 + (B2.boss ? 0.9 : 0), 0.4, 2.4);
+      this.kelpT = 0;
       this.kelp.n = 0;
-      this.kelpA = 0;
+      this.plantKelp(f, len);
+    }
+    // Kelp rooted on the seabed around the fish when the floor is near (re-planted when the fight drifts away).
+    plantKelp(f, len) {
+      const F2 = this.F, k = this.kelp;
       let floor = NaN;
       try {
         floor = F2.game?.ocean?.floorUnder?.(f.x, f.y);
       } catch (e) {
         floor = NaN;
       }
-      if (Number.isFinite(floor) && floor - f.y < 120 && floor - f.y > 8) {
-        const n2 = 3 + (Math.random() < 0.5 ? 1 : 0);
-        for (let i = 0; i < n2; i++) {
-          const side = i % 2 ? 1 : -1;
-          const x = f.x + side * (len * 0.55 + 14 + i * 13 + Math.random() * 10);
-          let fy = floor;
-          try {
-            const v = F2.game.ocean.floorUnder(x, f.y);
-            if (Number.isFinite(v)) fy = v;
-          } catch (e) {
-          }
-          const k = this.kelp;
-          k.x[k.n] = x;
-          k.y[k.n] = fy + 1;
-          k.h[k.n] = clamp((fy - f.y) * (0.6 + Math.random() * 0.5), 14, 70);
-          k.ph[k.n] = Math.random() * TAU;
-          k.n++;
+      if (!(Number.isFinite(floor) && floor - f.y < 140 && floor - f.y > 8)) return;
+      if (k.n && Math.abs(k.cx - f.x) < 150) return;
+      k.n = 0;
+      this.kelpA = 0;
+      k.cx = f.x;
+      const n2 = 4 + (Math.random() < 0.5 ? 1 : 0);
+      for (let i = 0; i < n2; i++) {
+        const side = i % 2 ? 1 : -1;
+        const x = f.x + side * (len * 0.3 + 6 + (i >> 1) * 14 + Math.random() * 8);
+        let fy = floor;
+        try {
+          const v = F2.game.ocean.floorUnder(x, f.y);
+          if (Number.isFinite(v)) fy = v;
+        } catch (e) {
         }
+        k.x[k.n] = x;
+        k.y[k.n] = fy + 1;
+        k.h[k.n] = clamp((fy - f.y) * (0.55 + Math.random() * 0.5), 14, 80);
+        k.ph[k.n] = Math.random() * TAU;
+        k.n++;
       }
     }
     // The hook-set: the fish goes berserk for a moment.
@@ -65937,14 +65966,14 @@ kmlmk..
       }
       const tail = f.anchors?.tail || [f.x - facing * len * 0.45, f.y];
       if (B2.lunge?.stage === "tele" && Math.random() < dt * 18) this.spawn(BUBBLE, tail[0], tail[1] + (Math.random() - 0.5) * 4, -facing * 20, -10, 1, Math.random() < 0.3 ? 2 : 1, C_FOAM);
-      this.streamT -= dt * (2 + 9 * I * pullK);
+      this.streamT -= dt * (3 + 11 * I * pullK);
       while (this.streamT <= 0) {
         this.streamT += 1;
         this.spawn(BUBBLE, mouth[0] + (Math.random() - 0.5) * 3, mouth[1] - 1, facing * (4 + Math.random() * 8), -(14 + Math.random() * 20), 1.2 + Math.random(), Math.random() < 0.5 ? 1 : this.bubbleSize(this.sizeK), C_FOAM);
       }
       this.thrT -= dt * (0.7 + pullK * 0.9 + (B2.jitAmp || 0) * 2.5);
       if (this.thrT <= 0) {
-        this.thrT = lerp(1.05, 0.42, clamp01((I - 0.4) / 2)) * (0.75 + Math.random() * 0.5);
+        this.thrT = lerp(0.8, 0.34, clamp01((I - 0.4) / 2)) * (0.75 + Math.random() * 0.5);
         if (B2.crate) this.slosh(B2, f, (0.5 + pullK * 0.7) * I);
         else this.thrash(B2, f, (0.45 + pullK * 0.75) * I, false);
       }
@@ -65988,6 +66017,11 @@ kmlmk..
         }
       }
       this.leanX = f.x;
+      this.kelpT -= dt;
+      if (this.kelpT <= 0) {
+        this.kelpT = 0.6;
+        this.plantKelp(f, len);
+      }
     }
     // ---------------------------------------------------------------- events
     // A thrash beat: whitewater and bubbles at the tail; near the surface a splash crown, droplets, foam, ripples.
@@ -65996,7 +66030,7 @@ kmlmk..
       const tail = f.anchors?.tail || [f.x - facing * len * 0.45, f.y];
       const k = this.sizeK;
       this.commotion = Math.min(2.2, this.commotion + 0.22 * p);
-      this.wash(tail[0], tail[1], p * Math.sqrt(k) * 0.8, -facing);
+      this.wash(tail[0], tail[1], (0.45 + p) * Math.sqrt(k) * 0.8, -facing);
       const nb = Math.min(20, Math.round((4 + 7 * p) * Math.sqrt(k)));
       for (let i = 0; i < nb; i++) {
         const a = Math.random() * TAU, sp = 12 + Math.random() * 36 * p;
@@ -66019,11 +66053,11 @@ kmlmk..
       const s = this.surf();
       if (s === null) return;
       const lv = this.levelAt(x) ?? s;
-      const reach = 18 + len * 0.9 + 18 * this.I;
+      const reach = 30 + len * 1.2 + 30 * this.I;
       const depth = y - lv;
       if (depth > reach || depth < -40) return;
       const near = clamp01(1 - Math.max(0, depth) / reach);
-      const ps = p * Math.sqrt(near) * Math.sqrt(this.sizeK);
+      const ps = Math.max(p * 0.35, p * Math.sqrt(near)) * Math.sqrt(this.sizeK);
       if (ps < 0.12) return;
       this.crown(x, lv, ps * 0.9);
       const nd = Math.min(22, Math.round(4 + 12 * ps));
@@ -66549,6 +66583,7 @@ kmlmk..
   };
 
   // src/fishing/fishing.js
+  init_font();
   var BARE = { kind: "bare", type: "bare", id: null, label: "Bare hook", mods: { attract: 0.55, rarity: 1, sizeBonus: 0, giantMul: 1, luck: 0 } };
   var Fishing = class {
     constructor(game) {
@@ -67334,7 +67369,17 @@ kmlmk..
       if (B2.beat) zoom += 0.12;
       zoom += B2.zoomAdd || 0;
       if (B2.boss?.stage === "intro") this.focusCam(f.x, f.y - this.H * 0.16 / zoom, zoom, 1.6);
-      else this.focusCam(f.x, f.y + this.H * (B2.camOffY ?? 0.08) / zoom, zoom, B2.mode === "hookset" ? 4.5 : 3);
+      else {
+        let fy = f.y + this.H * (B2.camOffY ?? 0.08) / zoom;
+        const surf = this.world.surfaceY;
+        if (surf !== null && surf !== void 0) {
+          const Z = Math.max(0.5, this.zoom()), S12 = this.H / 540;
+          const want = surf + (this.H / 2 - (this.H * 0.11 + 56 * S12)) / Z, low = f.y - (this.H / 2 - 175 * S12) / Z;
+          const k = clamp01((want - low + 40 / Z) / (40 / Z));
+          if (k > 0) fy = lerp(fy, Math.max(low, Math.min(fy, want)), k);
+        }
+        this.focusCam(f.x, fy, zoom, B2.mode === "hookset" ? 4.5 : 3);
+      }
       if (!this.poseHold) {
         const pose2 = B2.stunned || this.gear.p > 0.08 ? "reel" : "pull";
         if (pose2 !== this.pose) this.setPose(pose2);
@@ -67998,16 +68043,21 @@ kmlmk..
       ctx2.restore();
     }
     // on screen: a 3D voxel MAX LINE sign under the hook (pinned to the screen edge when the hook is out of view)
+    // [fishui30] on a square pixel sign board: hazard stripes along the top, a stepped pointer up to the hook
     drawMaxLineHud(ctx2) {
       const h = this.hook, a = this.maxK, t = this.t;
-      const S12 = this.H / 540;
+      const S12 = this.H / 540, u = Math.max(1, Math.round(S12));
       let [sx, sy] = this.toScreen(h.x, h.y);
-      sx = clamp(sx, 90 * S12, this.W - 90 * S12);
-      sy = clamp(sy + 30 * S12, 40 * S12, this.H - 70 * S12);
+      sx = clamp(sx, 96 * S12, this.W - 96 * S12);
+      sy = clamp(sy + 22 * S12, 40 * S12, this.H - 80 * S12);
+      const w = Math.round(150 * S12), bh = Math.round(48 * S12), x = Math.round(sx - w / 2), y = Math.round(sy);
       ctx2.save();
       ctx2.globalAlpha = a;
-      word3D(ctx2, "MAX LINE", sx, sy, { t, pop: a, scale: 0.75 * S12, pal: "red", wobble: 0.8, rot: Math.sin(t * 3) * 0.03 });
-      word3D(ctx2, "LAB: LONGER LINE", sx, sy + 22 * S12, { t: t + 1, scale: 0.42 * S12, pal: "white", wobble: 0.4, alpha: 0.9 });
+      pxCaret(ctx2, sx, y - 5 * u, 5 * u, "up", "#ffd23a");
+      pxFrame(ctx2, x, y, w, bh, { u, step: 2, fill: ["#ff8a74", "#f0584a", "#c03440"], rim: ["#ffc2b0", "#f0584a", "#801a28"] });
+      pxStripes(ctx2, x + 3 * u, y + 3 * u, w - 6 * u, 5 * u, "#ffd23a", PAL2.ink, 4 * u, t * 12);
+      word3D(ctx2, "MAX LINE", sx, y + Math.round(22 * S12), { t, pop: a, scale: 0.55 * S12, pal: "white", wobble: 0.6, rot: Math.sin(t * 3) * 0.02 });
+      drawText(ctx2, "LAB: LONGER LINE", sx, y + bh - 11 * u, { font: "small", align: "center", scale: u, color: "#fff3e0", shadow: "#801a28" });
       ctx2.restore();
     }
     drawCinematicHud(ctx2) {

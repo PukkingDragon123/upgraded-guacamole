@@ -38,6 +38,7 @@ import { glowSprite, drawBolt, boltPoints, pixelLine } from '../gfx/particles.js
 import { drawText, measureText, lineHeight } from '../gfx/font.js';
 import { glossText, word3D } from './cinematics.js';
 import { drawIcon3d } from './icons3d.js'; // [phase9:fishing] 3D icons + 3D voxel words on the gear HUD
+import { pxFrame, PAL as PXPAL } from './pixui.js'; // [fishui30]
 
 export const RPM_UNIT = 150; // gear rpm that equals crank power 1
 export const RPM_MAX = 240; // gauge full scale
@@ -154,9 +155,13 @@ function gearModel(RV, th) {
 
 // The static housing: a dark backplate behind the gear, a chunky blue voxel ring round it with 12 lamp sockets and
 // silver rivets between them. Lamp sockets sit at the lamp() positions.
+// [fishui30] The housing is an OCTAGON (square pixel art, no round chrome): distances use the octagon norm, the lamps
+// and rivets sit on the octagon's ring (octPt), and the lamps are square voxel blocks.
 const lampR = (RV) => RV + 5.5;
+const oct = (dx, dy) => { const ax = Math.abs(dx), ay = Math.abs(dy); return Math.max(ax, ay, (ax + ay) * 0.7071); };
+const octPt = (a, r) => { const c = Math.cos(a), s = Math.sin(a), k = r / oct(c, s); return [c * k, s * k]; };
 function housingModel(RV) {
-  const C = RV + 11, N = 2 * C, NZ = ZC * 2 + 1;
+  const C = RV + 13, N = 2 * C, NZ = ZC * 2 + 1;
   const m = new VoxelModel(N, N, NZ);
   const P = memoPal(m);
   const back = P('#174d72', ENAMEL), backL = P('#21638f', ENAMEL), backD = P('#134466', ENAMEL);
@@ -164,7 +169,7 @@ function housingModel(RV) {
   const lens = P('#0f3550', GEMM), lensL = P('#3f7896', GEMM), riv = P('#dcebf5');
   const r0 = RV + 2.6, r1 = RV + 8.6, lr = lampR(RV);
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    const dx = x + 0.5 - C, dy = y + 0.5 - C, r = Math.hypot(dx, dy);
+    const dx = x + 0.5 - C, dy = y + 0.5 - C, r = oct(dx, dy);
     if (r > r1) continue;
     const a = Math.atan2(dy, dx);
     if (r < r0) {
@@ -183,12 +188,14 @@ function housingModel(RV) {
     m.set(x, y, ZC + z1, c);
     // lamp sockets: dark glass lenses
     const la = Math.round(a / (TAU / N_LAMPS)) * (TAU / N_LAMPS);
-    const ld = Math.hypot(dx - Math.cos(la) * lr, dy - Math.sin(la) * lr);
+    const [lx, ly] = octPt(la, lr);
+    const ld = Math.max(Math.abs(dx - lx), Math.abs(dy - ly)); // square sockets
     if (ld < 2.2) { m.set(x, y, ZC + 4, ld < 1.6 ? lens : ringD); if (ld < 0.9) m.set(x, y, ZC + 4, lensL); }
     // silver rivets between the lamps
     const ra = (Math.round(a / (TAU / N_LAMPS) - 0.5) + 0.5) * (TAU / N_LAMPS);
-    const rd = Math.hypot(dx - Math.cos(ra) * lr, dy - Math.sin(ra) * lr);
-    if (rd < 1.2) m.set(x, y, ZC + 5, riv);
+    const [qx, qy] = octPt(ra, lr);
+    const rd = Math.max(Math.abs(dx - qx), Math.abs(dy - qy));
+    if (rd < 1) m.set(x, y, ZC + 5, riv);
   }
   return { m, c: [C, C, ZC + 0.5] };
 }
@@ -197,11 +204,10 @@ function housingModel(RV) {
 function lampModel(hex) {
   const m = new VoxelModel(5, 5, 3);
   const c = m.color(hex, { spec: 1.2, specPow: 8, smooth: 0.8, jitter: 0, light: 1 }), w = m.color('#ffffff', { light: 1, jitter: 0 });
-  for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) {
-    const d = Math.hypot(x - 2, y - 2);
-    if (d > 2.3) continue;
+  for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) { // [fishui30] a square lamp block (corners stepped)
+    if ((x === 0 || x === 4) && (y === 0 || y === 4)) continue;
     m.set(x, y, 0, c); m.set(x, y, 1, c);
-    if (d < 1.5) m.set(x, y, 2, x === 1 && y === 3 ? w : c);
+    if (x > 0 && x < 4 && y > 0 && y < 4) m.set(x, y, 2, x === 1 && y === 3 ? w : c);
   }
   return { m, c: [2.5, 2.5, 0] };
 }
@@ -645,7 +651,8 @@ export class Gear {
       if (!on) continue;
       // j = 0 at the top, going clockwise on screen
       const phi = Math.PI / 2 - j * (TAU / N_LAMPS);
-      const [ox, oy] = projOff(Math.cos(phi) * lr, Math.sin(phi) * lr, 4.5, VPX);
+      const [px, py] = octPt(phi, lr); // [fishui30] on the octagon
+      const [ox, oy] = projOff(px, py, 4.5, VPX);
       const head = j === lit - 1 && spd < 0.98;
       const spr = lampSprite(head || (blink && j % 2) ? 'white' : col, k);
       const w = spr.width / k;
@@ -874,14 +881,10 @@ export class Gear {
   // [gear25] The controls label: crisp pixel text on a small navy voxel plaque bolted under the housing.
   drawPlaque(ctx, cx, cy, text) {
     const tw = Math.ceil(measureText(text, 'small')), th = Math.ceil(lineHeight('small'));
-    const w = tw + 16, h = th + 5, x = Math.round(cx - w / 2), y = Math.round(cy - h / 2);
-    ctx.fillStyle = '#081c2c'; // ink outline, stepped corners
-    ctx.fillRect(x + 1, y - 1, w - 2, h + 2); ctx.fillRect(x - 1, y + 1, w + 2, h - 2); ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = '#16486a'; ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
-    ctx.fillStyle = '#2f78a8'; ctx.fillRect(x + 1, y + 1, w - 2, 1); ctx.fillRect(x + 1, y + 1, 1, h - 3); // lit top-left edge
-    ctx.fillStyle = '#0e3550'; ctx.fillRect(x + 2, y + h - 2, w - 3, 1); ctx.fillRect(x + w - 2, y + 2, 1, h - 4); // shaded edge
-    for (const bx of [x + 3, x + w - 5]) { ctx.fillStyle = '#dcebf5'; ctx.fillRect(bx, y + Math.floor(h / 2) - 1, 2, 2); ctx.fillStyle = '#6a879f'; ctx.fillRect(bx + 1, y + Math.floor(h / 2), 1, 1); }
-    drawText(ctx, text, cx, y + 3, { font: 'small', align: 'center', color: '#bff4ff', shadow: '#081c2c' });
+    const w = tw + 18, h = th + 7, x = Math.round(cx - w / 2), y = Math.round(cy - h / 2);
+    pxFrame(ctx, x, y, w, h, { u: 1, step: 2, fill: PXPAL.navy, rim: PXPAL.rim }); // [fishui30] the shared pixel kit frame
+    for (const bx of [x + 4, x + w - 6]) { ctx.fillStyle = '#dcebf5'; ctx.fillRect(bx, y + Math.floor(h / 2) - 1, 2, 2); ctx.fillStyle = '#6a879f'; ctx.fillRect(bx + 1, y + Math.floor(h / 2), 1, 1); }
+    drawText(ctx, text, cx, y + 4, { font: 'small', align: 'center', color: '#e8fbff', shadow: '#081c2c' });
   }
 
   // Big glossy RPM number on a glass pill in the gauge's gap, with a spin prompt while the gear is too slow.

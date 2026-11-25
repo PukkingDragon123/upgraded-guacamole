@@ -14,6 +14,7 @@ import { HOOK } from './baitart.js';
 import { drawText3D, text3dSprite } from '../gfx/text3d.js'; // [phase9:fishing] 3D voxel titles
 import { gemIcon } from '../gfx/bigicons.js';
 import { drawAngler } from './hud.js';
+import { pxHalo } from './pixui.js'; // [fishui30]
 
 // ------------------------------------------------------------------ glossy jelly text
 // Palettes: vertical gradient stops (top -> bottom), outline, outer glow.
@@ -300,7 +301,7 @@ export class Titles {
     const x = lerp(W + 240, W / 2, k);
     ctx.save();
     ctx.globalAlpha = a;
-    drawGlow(ctx, x, cy, 70, it.color || '#8ff0ff', 0.3 * a);
+    pxHalo(ctx, x, cy, 220, 44, it.color || '#8ff0ff', 0.35 * a, 2); // [fishui30] a stepped square halo (was a round glow)
     word3D(ctx, it.text, x, cy, { t, pal: it.pal || palOf(it.color), scale: W < 700 ? 1 : 1.25, rot: (1 - k) * -0.25 + Math.sin(t * 3) * 0.03 });
     ctx.restore();
   }

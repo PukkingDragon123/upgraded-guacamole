@@ -27862,6 +27862,28 @@ void main() {
     h = Math.max(16, Math.round(h));
     return aeroCached(`eco|${w}|${h}|${o.seed ?? 7}|${o.r ?? 10}`, () => ecoTex(w, h, { seed: o.seed ?? 7, r: o.r }));
   }
+  function pixelPanel(ctx3, x, y, w, h, o = {}) {
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    if (w < 4 || h < 4) return;
+    const r = o.r ?? 8;
+    if (o.shadow !== 0 && o.shadow !== false) pixelShadow(ctx3, x, y, w, h, o.shadow ?? 2, o.shadow ?? 2, { n: notchOf(r, w, h) });
+    drawAeroSurface(ctx3, x, y, w, h, { tone: o.tone || "frost", r, gloss: o.gloss ?? 0.35, glossH: o.glossH ?? Math.min(16, Math.round(h * 0.3)), rim: o.rim ?? 0.9, glow: o.glow ?? 0.3, inset: o.inset, streak: o.streak, a: o.a, edge: o.edge, depth: o.depth });
+    if (o.title) {
+      const T5 = toneOf(typeof o.tone === "string" ? o.tone : "frost");
+      drawText(ctx3, o.title, x + 8, y + 6, { font: fitFont(o.title, "normal", w - 16), color: T5.text, shadow: T5.text === "#ffffff" ? T5.shadow : null });
+    }
+  }
+  function pixelChip(ctx3, x, y, w, h, o = {}) {
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    if (w >= 3 && h >= 3) drawAeroSurface(ctx3, x, y, w, h, { tone: o.tone || "glass", r: o.r ?? "pill", gloss: o.gloss ?? 0.5, glossH: Math.round(h * 0.42), rim: 0.85, glow: 0.4, inset: o.inset, a: o.a, edge: o.edge });
+    return { x, y, w, h };
+  }
   function pixelRectPath(ctx3, x, y, w, h, r) {
     const n2 = notchOf(r, Math.round(w) + 1, Math.round(h) + 1);
     ctx3.beginPath();
@@ -27888,28 +27910,30 @@ void main() {
     h = Math.round(h);
     if (w < 1 || h < 1) return;
     const n2 = notchOf(r, w, h), N2 = NOTCHES[n2];
-    const ins = (yy) => yy < N2.length ? N2[yy] : h - 1 - yy < N2.length ? N2[h - 1 - yy] : 0;
+    const ins = (yy) => yy < 0 || yy >= h ? 0 : yy < N2.length ? N2[yy] : h - 1 - yy < N2.length ? N2[h - 1 - yy] : 0;
     const rows = (col, b2) => {
       ctx3.fillStyle = col;
       for (let yy = b2; yy < h - b2; yy++) {
-        const k = Math.max(ins(yy), ins(yy - b2) ? ins(yy) : 0) + b2;
+        const k = (b2 ? Math.max(ins(yy - 1), ins(yy), ins(yy + 1)) : ins(yy)) + b2;
         if (w - k * 2 > 0) ctx3.fillRect(x + k, y + yy, w - k * 2, 1);
       }
     };
     const b = o.outline ? 1 : 0;
     if (o.outline) rows(o.outline, 0);
     if (fill) rows(fill, b);
+    const kAt = (yy) => (b ? Math.max(ins(yy - 1), ins(yy), ins(yy + 1)) : ins(yy)) + b;
+    const side0 = n2 + b, sideH = h - (n2 + b) * 2;
     if (o.hi && h > 2 + b * 2) {
       ctx3.fillStyle = o.hi;
-      const k = ins(b) + b;
+      const k = kAt(b);
       ctx3.fillRect(x + k, y + b, w - k * 2, 1);
-      ctx3.fillRect(x + b, y + Math.max(b, n2), 1, h - Math.max(b, n2) * 2);
+      if (sideH > 0) ctx3.fillRect(x + b, y + side0, 1, sideH);
     }
     if (o.lo && h > 2 + b * 2) {
       ctx3.fillStyle = o.lo;
-      const k = ins(h - 1 - b) + b;
+      const k = kAt(h - 1 - b);
       ctx3.fillRect(x + k, y + h - 1 - b, w - k * 2, 1);
-      ctx3.fillRect(x + w - 1 - b, y + Math.max(b, n2), 1, h - Math.max(b, n2) * 2);
+      if (sideH > 0) ctx3.fillRect(x + w - 1 - b, y + side0, 1, sideH);
     }
   }
   function pixelHalo(ctx3, x, y, w, h, n2 = 2, color = "#ffffff", alpha = 0.6) {
@@ -27996,7 +28020,7 @@ void main() {
     ctx3.drawImage(c, Math.round(cx - S15 / 2), Math.round(cy - S15 / 2));
     ctx3.globalAlpha = ga;
   }
-  var CURRENCY, AERO, UI_SCALES, uiMode, PROMOTE, AERO_TONES, TONE_ALIAS, customTones, tex, rgbCache2, NOTCHES, mixC, WHITE3, trimCache, PANEL_TONE, coin3d, decor3d, icon3dDraw, LEAF_TONES, SPRIG;
+  var CURRENCY, AERO, UI_SCALES, uiMode, PROMOTE, AERO_TONES, TONE_ALIAS, customTones, tex, rgbCache2, NOTCHES, mixC, WHITE3, trimCache, PANEL_TONE, coin3d, decor3d, icon3dDraw, LEAF_TONES, SPRIG, pixelButton, pixelBar, pixelBadge;
   var init_aero = __esm({
     "src/ui/aero.js"() {
       init_color();
@@ -28077,6 +28101,9 @@ void main() {
         { x: 16, y: -4, len: 32, wid: 19, ang: -70, flip: true, tone: "leaf" },
         { x: 0, y: 0, len: 42, wid: 24, ang: -132, flip: false, tone: "lime" }
       ];
+      pixelButton = (...a) => drawAeroButton(...a);
+      pixelBar = (...a) => drawAeroBar(...a);
+      pixelBadge = (...a) => drawAeroBadge(...a);
     }
   });
 
@@ -30024,16 +30051,16 @@ void main() {
     const cols = ["#b07cff", "#8a4ef0", "#d4a8ff", "#6a32c8", "#9c62f6", "#7a40dc", "#c494ff", "#5c2aa8"].map((h) => p(h, F3));
     const tab = p("#e2c8ff", F3), tabL = p("#f6ecff", { ...F3, emissive: 0.2 }), gir = p("#4a1e94", F3);
     const cyan = p("#7ff4ff", { ...GL2, emissive: 0.75 }), cyanD = p("#30c8e8", { ...GL2, emissive: 0.45 }), wh = p("#ffffff", { emissive: 0.9 });
-    const oct = (dx, dz) => Math.max(Math.abs(dx), Math.abs(dz), (Math.abs(dx) + Math.abs(dz)) * 0.7071);
+    const oct2 = (dx, dz) => Math.max(Math.abs(dx), Math.abs(dz), (Math.abs(dx) + Math.abs(dz)) * 0.7071);
     for (let y = 0; y <= top; y++) {
       const r = y <= g ? 1.2 + (R8 - 1.2) * Math.pow(y / g, 0.95) : R8 - (R8 - R8 * 0.6) * ((y - g) / (top - g));
       for (let z = 0; z < 40; z++) for (let x = 0; x < 40; x++) {
         const dx = x + 0.5 - cx, dz = z + 0.5 - cz;
-        if (oct(dx, dz) > r) continue;
+        if (oct2(dx, dz) > r) continue;
         const a = Math.atan2(dz, dx), sec = (Math.round(a / TAU4 * 8) % 8 + 8) % 8;
         const half = (Math.floor(a / TAU4 * 16 + 0.5) % 2 + 2) % 2;
         let c;
-        if (y === top) c = oct(dx, dz) < r * 0.45 ? tabL : tab;
+        if (y === top) c = oct2(dx, dz) < r * 0.45 ? tabL : tab;
         else if (y === g || y === g + 1) c = gir;
         else if (y > g) c = cols[(sec + half * 2) % 8];
         else c = cols[(sec + 3 + half) % 8];
@@ -31987,6 +32014,157 @@ kmlmk..
     }
   });
 
+  // src/fishing/pixui.js
+  function pxFrame(ctx3, x, y, w, h, o = {}) {
+    const u = o.u ?? 1, st = Math.max(1, o.step ?? 2), c = u * st;
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    const a0 = ctx3.globalAlpha;
+    if (o.alpha !== void 0) ctx3.globalAlpha = a0 * o.alpha;
+    ctx3.fillStyle = o.ink || PAL.ink;
+    for (let i = 0; i <= st; i++) ctx3.fillRect(x + (st - i) * u, y + i * u, w - 2 * (st - i) * u, h - 2 * i * u);
+    const ix = x + u, iy = y + u, iw = w - 2 * u, ih = h - 2 * u, ic = st - 1;
+    const fill = o.fill || PAL.navy;
+    const bt = Math.max(u, Math.round(ih * (o.topK ?? 0.34))), bb = Math.max(u, Math.round(ih * (o.botK ?? 0.28)));
+    ctx3.fillStyle = fill[0];
+    ctx3.fillRect(ix, iy, iw, bt);
+    ctx3.fillStyle = fill[1];
+    ctx3.fillRect(ix, iy + bt, iw, ih - bt - bb);
+    ctx3.fillStyle = fill[2];
+    ctx3.fillRect(ix, iy + ih - bb, iw, bb);
+    if (o.bevel !== 0) {
+      const rim = o.rim || PAL.rim;
+      ctx3.fillStyle = rim[0];
+      ctx3.fillRect(ix, iy, iw, u);
+      ctx3.fillRect(ix, iy, u, ih);
+      ctx3.fillStyle = rim[2];
+      ctx3.fillRect(ix, iy + ih - u, iw, u);
+      ctx3.fillRect(ix + iw - u, iy + u, u, ih - u);
+    }
+    if (ic > 0) {
+      ctx3.fillStyle = o.ink || PAL.ink;
+      for (let r = 0; r < ic; r++) {
+        const k = (ic - r) * u;
+        ctx3.fillRect(ix, iy + r * u, k, u);
+        ctx3.fillRect(ix + iw - k, iy + r * u, k, u);
+        ctx3.fillRect(ix, iy + ih - (r + 1) * u, k, u);
+        ctx3.fillRect(ix + iw - k, iy + ih - (r + 1) * u, k, u);
+      }
+      if (o.bevel !== 0) {
+        const rim = o.rim || PAL.rim;
+        for (let r = 0; r < ic; r++) {
+          const k = (ic - r) * u;
+          ctx3.fillStyle = rim[0];
+          ctx3.fillRect(ix + k, iy + r * u, u, u);
+          ctx3.fillRect(ix + k - u, iy + (r + 1) * u, u, u);
+          ctx3.fillStyle = rim[2];
+          ctx3.fillRect(ix + iw - k - u, iy + ih - (r + 1) * u, u, u);
+          ctx3.fillRect(ix + iw - k, iy + ih - (r + 2) * u, u, u);
+        }
+      }
+    }
+    ctx3.globalAlpha = a0;
+  }
+  function pxHalo(ctx3, cx, cy, w, h, col, a = 0.5, u = 1) {
+    if (a <= 0.01) return;
+    const a0 = ctx3.globalAlpha;
+    ctx3.fillStyle = col;
+    for (let i = 3; i >= 1; i--) {
+      const pw = Math.round(w / 2 + i * 3 * u), ph = Math.round(h / 2 + i * 3 * u), x = Math.round(cx - pw), y = Math.round(cy - ph);
+      ctx3.globalAlpha = a0 * a * (0.16 + (3 - i) * 0.1);
+      ctx3.fillRect(x + u * 2, y, pw * 2 - u * 4, ph * 2);
+      ctx3.fillRect(x, y + u * 2, pw * 2, ph * 2 - u * 4);
+      ctx3.fillRect(x + u, y + u, pw * 2 - u * 2, ph * 2 - u * 2);
+    }
+    ctx3.globalAlpha = a0;
+  }
+  function pxDiamond(ctx3, cx, cy, r, col, o = {}) {
+    cx = Math.round(cx);
+    cy = Math.round(cy);
+    r = Math.max(2, Math.round(r));
+    const lite = o.lite || "#ffffff", dark = o.dark || PAL.ink;
+    ctx3.fillStyle = o.ink || PAL.ink;
+    for (let i = -r - 1; i <= r + 1; i++) {
+      const hw = r + 1 - Math.abs(i);
+      ctx3.fillRect(cx - hw, cy + i, hw * 2 + 1, 1);
+    }
+    for (let i = -r; i <= r; i++) {
+      const hw = r - Math.abs(i);
+      ctx3.fillStyle = col;
+      ctx3.fillRect(cx - hw, cy + i, hw * 2 + 1, 1);
+      if (i < 0) {
+        ctx3.fillStyle = lite;
+        ctx3.fillRect(cx - hw, cy + i, Math.max(1, hw), 1);
+      } else if (i > 0 && hw > 0 && o.shade !== false) {
+        ctx3.fillStyle = rgba(dark, 0.35);
+        ctx3.fillRect(cx, cy + i, hw + 1, 1);
+      }
+    }
+  }
+  function pxCaret(ctx3, x, y, s, dir = "down", col = "#ffffff", ink = PAL.ink) {
+    x = Math.round(x);
+    y = Math.round(y);
+    const tri5 = (n2, back, c) => {
+      ctx3.fillStyle = c;
+      for (let i = 0; i < n2; i++) {
+        const hw = i, d = i + back;
+        if (dir === "down") ctx3.fillRect(x - hw, y - d, hw * 2 + 1, 1);
+        else if (dir === "up") ctx3.fillRect(x - hw, y + d, hw * 2 + 1, 1);
+        else if (dir === "left") ctx3.fillRect(x + d, y - hw, 1, hw * 2 + 1);
+        else ctx3.fillRect(x - d, y - hw, 1, hw * 2 + 1);
+      }
+    };
+    tri5(s + 1, -1, ink);
+    tri5(s, 0, col);
+  }
+  function pxStripes(ctx3, x, y, w, h, a, b, s = 4, t = 0) {
+    x = Math.round(x);
+    y = Math.round(y);
+    const off = Math.floor(t) % (s * 2);
+    for (let yy = 0; yy < h; yy++) {
+      for (let xx = -s * 2; xx < w; xx += s * 2) {
+        const sx2 = xx + (yy + off) % (s * 2);
+        const x0 = Math.max(0, sx2), x1 = Math.min(w, sx2 + s);
+        if (x1 > x0) {
+          ctx3.fillStyle = a;
+          ctx3.fillRect(x + x0, y + yy, x1 - x0, 1);
+        }
+        const x2 = Math.max(0, sx2 + s), x3 = Math.min(w, sx2 + s * 2);
+        if (x3 > x2) {
+          ctx3.fillStyle = b;
+          ctx3.fillRect(x + x2, y + yy, x3 - x2, 1);
+        }
+      }
+    }
+  }
+  var PAL, unitOf;
+  var init_pixui = __esm({
+    "src/fishing/pixui.js"() {
+      init_color();
+      PAL = {
+        ink: "#08203a",
+        inkSoft: "#123a5c",
+        rim: ["#b8ecff", "#4a9ccc", "#1f5a8a"],
+        // steel-blue frame: light, mid, dark
+        navy: ["#2a5f8c", "#174a74", "#0e3558"],
+        // panel fill bands
+        water: ["#a8f0ff", "#5fd0f4", "#2ea8e4", "#1a7cc8", "#0f569c", "#0a3c74"],
+        // light -> deep
+        calm: ["#e6fff4", "#aef6d8", "#6ee8bc", "#3ccc9c", "#21a07c"],
+        coral: ["#ffc2b0", "#ff8a74", "#f0584a", "#c03440"],
+        amber: ["#ffe2a0", "#ffb04a", "#f08428", "#b85818"],
+        gold: ["#fffbd0", "#ffe46a", "#ffc81e", "#e8920a", "#a85a06"],
+        steel: ["#f0f8ff", "#c2d6e6", "#8aa4bc", "#5a7490", "#3a5068"],
+        lime: ["#f0ffc8", "#c8f56a", "#8ad83a", "#4fae2a", "#2e7a1e"],
+        foam: "#f4fdff",
+        kelp: ["#b8e860", "#6cc23a", "#3a8a2a", "#1f5a22"]
+      };
+      unitOf = (S15) => Math.max(1, Math.round(S15));
+    }
+  });
+
   // src/gfx/text3d.js
   function measure(text, size) {
     if (!measurer) measurer = document.createElement("canvas").getContext("2d");
@@ -32565,11 +32743,11 @@ kmlmk..
     if (bubbleSprites.size > 300) bubbleSprites.delete(bubbleSprites.keys().next().value);
     return c;
   }
-  function ridge(w, base, amp, freq, seed, oct = 4, sharp = 0) {
+  function ridge(w, base, amp, freq, seed, oct2 = 4, sharp = 0) {
     const out = new Float32Array(w + 1);
     for (let x = 0; x <= w; x++) {
       let v = 0, a = 1, f = freq, n2 = 0;
-      for (let o = 0; o < oct; o++) {
+      for (let o = 0; o < oct2; o++) {
         let s = Math.sin(x * f + seed * 1.7 + o * 2.1) * 0.5 + Math.sin(x * f * 1.93 + seed * 0.7 + o) * 0.5;
         if (sharp) s = lerp(s, 1 - Math.abs(s) * 2, sharp);
         v += s * a;
@@ -34317,9 +34495,9 @@ kmlmk..
     const y0 = x00 + (x10 - x00) * fy, y1 = x01 + (x11 - x01) * fy;
     return y0 + (y1 - y0) * fz;
   }
-  function fbm3(x, y, z, oct = 3, seed = 0) {
+  function fbm3(x, y, z, oct2 = 3, seed = 0) {
     let v = 0, a = 0.5, f = 1, n2 = 0;
-    for (let i = 0; i < oct; i++) {
+    for (let i = 0; i < oct2; i++) {
       v += noise3(x * f, y * f, z * f, seed + i * 13) * a;
       n2 += a;
       a *= 0.5;
@@ -37795,11 +37973,11 @@ kmlmk..
         const stem = m.color("#4aa84a", { jitter: 0 });
         const cx = 32, cz = 20;
         sandMound(m, cx, cz + 6, 26, 20, 2, 5);
-        const oct = (x, z, r) => {
+        const oct2 = (x, z, r) => {
           const dx = Math.abs(x - cx), dz = Math.abs(z - cz);
           return Math.max(dx, dz, (dx + dz) * 0.7071) <= r;
         };
-        shape(m, cx - 14, 0, cz - 14, cx + 14, 58, cz + 14, (x, y, z) => oct(x, z, 12.5 - y * 0.07), (x, y) => y < 6 ? stone : y % 6 === 0 ? plasterD : plaster);
+        shape(m, cx - 14, 0, cz - 14, cx + 14, 58, cz + 14, (x, y, z) => oct2(x, z, 12.5 - y * 0.07), (x, y) => y < 6 ? stone : y % 6 === 0 ? plasterD : plaster);
         m.box(cx - 3, 6, cz + 11, cx + 2, 15, cz + 13, wood);
         m.box(cx - 2, 16, cz + 11, cx + 1, 16, cz + 12, wood);
         for (const wy of [28, 42]) {
@@ -38908,14 +39086,14 @@ kmlmk..
         const umb = m.color("#ff4a8a", { smooth: 0.3 });
         const duck = duckPal(m);
         const cx = 31, cz = 28, R8 = 22;
-        const oct = (x, z, r) => {
+        const oct2 = (x, z, r) => {
           const dx = Math.abs(x - cx), dz = Math.abs(z - cz);
           return Math.max(dx, dz, (dx + dz) * 0.7071) <= r;
         };
-        shape(m, cx - R8, 0, cz - R8, cx + R8, 18, cz + R8, (x, y, z) => oct(x, z, R8), (x, y, z) => y === 4 || y === 14 ? band : cedar[Math.floor((Math.atan2(z + 0.5 - cz, x + 0.5 - cx) + Math.PI) * 6) % 2]);
-        shape(m, cx - R8 - 1, 19, cz - R8 - 1, cx + R8 + 1, 20, cz + R8 + 1, (x, y, z) => oct(x, z, R8 + 0.8) && !oct(x, z, R8 - 3.5), rim);
-        m.sub(() => shape(m, cx - R8, 5, cz - R8, cx + R8, 20, cz + R8, (x, y, z) => oct(x, z, R8 - 3.2), 1));
-        shape(m, cx - R8, 15, cz - R8, cx + R8, 15, cz + R8, (x, y, z) => oct(x, z, R8 - 3.2), water);
+        shape(m, cx - R8, 0, cz - R8, cx + R8, 18, cz + R8, (x, y, z) => oct2(x, z, R8), (x, y, z) => y === 4 || y === 14 ? band : cedar[Math.floor((Math.atan2(z + 0.5 - cz, x + 0.5 - cx) + Math.PI) * 6) % 2]);
+        shape(m, cx - R8 - 1, 19, cz - R8 - 1, cx + R8 + 1, 20, cz + R8 + 1, (x, y, z) => oct2(x, z, R8 + 0.8) && !oct2(x, z, R8 - 3.5), rim);
+        m.sub(() => shape(m, cx - R8, 5, cz - R8, cx + R8, 20, cz + R8, (x, y, z) => oct2(x, z, R8 - 3.2), 1));
+        shape(m, cx - R8, 15, cz - R8, cx + R8, 15, cz + R8, (x, y, z) => oct2(x, z, R8 - 3.2), water);
         const nb = frame2 === 0 ? 6 : 22;
         for (let i = 0; i < nb; i++) {
           const a = h35(i, frame2, 1, 4) * Math.PI * 2, r = Math.sqrt(h35(i, frame2, 2, 4)) * (R8 - 6);
@@ -43884,7 +44062,7 @@ kmlmk..
     const hw = (Math.abs(ax) + Math.abs(bx)) * ext2 + 1, hh = (Math.abs(ay) + Math.abs(by)) * ext2 + 1;
     const x0 = Math.floor(f.x - hw), x1 = Math.ceil(f.x + hw), y0 = Math.floor(f.y - hh), y1 = Math.ceil(f.y + hh);
     for (let y = y0; y <= y1; y++) {
-      let run35 = null, rs2 = 0;
+      let run36 = null, rs2 = 0;
       const dy = y + 0.5 - f.y;
       for (let x = x0; x <= x1 + 1; x++) {
         let c = null;
@@ -43893,12 +44071,12 @@ kmlmk..
           const u = (dx * by - dy * bx) / det, v = (ax * dy - ay * dx) / det;
           if (u > -ext2 && u < ext2 && v > -ext2 && v < ext2) c = fn(u, v);
         }
-        if (c !== run35) {
-          if (run35) {
-            ctx3.fillStyle = run35;
+        if (c !== run36) {
+          if (run36) {
+            ctx3.fillStyle = run36;
             ctx3.fillRect(X + rs2, Y + y, x - rs2, 1);
           }
-          run35 = c;
+          run36 = c;
           rs2 = x;
         }
       }
@@ -64778,7 +64956,7 @@ kmlmk..
           continue;
         }
         if (PAL_A[ch]) buf.set(x + m, y + m, pk4(PAL_A[ch][0], PAL_A[ch][1]));
-        else if (PAL[ch]) buf.set(x + m, y + m, pk4(PAL[ch]));
+        else if (PAL2[ch]) buf.set(x + m, y + m, pk4(PAL2[ch]));
       }
     }
     const inner = auto ? buf.toCanvas() : null;
@@ -64808,13 +64986,13 @@ kmlmk..
         if (d > 4.1) ch = lit2 > 0.45 ? "w" : lit2 > -0.1 ? "l" : lit2 > -0.6 ? "g" : "d";
         else if (d > 1.9) ch = lit2 > 0.55 && d > 2.6 ? "a" : Math.floor(d * 1.7) % 2 ? "b" : "B";
         else ch = d < 0.8 ? "x" : "l";
-        buf.set(x, y, pk4(PAL[ch] || PAL_A.q[0]));
+        buf.set(x, y, pk4(PAL2[ch] || PAL_A.q[0]));
       }
     }
-    buf.line(7, 6, 9, 4, pk4(PAL.g));
-    buf.fillCircle(10.5, 3.5, 1.5, pk4(PAL.r));
-    buf.set(10, 3, pk4(PAL.p));
-    buf.set(11, 4, pk4(PAL.R));
+    buf.line(7, 6, 9, 4, pk4(PAL2.g));
+    buf.fillCircle(10.5, 3.5, 1.5, pk4(PAL2.r));
+    buf.set(10, 3, pk4(PAL2.p));
+    buf.set(11, 4, pk4(PAL2.R));
     buf.outline(outlineFn);
     return autoHi(buf.toCanvas());
   }
@@ -64901,7 +65079,7 @@ kmlmk..
     registered = true;
     for (const name of UI_ICON_NAMES) registerInlineIcon(name, getUiIcon(name));
   }
-  var PAL, PAL_A, OUTLINE, ICONS, CURSORS, CURSOR_HOTSPOT, pkCache, outCache2, AERO_ICONS, cache12, UI_ICON_NAMES, CURSOR_NAMES, registered;
+  var PAL2, PAL_A, OUTLINE, ICONS, CURSORS, CURSOR_HOTSPOT, pkCache, outCache2, AERO_ICONS, cache12, UI_ICON_NAMES, CURSOR_NAMES, registered;
   var init_uiicons = __esm({
     "src/gfx/uiicons.js"() {
       init_canvas();
@@ -64913,7 +65091,7 @@ kmlmk..
       init_hires();
       init_icons3d();
       setIcon3DDrawer(drawIcon3D);
-      PAL = {
+      PAL2 = {
         h: "#ffffff",
         w: "#fff8ea",
         l: "#d3dae6",
@@ -73688,7 +73866,7 @@ kmlmk..
             for (let f = 0; f < ROTOR_FRAMES; f++) rotorSprite(bk.scale, bk.yaw, f);
           });
           this.warmLog = [];
-          const run35 = () => {
+          const run36 = () => {
             const f = steps.shift();
             if (!f) return;
             const t02 = performance.now();
@@ -73699,9 +73877,9 @@ kmlmk..
               return;
             }
             this.warmLog.push([Math.round(t02), Math.round(performance.now() - t02)]);
-            setTimeout(() => idle(run35), 100);
+            setTimeout(() => idle(run36), 100);
           };
-          idle(run35);
+          idle(run36);
         }
         open(data) {
           const g = this.game;
@@ -76228,6 +76406,7 @@ kmlmk..
       init_color();
       init_canvas();
       init_font();
+      init_pixui();
       init_pop3d();
       init_aero();
       init_biomes();
@@ -76733,52 +76912,46 @@ kmlmk..
             const Y = (wy) => y0 + clamp((wy - info.top) / span, 0, 1) * mh;
             ctx3.save();
             ctx3.globalAlpha = a;
-            ctx3.fillStyle = "rgba(4,16,34,0.35)";
-            ctx3.fillRect(x - 3, y0 - 2, mw + 7, mh + 6);
+            pxFrame(ctx3, x - 3, y0 - 3, mw + 6, mh + 6, { u: 1, step: 1, fill: PAL.navy, rim: PAL.rim });
             for (const zn2 of info.zones) {
               const c = ZONE_COLORS[zn2.id] || ZONE_COLORS.sunlit;
               const a0 = Math.round(Y(zn2.y0)), a1 = Math.round(Y(zn2.y1));
               if (a1 <= a0) continue;
-              const gr = ctx3.createLinearGradient(0, a0, 0, a1);
-              gr.addColorStop(0, c[0]);
-              gr.addColorStop(1, c[1]);
-              ctx3.fillStyle = gr;
-              ctx3.fillRect(x, a0, mw, a1 - a0);
-              ctx3.fillStyle = "rgba(255,255,255,0.45)";
-              if (a0 > y0) ctx3.fillRect(x - 2, a0, mw + 4, 1);
+              const mid = Math.round((a0 + a1) / 2);
+              ctx3.fillStyle = c[0];
+              ctx3.fillRect(x, a0, mw, mid - a0);
+              ctx3.fillStyle = c[1];
+              ctx3.fillRect(x, mid, mw, a1 - mid);
+              ctx3.fillStyle = c[0];
+              for (let i = 0; i < mw; i += 2) ctx3.fillRect(x + i, mid, 1, 1);
+              if (a0 > y0) {
+                ctx3.fillStyle = "rgba(255,255,255,0.55)";
+                ctx3.fillRect(x - 2, a0, mw + 4, 1);
+              }
             }
             if (info.view) {
               const v0 = Math.round(Y(info.view[0])), v1 = Math.max(v0 + 3, Math.round(Y(info.view[1])));
-              ctx3.fillStyle = "rgba(255,255,255,0.22)";
-              ctx3.fillRect(x - 1, v0, mw + 2, v1 - v0);
-              ctx3.fillStyle = "rgba(255,255,255,0.8)";
-              ctx3.fillRect(x - 1, v0, mw + 2, 1);
-              ctx3.fillRect(x - 1, v1 - 1, mw + 2, 1);
+              ctx3.fillStyle = "rgba(255,255,255,0.18)";
+              ctx3.fillRect(x, v0, mw, v1 - v0);
+              ctx3.fillStyle = "#ffffff";
+              ctx3.fillRect(x - 2, v0, mw + 4, 1);
+              ctx3.fillRect(x - 2, v1 - 1, mw + 4, 1);
+              ctx3.fillRect(x - 2, v0, 1, 3);
+              ctx3.fillRect(x + mw + 1, v0, 1, 3);
+              ctx3.fillRect(x - 2, v1 - 3, 1, 3);
+              ctx3.fillRect(x + mw + 1, v1 - 3, 1, 3);
             }
-            ctx3.fillStyle = "rgba(255,255,255,0.42)";
-            ctx3.fillRect(x + 1, y0 + 2, 2, mh - 4);
-            ctx3.strokeStyle = "rgba(220,248,255,0.9)";
-            ctx3.lineWidth = 1;
-            ctx3.strokeRect(x - 0.5, y0 - 0.5, mw + 1, mh + 1);
+            ctx3.fillStyle = "rgba(255,255,255,0.35)";
+            ctx3.fillRect(x + 1, y0 + 1, 1, mh - 2);
             const zn = info.zone, my = Math.round(Y(zn.y));
             const zc = ZONE_COLORS[zn.id] || ZONE_COLORS.sunlit;
             const label3 = zn.depthM >= 1e3 ? (zn.depthM / 1e3).toFixed(zn.depthM >= 1e4 ? 0 : 1) + " km" : zn.depthM + " m";
-            const tw = label3.length * 6 + 10, px3 = x - tw - 8;
-            ctx3.fillStyle = "rgba(6,22,44,0.78)";
-            ctx3.fillRect(px3, my - 7, tw, 14);
-            ctx3.fillStyle = zc[2];
-            ctx3.fillRect(px3, my - 7, tw, 1);
-            ctx3.fillRect(px3, my + 6, tw, 1);
-            ctx3.fillStyle = "rgba(255,255,255,0.14)";
-            ctx3.fillRect(px3 + 1, my - 6, tw - 2, 5);
+            const tw = measureText(label3) + 10, px3 = x - tw - 9;
+            pxFrame(ctx3, px3, my - 7, tw, 15, { u: 1, step: 1, fill: PAL.navy, rim: [zc[2], PAL.navy[1], PAL.ink] });
+            pxCaret(ctx3, px3 + tw + 4, my, 4, "right", zc[2]);
             ctx3.fillStyle = "#ffffff";
-            ctx3.beginPath();
-            ctx3.moveTo(px3 + tw, my - 4);
-            ctx3.lineTo(px3 + tw + 5, my);
-            ctx3.lineTo(px3 + tw, my + 4);
-            ctx3.fill();
             ctx3.fillRect(x - 2, my, mw + 4, 1);
-            drawText(ctx3, label3, px3 + tw / 2, my - 4, { align: "center", color: "#ffffff", outline: "#06121e" });
+            drawText(ctx3, label3, px3 + tw / 2, my - 3, { align: "center", color: "#ffffff", shadow: "#06121e" });
             drawText(ctx3, zn.name.toUpperCase(), x + mw + 2, y0 + mh + 7, { align: "right", font: "small", color: zc[2], outline: "#06121e" });
             ctx3.restore();
           }
@@ -83985,7 +84158,7 @@ Water-droplet money from fish and your tank.`;
     const h = rows.length, w = Math.max(...rows.map((r) => r.length));
     const b = new PixelBuffer(w + 2, h + 2);
     for (let y = 0; y < h; y++) for (let x = 0; x < rows[y].length; x++) {
-      const c = PAL2[rows[y][x]];
+      const c = PAL3[rows[y][x]];
       if (c) b.set(x + 1, y + 1, pack(c));
     }
     b.outline(selOut(0.8));
@@ -84322,7 +84495,7 @@ Water-droplet money from fish and your tank.`;
   function deepOf(hex7, k = -0.45) {
     return shade(hex7, k);
   }
-  var PAL2, GLYPH_ART, GLYPHS2, BIOME_PAL, cache15, hiWin2, hiSpent2;
+  var PAL3, GLYPH_ART, GLYPHS2, BIOME_PAL, cache15, hiWin2, hiSpent2;
   var init_labicons = __esm({
     "src/ui/labicons.js"() {
       init_canvas();
@@ -84340,7 +84513,7 @@ Water-droplet money from fish and your tank.`;
       init_food();
       init_bigicons();
       init_lowpoly();
-      PAL2 = {
+      PAL3 = {
         w: "#ffffff",
         W: "#dcecf8",
         s: "#c4d6e6",
@@ -98448,137 +98621,6 @@ void main() {
     }
   });
 
-  // src/fishing/pixui.js
-  function pxFrame(ctx3, x, y, w, h, o = {}) {
-    const u = o.u ?? 1, st = Math.max(1, o.step ?? 2), c = u * st;
-    x = Math.round(x);
-    y = Math.round(y);
-    w = Math.round(w);
-    h = Math.round(h);
-    const a0 = ctx3.globalAlpha;
-    if (o.alpha !== void 0) ctx3.globalAlpha = a0 * o.alpha;
-    ctx3.fillStyle = o.ink || PAL3.ink;
-    for (let i = 0; i <= st; i++) ctx3.fillRect(x + (st - i) * u, y + i * u, w - 2 * (st - i) * u, h - 2 * i * u);
-    const ix = x + u, iy = y + u, iw = w - 2 * u, ih = h - 2 * u, ic = st - 1;
-    const fill = o.fill || PAL3.navy;
-    const bt = Math.max(u, Math.round(ih * (o.topK ?? 0.34))), bb = Math.max(u, Math.round(ih * (o.botK ?? 0.28)));
-    ctx3.fillStyle = fill[0];
-    ctx3.fillRect(ix, iy, iw, bt);
-    ctx3.fillStyle = fill[1];
-    ctx3.fillRect(ix, iy + bt, iw, ih - bt - bb);
-    ctx3.fillStyle = fill[2];
-    ctx3.fillRect(ix, iy + ih - bb, iw, bb);
-    if (o.bevel !== 0) {
-      const rim = o.rim || PAL3.rim;
-      ctx3.fillStyle = rim[0];
-      ctx3.fillRect(ix, iy, iw, u);
-      ctx3.fillRect(ix, iy, u, ih);
-      ctx3.fillStyle = rim[2];
-      ctx3.fillRect(ix, iy + ih - u, iw, u);
-      ctx3.fillRect(ix + iw - u, iy + u, u, ih - u);
-    }
-    if (ic > 0) {
-      ctx3.fillStyle = o.ink || PAL3.ink;
-      for (let r = 0; r < ic; r++) {
-        const k = (ic - r) * u;
-        ctx3.fillRect(ix, iy + r * u, k, u);
-        ctx3.fillRect(ix + iw - k, iy + r * u, k, u);
-        ctx3.fillRect(ix, iy + ih - (r + 1) * u, k, u);
-        ctx3.fillRect(ix + iw - k, iy + ih - (r + 1) * u, k, u);
-      }
-      if (o.bevel !== 0) {
-        const rim = o.rim || PAL3.rim;
-        for (let r = 0; r < ic; r++) {
-          const k = (ic - r) * u;
-          ctx3.fillStyle = rim[0];
-          ctx3.fillRect(ix + k, iy + r * u, u, u);
-          ctx3.fillRect(ix + k - u, iy + (r + 1) * u, u, u);
-          ctx3.fillStyle = rim[2];
-          ctx3.fillRect(ix + iw - k - u, iy + ih - (r + 1) * u, u, u);
-          ctx3.fillRect(ix + iw - k, iy + ih - (r + 2) * u, u, u);
-        }
-      }
-    }
-    ctx3.globalAlpha = a0;
-  }
-  function pxHalo(ctx3, cx, cy, w, h, col, a = 0.5, u = 1) {
-    if (a <= 0.01) return;
-    const a0 = ctx3.globalAlpha;
-    ctx3.fillStyle = col;
-    for (let i = 3; i >= 1; i--) {
-      const pw = Math.round(w / 2 + i * 3 * u), ph = Math.round(h / 2 + i * 3 * u), x = Math.round(cx - pw), y = Math.round(cy - ph);
-      ctx3.globalAlpha = a0 * a * (0.16 + (3 - i) * 0.1);
-      ctx3.fillRect(x + u * 2, y, pw * 2 - u * 4, ph * 2);
-      ctx3.fillRect(x, y + u * 2, pw * 2, ph * 2 - u * 4);
-      ctx3.fillRect(x + u, y + u, pw * 2 - u * 2, ph * 2 - u * 2);
-    }
-    ctx3.globalAlpha = a0;
-  }
-  function pxDiamond(ctx3, cx, cy, r, col, o = {}) {
-    cx = Math.round(cx);
-    cy = Math.round(cy);
-    r = Math.max(2, Math.round(r));
-    const lite = o.lite || "#ffffff", dark = o.dark || PAL3.ink;
-    ctx3.fillStyle = o.ink || PAL3.ink;
-    for (let i = -r - 1; i <= r + 1; i++) {
-      const hw = r + 1 - Math.abs(i);
-      ctx3.fillRect(cx - hw, cy + i, hw * 2 + 1, 1);
-    }
-    for (let i = -r; i <= r; i++) {
-      const hw = r - Math.abs(i);
-      ctx3.fillStyle = col;
-      ctx3.fillRect(cx - hw, cy + i, hw * 2 + 1, 1);
-      if (i < 0) {
-        ctx3.fillStyle = lite;
-        ctx3.fillRect(cx - hw, cy + i, Math.max(1, hw), 1);
-      } else if (i > 0 && hw > 0 && o.shade !== false) {
-        ctx3.fillStyle = rgba(dark, 0.35);
-        ctx3.fillRect(cx, cy + i, hw + 1, 1);
-      }
-    }
-  }
-  function pxCaret(ctx3, x, y, s, dir = "down", col = "#ffffff", ink = PAL3.ink) {
-    x = Math.round(x);
-    y = Math.round(y);
-    const tri5 = (n2, back, c) => {
-      ctx3.fillStyle = c;
-      for (let i = 0; i < n2; i++) {
-        const hw = i, d = i + back;
-        if (dir === "down") ctx3.fillRect(x - hw, y - d, hw * 2 + 1, 1);
-        else if (dir === "up") ctx3.fillRect(x - hw, y + d, hw * 2 + 1, 1);
-        else if (dir === "left") ctx3.fillRect(x + d, y - hw, 1, hw * 2 + 1);
-        else ctx3.fillRect(x - d, y - hw, 1, hw * 2 + 1);
-      }
-    };
-    tri5(s + 1, -1, ink);
-    tri5(s, 0, col);
-  }
-  var PAL3, unitOf;
-  var init_pixui = __esm({
-    "src/fishing/pixui.js"() {
-      init_color();
-      PAL3 = {
-        ink: "#08203a",
-        inkSoft: "#123a5c",
-        rim: ["#b8ecff", "#4a9ccc", "#1f5a8a"],
-        // steel-blue frame: light, mid, dark
-        navy: ["#2a5f8c", "#174a74", "#0e3558"],
-        // panel fill bands
-        water: ["#a8f0ff", "#5fd0f4", "#2ea8e4", "#1a7cc8", "#0f569c", "#0a3c74"],
-        // light -> deep
-        calm: ["#e6fff4", "#aef6d8", "#6ee8bc", "#3ccc9c", "#21a07c"],
-        coral: ["#ffc2b0", "#ff8a74", "#f0584a", "#c03440"],
-        amber: ["#ffe2a0", "#ffb04a", "#f08428", "#b85818"],
-        gold: ["#fffbd0", "#ffe46a", "#ffc81e", "#e8920a", "#a85a06"],
-        steel: ["#f0f8ff", "#c2d6e6", "#8aa4bc", "#5a7490", "#3a5068"],
-        lime: ["#f0ffc8", "#c8f56a", "#8ad83a", "#4fae2a", "#2e7a1e"],
-        foam: "#f4fdff",
-        kelp: ["#b8e860", "#6cc23a", "#3a8a2a", "#1f5a22"]
-      };
-      unitOf = (S15) => Math.max(1, Math.round(S15));
-    }
-  });
-
   // src/fishing/meter.js
   function art(key, make) {
     let c = ART4.get(key);
@@ -98714,7 +98756,7 @@ void main() {
     return art(`kelp|${hh}|${u}|${fr}|${flip}`, () => {
       const w = 18 * u, c = makeCanvas(w, hh), g = ctxOf(c);
       const blades = [[4, 0.95, 0], [9, 0.72, 2.1], [13, 0.84, 4.2]];
-      const K2 = PAL3.kelp;
+      const K2 = PAL.kelp;
       for (let pass = 0; pass < 2; pass++) {
         for (const [bx, hk, ph] of blades) {
           const bh = Math.round(hh * hk);
@@ -98787,7 +98829,7 @@ void main() {
         const ex = Math.min(x, n2 - 1 - x) - inset, ey = Math.min(y, n2 - 1 - y) - inset;
         return ex >= 0 && ey >= 0 && q(ex) + q(ey) >= cut - inset;
       };
-      const P7 = face3 === "red" ? PAL3.coral.map(hex4) : face3 === "steel" ? C4.steel : face3 === "beat" ? [hex4("#ffffff"), ...C4.gold.slice(0, 4)] : C4.gold;
+      const P7 = face3 === "red" ? PAL.coral.map(hex4) : face3 === "steel" ? C4.steel : face3 === "beat" ? [hex4("#ffffff"), ...C4.gold.slice(0, 4)] : C4.gold;
       const bez2 = C4.steel;
       const bw = 3 * u;
       return paint4(n2, n2, (x, y) => {
@@ -98819,7 +98861,7 @@ void main() {
     ctx3.translate(shake, dy);
     const t = F3.t;
     const P7 = L4.panel;
-    pxFrame(ctx3, P7.x, P7.y, P7.w, P7.h, { u: L4.u, step: 2, fill: PAL3.navy, rim: PAL3.rim });
+    pxFrame(ctx3, P7.x, P7.y, P7.w, P7.h, { u: L4.u, step: 2, fill: PAL.navy, rim: PAL.rim });
     drawTrack(ctx3, F3, B2, L4, t);
     drawBar2(ctx3, F3, B2, L4, t);
     drawButton2(ctx3, F3, B2, L4, t);
@@ -99185,7 +99227,7 @@ void main() {
     for (let i = 0; i < n2; i++) pxDiamond(ctx3, px0 + i * gap, py, pr, i < B2.charges ? "#ffd23a" : "#3a4a58", { lite: i < B2.charges ? "#fffbd0" : "#56687a" });
     const mk = "MK " + ROMAN[B2.level || 1];
     const mw = measureText(mk, "small", u) + 12 * u, mh = 9 * u;
-    pxFrame(ctx3, b.cx - mw / 2, b.cy - r - mh - Math.round(4 * S15), mw, mh, { u, step: 1, fill: B2.chain ? ["#ffe46a", "#ffc81e", "#e8920a"] : PAL3.navy, rim: B2.chain ? ["#fffbd0", "#ffc81e", "#a85a06"] : PAL3.rim });
+    pxFrame(ctx3, b.cx - mw / 2, b.cy - r - mh - Math.round(4 * S15), mw, mh, { u, step: 1, fill: B2.chain ? ["#ffe46a", "#ffc81e", "#e8920a"] : PAL.navy, rim: B2.chain ? ["#fffbd0", "#ffc81e", "#a85a06"] : PAL.rim });
     drawText(ctx3, mk, b.cx, b.cy - r - mh - Math.round(4 * S15) + 2 * u, { font: "small", align: "center", scale: u, color: B2.chain ? "#3a1e06" : "#e8fbff" });
     const kw = Math.round(36 * S15), kh = Math.round(16 * S15), kx = Math.round(b.cx - r - 10 * S15 - kw), ky = Math.round(b.cy - kh / 2) + (beat ? u : 0);
     ctx3.globalAlpha = ready3 ? 1 : 0.6;
@@ -99209,7 +99251,7 @@ void main() {
       init_cinematics();
       init_icons3d2();
       init_pixui();
-      INK6 = PAL3.ink;
+      INK6 = PAL.ink;
       hex4 = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
       mixRgb = (a, b, t) => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t));
       shadeRgb = (c, k) => c.map((v) => Math.max(0, Math.min(255, Math.round(k > 0 ? v + (255 - v) * k : v * (1 + k)))));
@@ -99223,10 +99265,10 @@ void main() {
         white: hex4("#ffffff"),
         ink: hex4(INK6),
         sand: [hex4("#f4e2a8"), hex4("#d8bc78"), hex4("#a88a50")],
-        w: PAL3.water.map(hex4),
-        calm: PAL3.calm.map(hex4),
-        steel: PAL3.steel.map(hex4),
-        gold: PAL3.gold.map(hex4)
+        w: PAL.water.map(hex4),
+        calm: PAL.calm.map(hex4),
+        steel: PAL.steel.map(hex4),
+        gold: PAL.gold.map(hex4)
       };
       PER = 48;
     }
@@ -99270,27 +99312,29 @@ void main() {
     const z = F3.zoom();
     const t = F3.t;
     const S15 = F3.H / 540, u = unitOf(S15);
-    const w = Math.round(46 * S15), h = Math.round(56 * S15);
-    const cx = Math.round(clamp(sx2, 80 * S15, F3.W - 80 * S15)), cy = Math.round(clamp(sy2 - 22 * f.scale * z - 58 * S15, 70 * S15, F3.H - 130 * S15));
+    const w = Math.round(54 * S15), h = Math.round(64 * S15);
+    const lift = (F3.fishLen?.(f) || 30) * 0.24 * z;
+    const cx = Math.round(clamp(sx2, 80 * S15, F3.W - 110 * S15)), cy = Math.round(clamp(sy2 - lift - h / 2 - 16 * S15, F3.H * 0.11 + h / 2 + 8 * S15, F3.H - 140 * S15));
     const pop = 1 + Math.max(0, 0.35 - (1 - k) * 2.5);
     const jx = k < 0.35 ? Math.round(Math.sin(t * 50) * u) : 0;
     const x = cx - w / 2 + jx, y = cy - h / 2;
     pxHalo(ctx3, cx, cy, w, h, "#ffe46a", 0.55 + 0.35 * (Math.floor(t * 8) % 2), u);
-    pxFrame(ctx3, x, y, w, h, { u, step: 2, fill: ["#fff3a0", "#ffd23a", "#f0a018"], rim: ["#fffbd0", "#ffd23a", "#b86a08"] });
-    pxCaret(ctx3, cx + jx, y + h + 6 * u, 6 * u, "down", "#f0a018");
-    word3D(ctx3, "!", cx + jx, cy - Math.round(6 * S15), { t, scale: 1.7 * S15 * pop, pal: "sun", wobble: 1.5, depth: 6 });
-    const n2 = 8, bw = w - 10 * u, sw = Math.floor(bw / n2), bx = Math.round(cx - sw * n2 / 2) + jx, by = y + h - 10 * u, bh = 4 * u;
-    ctx3.fillStyle = PAL3.ink;
+    pxFrame(ctx3, x - u, y - u, w + 2 * u, h + 2 * u, { u, step: 2, fill: ["#ffe46a", "#ffc81e", "#e8920a"], rim: ["#fffbd0", "#ffc81e", "#a85a06"] });
+    pxFrame(ctx3, x + 3 * u, y + 3 * u, w - 6 * u, h - 6 * u, { u, step: 1, fill: PAL.navy, rim: PAL.rim });
+    pxCaret(ctx3, cx + jx, y + h + 7 * u, 6 * u, "down", "#ffc81e");
+    word3D(ctx3, "!", cx + jx, cy - Math.round(7 * S15), { t, scale: 2.1 * S15 * pop, pal: "sun", wobble: 1.5, depth: 6 });
+    const n2 = 8, bw = w - 14 * u, sw = Math.floor(bw / n2), bx = Math.round(cx - sw * n2 / 2) + jx, by = y + h - 12 * u, bh = 4 * u;
+    ctx3.fillStyle = PAL.ink;
     ctx3.fillRect(bx - u, by - u, sw * n2 + u, bh + 2 * u);
     const lit2 = Math.ceil(k * n2);
     for (let i = 0; i < n2; i++) {
       const on = i < lit2;
-      ctx3.fillStyle = !on ? "#6a4a10" : k < 0.35 ? Math.floor(t * 10) % 2 ? "#ffffff" : "#ff5a4a" : "#ffffff";
+      ctx3.fillStyle = !on ? "#0e3558" : k < 0.35 ? Math.floor(t * 10) % 2 ? "#ffffff" : "#ff5a4a" : "#ffd23a";
       ctx3.fillRect(bx + i * sw, by, sw - u, bh);
     }
     const down = Math.floor(t * 5) % 2 === 0;
-    drawIcon3d(ctx3, down ? "mouse_lit" : "mouse", cx + w / 2 + Math.round(22 * S15), cy - Math.round(8 * S15) + (down ? 2 : 0), Math.round(30 * S15), Math.sin(t * 3) * 0.4);
-    word3D(ctx3, "CLICK!", cx + w / 2 + Math.round(24 * S15), cy + Math.round(22 * S15), { t, scale: 0.8 * S15, pal: "sun", wobble: 1.2 });
+    drawIcon3d(ctx3, down ? "mouse_lit" : "mouse", cx + w / 2 + Math.round(26 * S15), cy - Math.round(12 * S15) + (down ? 2 : 0), Math.round(34 * S15), Math.sin(t * 3) * 0.4);
+    word3D(ctx3, "CLICK!", cx + w / 2 + Math.round(50 * S15), cy + Math.round(20 * S15), { t, scale: 0.9 * S15, pal: "sun", wobble: 1.2 });
   }
   function drawMessage(ctx3, F3, m) {
     const a = Math.min(1, (m.max - m.t) * 3);
@@ -99354,7 +99398,7 @@ void main() {
     const n2 = rar.stars || 1, dr = 3 * u, dgap = dr * 2 + 3 * u;
     const tab = 8 * u, pad = 6 * u;
     const w = tab + pad * 2 + Math.max(nw, rw + 6 * u + n2 * dgap), h = 34 * u;
-    pxFrame(ctx3, x, y, w, h, { u, step: 2, fill: PAL3.navy, rim: PAL3.rim });
+    pxFrame(ctx3, x, y, w, h, { u, step: 2, fill: PAL.navy, rim: PAL.rim });
     ctx3.fillStyle = rar.dark || "#5d6b78";
     ctx3.fillRect(x + 2 * u, y + 3 * u, tab, h - 6 * u);
     ctx3.fillStyle = rar.color;
@@ -99362,8 +99406,8 @@ void main() {
     ctx3.fillStyle = "#ffffff";
     ctx3.fillRect(x + 2 * u, y + 3 * u, u, h - 6 * u);
     const tx = x + 2 * u + tab + pad;
-    drawText(ctx3, name, tx, y + 5 * u, { scale: 2 * u, color: "#ffffff", shadow: PAL3.ink });
-    drawText(ctx3, rl, tx, y + 23 * u, { font: "small", scale: u, color: rar.color, shadow: PAL3.ink });
+    drawText(ctx3, name, tx, y + 5 * u, { scale: 2 * u, color: "#ffffff", shadow: PAL.ink });
+    drawText(ctx3, rl, tx, y + 23 * u, { font: "small", scale: u, color: rar.color, shadow: PAL.ink });
     for (let i = 0; i < n2; i++) pxDiamond(ctx3, tx + rw + 6 * u + i * dgap + dr, y + 25 * u, dr, rar.color, { lite: "#ffffff" });
     if (F3.fish?.rec?.giant || B2.heavy > 0) {
       const tag2 = F3.fish?.rec?.giant ? "GIANT" : `${Math.round(B2.kg * 10) / 10} kg`;
@@ -99612,6 +99656,7 @@ void main() {
       init_text3d();
       init_bigicons();
       init_hud();
+      init_pixui();
       GLOSS2 = {
         aqua: { stops: ["#ffffff", "#c8f8ff", "#59c3ff", "#1e8fe0", "#0d6fb8"], outline: "#0c3a52", glow: "#bff8ff" },
         lime: { stops: ["#ffffff", "#ecffc0", "#a6ec5a", "#4fbe2a", "#2a8a1a"], outline: "#0c3a52", glow: "#e2ffb0" },
@@ -99746,7 +99791,7 @@ void main() {
           const x = lerp(W11 + 240, W11 / 2, k);
           ctx3.save();
           ctx3.globalAlpha = a;
-          drawGlow2(ctx3, x, cy, 70, it2.color || "#8ff0ff", 0.3 * a);
+          pxHalo(ctx3, x, cy, 220, 44, it2.color || "#8ff0ff", 0.35 * a, 2);
           word3D(ctx3, it2.text, x, cy, { t, pal: it2.pal || palOf2(it2.color), scale: W11 < 700 ? 1 : 1.25, rot: (1 - k) * -0.25 + Math.sin(t * 3) * 0.03 });
           ctx3.restore();
         }
@@ -100281,7 +100326,7 @@ void main() {
     return { m, c: [C6, C6, ZC + 0.5] };
   }
   function housingModel(RV) {
-    const C6 = RV + 11, N2 = 2 * C6, NZ2 = ZC * 2 + 1;
+    const C6 = RV + 13, N2 = 2 * C6, NZ2 = ZC * 2 + 1;
     const m = new VoxelModel(N2, N2, NZ2);
     const P7 = memoPal(m);
     const back = P7("#174d72", ENAMEL), backL = P7("#21638f", ENAMEL), backD = P7("#134466", ENAMEL);
@@ -100289,7 +100334,7 @@ void main() {
     const lens = P7("#0f3550", GEMM), lensL = P7("#3f7896", GEMM), riv = P7("#dcebf5");
     const r0 = RV + 2.6, r1 = RV + 8.6, lr = lampR(RV);
     for (let y = 0; y < N2; y++) for (let x = 0; x < N2; x++) {
-      const dx = x + 0.5 - C6, dy = y + 0.5 - C6, r = Math.hypot(dx, dy);
+      const dx = x + 0.5 - C6, dy = y + 0.5 - C6, r = oct(dx, dy);
       if (r > r1) continue;
       const a = Math.atan2(dy, dx);
       if (r < r0) {
@@ -100305,14 +100350,16 @@ void main() {
       let c = r < r0 + 1.1 ? ringL : r > r1 - 1.2 ? ring3 : Math.floor(r) % 2 ? ring3 : ringB;
       m.set(x, y, ZC + z1, c);
       const la = Math.round(a / (TAU / N_LAMPS)) * (TAU / N_LAMPS);
-      const ld = Math.hypot(dx - Math.cos(la) * lr, dy - Math.sin(la) * lr);
+      const [lx, ly] = octPt(la, lr);
+      const ld = Math.max(Math.abs(dx - lx), Math.abs(dy - ly));
       if (ld < 2.2) {
         m.set(x, y, ZC + 4, ld < 1.6 ? lens : ringD);
         if (ld < 0.9) m.set(x, y, ZC + 4, lensL);
       }
       const ra = (Math.round(a / (TAU / N_LAMPS) - 0.5) + 0.5) * (TAU / N_LAMPS);
-      const rd = Math.hypot(dx - Math.cos(ra) * lr, dy - Math.sin(ra) * lr);
-      if (rd < 1.2) m.set(x, y, ZC + 5, riv);
+      const [qx, qy] = octPt(ra, lr);
+      const rd = Math.max(Math.abs(dx - qx), Math.abs(dy - qy));
+      if (rd < 1) m.set(x, y, ZC + 5, riv);
     }
     return { m, c: [C6, C6, ZC + 0.5] };
   }
@@ -100320,11 +100367,10 @@ void main() {
     const m = new VoxelModel(5, 5, 3);
     const c = m.color(hex7, { spec: 1.2, specPow: 8, smooth: 0.8, jitter: 0, light: 1 }), w = m.color("#ffffff", { light: 1, jitter: 0 });
     for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) {
-      const d = Math.hypot(x - 2, y - 2);
-      if (d > 2.3) continue;
+      if ((x === 0 || x === 4) && (y === 0 || y === 4)) continue;
       m.set(x, y, 0, c);
       m.set(x, y, 1, c);
-      if (d < 1.5) m.set(x, y, 2, x === 1 && y === 3 ? w : c);
+      if (x > 0 && x < 4 && y > 0 && y < 4) m.set(x, y, 2, x === 1 && y === 3 ? w : c);
     }
     return { m, c: [2.5, 2.5, 0] };
   }
@@ -100474,7 +100520,7 @@ void main() {
   function tensionColor(k) {
     return TENSION_COLS[Math.min(TENSION_COLS.length - 1, Math.max(0, Math.floor(k * TENSION_COLS.length * 0.999)))];
   }
-  var RPM_UNIT, RPM_MAX, GRIP, INK8, G0, G1, N_TEETH, N_SPOKES, N_LAMPS, SYM, NF2, VPX, VIEW, ZC, METAL4, ENAMEL, GEMM, memoPal, fract4, lampR, LAMP_COL, LAMPS, ART5, hex5, RAMPS2, RAMP_RGB2, rampAt, TENSION_COLS, Gear;
+  var RPM_UNIT, RPM_MAX, GRIP, INK8, G0, G1, N_TEETH, N_SPOKES, N_LAMPS, SYM, NF2, VPX, VIEW, ZC, METAL4, ENAMEL, GEMM, memoPal, fract4, lampR, oct, octPt, LAMP_COL, LAMPS, ART5, hex5, RAMPS2, RAMP_RGB2, rampAt, TENSION_COLS, Gear;
   var init_gear = __esm({
     "src/fishing/gear.js"() {
       init_math();
@@ -100487,6 +100533,7 @@ void main() {
       init_font();
       init_cinematics();
       init_icons3d2();
+      init_pixui();
       RPM_UNIT = 150;
       RPM_MAX = 240;
       GRIP = 7;
@@ -100518,6 +100565,14 @@ void main() {
       };
       fract4 = (v) => v - Math.floor(v);
       lampR = (RV) => RV + 5.5;
+      oct = (dx, dy) => {
+        const ax = Math.abs(dx), ay = Math.abs(dy);
+        return Math.max(ax, ay, (ax + ay) * 0.7071);
+      };
+      octPt = (a, r) => {
+        const c = Math.cos(a), s = Math.sin(a), k = r / oct(c, s);
+        return [c * k, s * k];
+      };
       LAMP_COL = { aqua: "#4fd8f0", green: "#7ff04a", orange: "#ff9d2e", red: "#ff4f5e", gold: "#ffd23a", white: "#f4ffff" };
       LAMPS = /* @__PURE__ */ new Map();
       ART5 = /* @__PURE__ */ new Map();
@@ -100871,7 +100926,8 @@ void main() {
             const on = j < lit2 || j === chase;
             if (!on) continue;
             const phi = Math.PI / 2 - j * (TAU / N_LAMPS);
-            const [ox, oy] = projOff(Math.cos(phi) * lr, Math.sin(phi) * lr, 4.5, VPX);
+            const [px3, py] = octPt(phi, lr);
+            const [ox, oy] = projOff(px3, py, 4.5, VPX);
             const head = j === lit2 - 1 && spd < 0.98;
             const spr4 = lampSprite(head || blink && j % 2 ? "white" : col, k);
             const w = spr4.width / k;
@@ -101081,26 +101137,15 @@ void main() {
         // [gear25] The controls label: crisp pixel text on a small navy voxel plaque bolted under the housing.
         drawPlaque(ctx3, cx, cy, text) {
           const tw = Math.ceil(measureText(text, "small")), th = Math.ceil(lineHeight("small"));
-          const w = tw + 16, h = th + 5, x = Math.round(cx - w / 2), y = Math.round(cy - h / 2);
-          ctx3.fillStyle = "#081c2c";
-          ctx3.fillRect(x + 1, y - 1, w - 2, h + 2);
-          ctx3.fillRect(x - 1, y + 1, w + 2, h - 2);
-          ctx3.fillRect(x, y, w, h);
-          ctx3.fillStyle = "#16486a";
-          ctx3.fillRect(x + 1, y + 1, w - 2, h - 2);
-          ctx3.fillStyle = "#2f78a8";
-          ctx3.fillRect(x + 1, y + 1, w - 2, 1);
-          ctx3.fillRect(x + 1, y + 1, 1, h - 3);
-          ctx3.fillStyle = "#0e3550";
-          ctx3.fillRect(x + 2, y + h - 2, w - 3, 1);
-          ctx3.fillRect(x + w - 2, y + 2, 1, h - 4);
-          for (const bx of [x + 3, x + w - 5]) {
+          const w = tw + 18, h = th + 7, x = Math.round(cx - w / 2), y = Math.round(cy - h / 2);
+          pxFrame(ctx3, x, y, w, h, { u: 1, step: 2, fill: PAL.navy, rim: PAL.rim });
+          for (const bx of [x + 4, x + w - 6]) {
             ctx3.fillStyle = "#dcebf5";
             ctx3.fillRect(bx, y + Math.floor(h / 2) - 1, 2, 2);
             ctx3.fillStyle = "#6a879f";
             ctx3.fillRect(bx + 1, y + Math.floor(h / 2), 1, 1);
           }
-          drawText(ctx3, text, cx, y + 3, { font: "small", align: "center", color: "#bff4ff", shadow: "#081c2c" });
+          drawText(ctx3, text, cx, y + 4, { font: "small", align: "center", color: "#e8fbff", shadow: "#081c2c" });
         }
         // Big glossy RPM number on a glass pill in the gauge's gap, with a spin prompt while the gear is too slow.
         drawReadout(ctx3, cx, cy, L4, B2, st) {
@@ -104370,7 +104415,7 @@ void main() {
         }
       }
       if (s >= 10) {
-        const hc = s * 1.7 * Math.sin(Math.PI * clamp012(p * 1.15));
+        const hc = s * (si >= 3 ? 1.25 : 1.6) * Math.sin(Math.PI * clamp012(p * 1.15));
         const cw = Math.max(1, Math.round(s * 0.1));
         for (let y = 0; y < hc; y++) {
           if (fall > 0.2 && y > hc * 0.4 && hash2(y, f, si + 9) < fall) continue;
@@ -104429,7 +104474,7 @@ void main() {
         const h1 = hash2(i, 1, si * 7), h2 = hash2(i, 2, si * 7), h311 = hash2(i, 3, si * 7);
         const bx = ox + (0.15 + 0.85 * h1) * s * (0.55 + p * 1.35), by = oy + (h2 - 0.5) * s * (0.35 + p * 0.75);
         let r = s * (0.12 + 0.16 * h311) * (1 - p * 0.55);
-        const ring3 = p > 0.45 && h311 > 0.45;
+        const ring3 = false;
         if (r < 0.8) r = 0.8;
         const R8 = Math.round(r);
         for (let yy = -R8; yy <= R8; yy++) for (let xx = -R8; xx <= R8; xx++) {
@@ -104439,9 +104484,9 @@ void main() {
           put2(bx + xx, by + yy, xx < 0 && yy < 0 || xx === 0 && yy === -R8 ? 3 : yy > 0 ? 1 : 2);
         }
       }
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < (p < 0.6 ? 3 : 0); i++) {
         const y = oy + (hash2(i, 9, si) - 0.5) * s * 0.6, x0 = ox + s * 0.2 * p, len = s * (0.6 + p * 1.2) * (0.6 + hash2(i, 8, si) * 0.5);
-        for (let x = 0; x < len; x++) if (hash2(x, i + f, si) > p * 0.7) put2(x0 + x + s * p * 0.6, y, x < len * 0.3 ? 3 : 2);
+        for (let x = 0; x < len; x++) put2(x0 + x + s * p * 0.6, y, x < len * 0.3 ? 3 : 2);
       }
       for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
         const v = mask[y * fw + x];
@@ -104536,7 +104581,7 @@ void main() {
           this.crCur = 0;
           this.ws = { x: new Float32Array(16), y: new Float32Array(16), t: new Float32Array(16), life: new Float32Array(16), si: new Uint8Array(16), on: new Uint8Array(16), dir: new Int8Array(16) };
           this.wsCur = 0;
-          this.kelp = { n: 0, x: new Float32Array(6), y: new Float32Array(6), h: new Float32Array(6), ph: new Float32Array(6) };
+          this.kelp = { n: 0, cx: 0, x: new Float32Array(6), y: new Float32Array(6), h: new Float32Array(6), ph: new Float32Array(6) };
           this.commotion = 0;
           this.lean = 0;
           this.leanX = 0;
@@ -104554,6 +104599,7 @@ void main() {
           this.I = 1;
           this.sizeK = 1;
           this.kelpA = 0;
+          this.kelpT = 0;
         }
         // ---------------------------------------------------------------- helpers
         get game() {
@@ -104643,32 +104689,39 @@ void main() {
           const len = F3.fishLen?.(f) || 30;
           this.sizeK = clamp(len / 40, 0.6, 3);
           this.I = clamp(0.55 + (B2.pi4 || 0) * 0.18 + (B2.power || 0) * 0.5 + (B2.heavy || 0) * 0.2 + (B2.boss ? 0.9 : 0), 0.4, 2.4);
+          this.kelpT = 0;
           this.kelp.n = 0;
-          this.kelpA = 0;
+          this.plantKelp(f, len);
+        }
+        // Kelp rooted on the seabed around the fish when the floor is near (re-planted when the fight drifts away).
+        plantKelp(f, len) {
+          const F3 = this.F, k = this.kelp;
           let floor = NaN;
           try {
             floor = F3.game?.ocean?.floorUnder?.(f.x, f.y);
           } catch (e) {
             floor = NaN;
           }
-          if (Number.isFinite(floor) && floor - f.y < 120 && floor - f.y > 8) {
-            const n2 = 3 + (Math.random() < 0.5 ? 1 : 0);
-            for (let i = 0; i < n2; i++) {
-              const side = i % 2 ? 1 : -1;
-              const x = f.x + side * (len * 0.55 + 14 + i * 13 + Math.random() * 10);
-              let fy = floor;
-              try {
-                const v = F3.game.ocean.floorUnder(x, f.y);
-                if (Number.isFinite(v)) fy = v;
-              } catch (e) {
-              }
-              const k = this.kelp;
-              k.x[k.n] = x;
-              k.y[k.n] = fy + 1;
-              k.h[k.n] = clamp((fy - f.y) * (0.6 + Math.random() * 0.5), 14, 70);
-              k.ph[k.n] = Math.random() * TAU;
-              k.n++;
+          if (!(Number.isFinite(floor) && floor - f.y < 140 && floor - f.y > 8)) return;
+          if (k.n && Math.abs(k.cx - f.x) < 150) return;
+          k.n = 0;
+          this.kelpA = 0;
+          k.cx = f.x;
+          const n2 = 4 + (Math.random() < 0.5 ? 1 : 0);
+          for (let i = 0; i < n2; i++) {
+            const side = i % 2 ? 1 : -1;
+            const x = f.x + side * (len * 0.3 + 6 + (i >> 1) * 14 + Math.random() * 8);
+            let fy = floor;
+            try {
+              const v = F3.game.ocean.floorUnder(x, f.y);
+              if (Number.isFinite(v)) fy = v;
+            } catch (e) {
             }
+            k.x[k.n] = x;
+            k.y[k.n] = fy + 1;
+            k.h[k.n] = clamp((fy - f.y) * (0.55 + Math.random() * 0.5), 14, 80);
+            k.ph[k.n] = Math.random() * TAU;
+            k.n++;
           }
         }
         // The hook-set: the fish goes berserk for a moment.
@@ -104716,14 +104769,14 @@ void main() {
           }
           const tail = f.anchors?.tail || [f.x - facing * len * 0.45, f.y];
           if (B2.lunge?.stage === "tele" && Math.random() < dt * 18) this.spawn(BUBBLE2, tail[0], tail[1] + (Math.random() - 0.5) * 4, -facing * 20, -10, 1, Math.random() < 0.3 ? 2 : 1, C_FOAM);
-          this.streamT -= dt * (2 + 9 * I * pullK);
+          this.streamT -= dt * (3 + 11 * I * pullK);
           while (this.streamT <= 0) {
             this.streamT += 1;
             this.spawn(BUBBLE2, mouth[0] + (Math.random() - 0.5) * 3, mouth[1] - 1, facing * (4 + Math.random() * 8), -(14 + Math.random() * 20), 1.2 + Math.random(), Math.random() < 0.5 ? 1 : this.bubbleSize(this.sizeK), C_FOAM);
           }
           this.thrT -= dt * (0.7 + pullK * 0.9 + (B2.jitAmp || 0) * 2.5);
           if (this.thrT <= 0) {
-            this.thrT = lerp(1.05, 0.42, clamp012((I - 0.4) / 2)) * (0.75 + Math.random() * 0.5);
+            this.thrT = lerp(0.8, 0.34, clamp012((I - 0.4) / 2)) * (0.75 + Math.random() * 0.5);
             if (B2.crate) this.slosh(B2, f, (0.5 + pullK * 0.7) * I);
             else this.thrash(B2, f, (0.45 + pullK * 0.75) * I, false);
           }
@@ -104767,6 +104820,11 @@ void main() {
             }
           }
           this.leanX = f.x;
+          this.kelpT -= dt;
+          if (this.kelpT <= 0) {
+            this.kelpT = 0.6;
+            this.plantKelp(f, len);
+          }
         }
         // ---------------------------------------------------------------- events
         // A thrash beat: whitewater and bubbles at the tail; near the surface a splash crown, droplets, foam, ripples.
@@ -104775,7 +104833,7 @@ void main() {
           const tail = f.anchors?.tail || [f.x - facing * len * 0.45, f.y];
           const k = this.sizeK;
           this.commotion = Math.min(2.2, this.commotion + 0.22 * p);
-          this.wash(tail[0], tail[1], p * Math.sqrt(k) * 0.8, -facing);
+          this.wash(tail[0], tail[1], (0.45 + p) * Math.sqrt(k) * 0.8, -facing);
           const nb = Math.min(20, Math.round((4 + 7 * p) * Math.sqrt(k)));
           for (let i = 0; i < nb; i++) {
             const a = Math.random() * TAU, sp = 12 + Math.random() * 36 * p;
@@ -104798,11 +104856,11 @@ void main() {
           const s = this.surf();
           if (s === null) return;
           const lv = this.levelAt(x) ?? s;
-          const reach = 18 + len * 0.9 + 18 * this.I;
+          const reach = 30 + len * 1.2 + 30 * this.I;
           const depth = y - lv;
           if (depth > reach || depth < -40) return;
           const near = clamp012(1 - Math.max(0, depth) / reach);
-          const ps = p * Math.sqrt(near) * Math.sqrt(this.sizeK);
+          const ps = Math.max(p * 0.35, p * Math.sqrt(near)) * Math.sqrt(this.sizeK);
           if (ps < 0.12) return;
           this.crown(x, lv, ps * 0.9);
           const nd = Math.min(22, Math.round(4 + 12 * ps));
@@ -105353,6 +105411,8 @@ void main() {
       init_rods();
       init_species();
       init_fightfx();
+      init_pixui();
+      init_font();
       BARE = { kind: "bare", type: "bare", id: null, label: "Bare hook", mods: { attract: 0.55, rarity: 1, sizeBonus: 0, giantMul: 1, luck: 0 } };
       Fishing = class {
         constructor(game) {
@@ -106138,7 +106198,17 @@ void main() {
           if (B2.beat) zoom2 += 0.12;
           zoom2 += B2.zoomAdd || 0;
           if (B2.boss?.stage === "intro") this.focusCam(f.x, f.y - this.H * 0.16 / zoom2, zoom2, 1.6);
-          else this.focusCam(f.x, f.y + this.H * (B2.camOffY ?? 0.08) / zoom2, zoom2, B2.mode === "hookset" ? 4.5 : 3);
+          else {
+            let fy = f.y + this.H * (B2.camOffY ?? 0.08) / zoom2;
+            const surf = this.world.surfaceY;
+            if (surf !== null && surf !== void 0) {
+              const Z = Math.max(0.5, this.zoom()), S15 = this.H / 540;
+              const want = surf + (this.H / 2 - (this.H * 0.11 + 56 * S15)) / Z, low = f.y - (this.H / 2 - 175 * S15) / Z;
+              const k = clamp012((want - low + 40 / Z) / (40 / Z));
+              if (k > 0) fy = lerp(fy, Math.max(low, Math.min(fy, want)), k);
+            }
+            this.focusCam(f.x, fy, zoom2, B2.mode === "hookset" ? 4.5 : 3);
+          }
           if (!this.poseHold) {
             const pose2 = B2.stunned || this.gear.p > 0.08 ? "reel" : "pull";
             if (pose2 !== this.pose) this.setPose(pose2);
@@ -106802,16 +106872,21 @@ void main() {
           ctx3.restore();
         }
         // on screen: a 3D voxel MAX LINE sign under the hook (pinned to the screen edge when the hook is out of view)
+        // [fishui30] on a square pixel sign board: hazard stripes along the top, a stepped pointer up to the hook
         drawMaxLineHud(ctx3) {
           const h = this.hook, a = this.maxK, t = this.t;
-          const S15 = this.H / 540;
+          const S15 = this.H / 540, u = Math.max(1, Math.round(S15));
           let [sx2, sy2] = this.toScreen(h.x, h.y);
-          sx2 = clamp(sx2, 90 * S15, this.W - 90 * S15);
-          sy2 = clamp(sy2 + 30 * S15, 40 * S15, this.H - 70 * S15);
+          sx2 = clamp(sx2, 96 * S15, this.W - 96 * S15);
+          sy2 = clamp(sy2 + 22 * S15, 40 * S15, this.H - 80 * S15);
+          const w = Math.round(150 * S15), bh = Math.round(48 * S15), x = Math.round(sx2 - w / 2), y = Math.round(sy2);
           ctx3.save();
           ctx3.globalAlpha = a;
-          word3D(ctx3, "MAX LINE", sx2, sy2, { t, pop: a, scale: 0.75 * S15, pal: "red", wobble: 0.8, rot: Math.sin(t * 3) * 0.03 });
-          word3D(ctx3, "LAB: LONGER LINE", sx2, sy2 + 22 * S15, { t: t + 1, scale: 0.42 * S15, pal: "white", wobble: 0.4, alpha: 0.9 });
+          pxCaret(ctx3, sx2, y - 5 * u, 5 * u, "up", "#ffd23a");
+          pxFrame(ctx3, x, y, w, bh, { u, step: 2, fill: ["#ff8a74", "#f0584a", "#c03440"], rim: ["#ffc2b0", "#f0584a", "#801a28"] });
+          pxStripes(ctx3, x + 3 * u, y + 3 * u, w - 6 * u, 5 * u, "#ffd23a", PAL.ink, 4 * u, t * 12);
+          word3D(ctx3, "MAX LINE", sx2, y + Math.round(22 * S15), { t, pop: a, scale: 0.55 * S15, pal: "white", wobble: 0.6, rot: Math.sin(t * 3) * 0.02 });
+          drawText(ctx3, "LAB: LONGER LINE", sx2, y + bh - 11 * u, { font: "small", align: "center", scale: u, color: "#fff3e0", shadow: "#801a28" });
           ctx3.restore();
         }
         drawCinematicHud(ctx3) {
@@ -133134,12 +133209,76 @@ ${hearts} ${status}
     }
   });
 
+  // src/dev/pixui.js
+  var pixui_exports = {};
+  __export(pixui_exports, {
+    run: () => run25
+  });
+  function run25() {
+    const W11 = 480, H8 = 270, S15 = 4;
+    const cv = document.getElementById("screen");
+    cv.width = W11;
+    cv.height = H8;
+    cv.style.width = W11 * S15 + "px";
+    cv.style.height = H8 * S15 + "px";
+    const g = ctxOf(cv);
+    let t = 0;
+    function draw() {
+      t += 1 / 60;
+      g.fillStyle = pixelGradient(g, 0, 0, 0, H8, [[0, "#1e8fe0"], [1, "#bfeaff"]], 6);
+      g.fillRect(0, 0, W11, H8);
+      const f = drawAeroFrame(g, 6, 6, 250, 150, { title: "Pixel Kit", leaves: false });
+      pixelPanel(g, f.content.x + 4, f.content.y + 4, 110, 60, { title: "pixelPanel" });
+      pixelButton(g, f.content.x + 124, f.content.y + 6, 80, 19, { label: "Button" });
+      pixelButton(g, f.content.x + 124, f.content.y + 30, 80, 19, { label: "Hover", tone: "green", state: "hover" });
+      pixelButton(g, f.content.x + 124, f.content.y + 54, 80, 19, { label: "Down", tone: "orange", state: "down" });
+      pixelBar(g, f.content.x + 8, f.content.y + 72, 100, 8, 0.5 + 0.5 * Math.sin(t), { color: "#4cc83a", segments: 5 });
+      pixelBadge(g, f.content.x + 112, f.content.y + 2, 3, t);
+      pixelChip(g, f.content.x + 8, f.content.y + 86, 60, 13, { tone: "aqua" });
+      drawText(g, "chip", f.content.x + 26, f.content.y + 89, { color: "#ffffff" });
+      f.finish(g);
+      drawSlider(g, 270, 14, 120, 0.6);
+      drawToggle(g, 400, 10, true);
+      drawToggle(g, 436, 10, false);
+      drawTab(g, 270, 40, 60, 18, { label: "Tab", active: true });
+      drawTab(g, 332, 40, 60, 18, { label: "Tab" });
+      drawGlossOrb(g, 280, 80, 7, "#ff9d2e");
+      drawGlossOrb(g, 300, 80, 4, "#2fd3e8");
+      drawGlossOrb(g, 324, 80, 10, "#4cc83a");
+      pixelGlassPlate(g, 360, 82, 30, {});
+      drawAeroGlow(g, 420, 82, 20, "#fff6a0", 0.8);
+      pixelRect(g, 270, 100, 40, 20, 4, "#e8fff0", { outline: "#3a9a5a", hi: "#ffffff", lo: "#bfe8cc" });
+      pixelShadow(g, 320, 100, 40, 20, 2, 2, { n: 2 });
+      pixelRect(g, 320, 100, 40, 20, 6, "#ffe8ea", { outline: "#d0485a", hi: "#ffffff" });
+      g.strokeStyle = "#0a3e74";
+      pixelRectPath(g, 370.5, 100.5, 39, 19, 12);
+      g.stroke();
+      pixelHalo(g, 420, 100, 40, 20, 2, "#ffffff", 1);
+      pixelRect(g, 420, 100, 40, 20, 4, "#59c3ff", { outline: "#0b4a8a" });
+      drawAeroLabel(g, "drawAeroLabel", 270, 130, {});
+      drawBubble(g, 280, 170, 120, 30, { tailX: 270, tailY: 215 });
+      drawText(g, "speech bubble", 290, 180, { color: "#0c3a52" });
+      drawTooltip(g, 20, 170, "A pixel tooltip\nwith two lines", {});
+      requestAnimationFrame(draw);
+    }
+    draw();
+    window.__galleryReady = true;
+  }
+  var init_pixui2 = __esm({
+    "src/dev/pixui.js"() {
+      init_canvas();
+      init_font();
+      init_aero();
+      init_panels();
+    }
+  });
+
   // src/dev/props.js
   var props_exports = {};
   __export(props_exports, {
-    run: () => run25
+    run: () => run26
   });
-  function run25(params2) {
+  function run26(params2) {
     const W11 = 960;
     const zoom2 = Number(params2.get("zoom") || 2);
     const dark = params2.get("bg") === "dark";
@@ -133283,9 +133422,9 @@ ${hearts} ${status}
   // src/dev/pxfx.js
   var pxfx_exports = {};
   __export(pxfx_exports, {
-    run: () => run26
+    run: () => run27
   });
-  async function run26(params2) {
+  async function run27(params2) {
     const cv = document.getElementById("screen") || document.body.appendChild(document.createElement("canvas"));
     cv.width = 960;
     cv.height = 540;
@@ -133385,9 +133524,9 @@ ${hearts} ${status}
   // src/dev/shell.js
   var shell_exports = {};
   __export(shell_exports, {
-    run: () => run27
+    run: () => run28
   });
-  function run27() {
+  function run28() {
     const W11 = 960, H8 = 540;
     const cv = document.getElementById("screen");
     cv.width = W11;
@@ -133435,7 +133574,7 @@ ${hearts} ${status}
   var species_exports2 = {};
   __export(species_exports2, {
     REF_LOOKS: () => REF_LOOKS,
-    run: () => run28
+    run: () => run29
   });
   function bg2(g, top, bot) {
     for (let y = 0; y < H5; y += 4) {
@@ -133488,7 +133627,7 @@ ${hearts} ${status}
       ...extra
     };
   }
-  function run28(params2) {
+  function run29(params2) {
     const cv = document.getElementById("screen");
     cv.width = W8;
     cv.height = H5;
@@ -133831,9 +133970,9 @@ ${hearts} ${status}
   // src/dev/ui6.js
   var ui6_exports = {};
   __export(ui6_exports, {
-    run: () => run29
+    run: () => run30
   });
-  function run29(params2) {
+  function run30(params2) {
     const cv = document.getElementById("screen") || document.body.appendChild(document.createElement("canvas"));
     cv.width = 960;
     cv.height = 540;
@@ -133912,7 +134051,7 @@ ${hearts} ${status}
   // src/dev/uiart.js
   var uiart_exports = {};
   __export(uiart_exports, {
-    run: () => run30
+    run: () => run31
   });
   function drawWindowChrome(g, r, o = {}) {
     drawAeroPanel(g, r.x, r.y, r.w, r.h, { title: o.title });
@@ -134225,7 +134364,7 @@ ${hearts} ${status}
     drawTooltip(g, bx, by, "Glowing worm: crawls over your icons. Rare fish love it!", { maxW: 150 });
     g.drawImage(getUiIcon("cursor_hand"), bx - 3, by);
   }
-  function run30(params2) {
+  function run31(params2) {
     const S15 = Number(params2.get("s") || 2);
     const cv = document.getElementById("screen");
     cv.width = W9;
@@ -134286,7 +134425,7 @@ ${hearts} ${status}
   // src/dev/voxfish.js
   var voxfish_exports = {};
   __export(voxfish_exports, {
-    run: () => run31
+    run: () => run32
   });
   function bg3(g, top, bot) {
     const a = top.match(/\w\w/g).map((h) => parseInt(h, 16)), b = bot.match(/\w\w/g).map((h) => parseInt(h, 16));
@@ -134311,7 +134450,7 @@ ${hearts} ${status}
     }
     return pts;
   }
-  function run31(params2) {
+  function run32(params2) {
     const cv = document.getElementById("screen");
     cv.width = W10;
     cv.height = H7;
@@ -134635,9 +134774,9 @@ ${hearts} ${status}
   // src/dev/voxui.js
   var voxui_exports = {};
   __export(voxui_exports, {
-    run: () => run32
+    run: () => run33
   });
-  function run32(params2) {
+  function run33(params2) {
     const cv = document.getElementById("screen");
     const W11 = 960, H8 = 540;
     cv.width = W11 * 2;
@@ -134717,9 +134856,9 @@ ${hearts} ${status}
   // src/dev/wardrobe.js
   var wardrobe_exports = {};
   __export(wardrobe_exports, {
-    run: () => run33
+    run: () => run34
   });
-  function run33(params2) {
+  function run34(params2) {
     const W11 = Number(params2.get("w") || 1360), H8 = Number(params2.get("h") || 800);
     const cv = document.getElementById("screen");
     cv.width = W11;
@@ -134757,7 +134896,7 @@ ${hearts} ${status}
   // src/dev/world.js
   var world_exports = {};
   __export(world_exports, {
-    run: () => run34
+    run: () => run35
   });
   function fakeGame(W11, H8, params2, tier) {
     const g = {
@@ -134887,7 +135026,7 @@ ${hearts} ${status}
     }
     requestAnimationFrame(frame2);
   }
-  function run34(params2) {
+  function run35(params2) {
     if (params2.get("view") === "ocean") {
       biomesReady.then(() => runOcean2(params2));
       return;
@@ -135063,6 +135202,7 @@ ${hearts} ${status}
     "./dev/online.js": () => Promise.resolve().then(() => (init_online(), online_exports)),
     "./dev/onlinebait.js": () => Promise.resolve().then(() => (init_onlinebait(), onlinebait_exports)),
     "./dev/panels.js": () => Promise.resolve().then(() => (init_panels3(), panels_exports)),
+    "./dev/pixui.js": () => Promise.resolve().then(() => (init_pixui2(), pixui_exports)),
     "./dev/props.js": () => Promise.resolve().then(() => (init_props2(), props_exports)),
     "./dev/pxfx.js": () => Promise.resolve().then(() => (init_pxfx(), pxfx_exports)),
     "./dev/shell.js": () => Promise.resolve().then(() => (init_shell(), shell_exports)),

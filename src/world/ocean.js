@@ -4,7 +4,8 @@ import { clamp, clamp01, lerp, damp, ease, dist } from '../core/math.js';
 import { rng } from '../core/rng.js';
 import { rgba, mix, hexToRgb } from '../core/color.js';
 import { makeLayer, resizeLayer } from '../core/canvas.js';
-import { drawText } from '../gfx/font.js';
+import { drawText, measureText } from '../gfx/font.js';
+import { pxFrame, pxCaret, PAL as PXPAL } from '../fishing/pixui.js'; // [fishui30] the square pixel-art depth gauge
 import { drawPop3D } from '../ui/pop3d.js'; // [polish17] 3D zone card
 import { aeroCached, aeroSurface } from '../ui/aero.js'; // [polish17] voxel slab loading pill
 import { BIOMES, BIOME_DEPTH } from './biomes/index.js';
@@ -446,49 +447,38 @@ export class Ocean {
       const Y = (wy) => y0 + clamp((wy - info.top) / span, 0, 1) * mh;
       ctx.save();
       ctx.globalAlpha = a;
-      // drop shadow + glass rim
-      ctx.fillStyle = 'rgba(4,16,34,0.35)';
-      ctx.fillRect(x - 3, y0 - 2, mw + 7, mh + 6);
+      // [fishui30] a square pixel-art gauge: a stepped steel frame, flat zone bands with dithered seams, bracket
+      // marks for the camera window, a pixel depth tag with a stepped pointer (no gradients, no round caps)
+      pxFrame(ctx, x - 3, y0 - 3, mw + 6, mh + 6, { u: 1, step: 1, fill: PXPAL.navy, rim: PXPAL.rim });
       for (const zn of info.zones) {
         const c = ZONE_COLORS[zn.id] || ZONE_COLORS.sunlit;
         const a0 = Math.round(Y(zn.y0)), a1 = Math.round(Y(zn.y1));
         if (a1 <= a0) continue;
-        const gr = ctx.createLinearGradient(0, a0, 0, a1);
-        gr.addColorStop(0, c[0]); gr.addColorStop(1, c[1]);
-        ctx.fillStyle = gr;
-        ctx.fillRect(x, a0, mw, a1 - a0);
-        ctx.fillStyle = 'rgba(255,255,255,0.45)';
-        if (a0 > y0) ctx.fillRect(x - 2, a0, mw + 4, 1);
+        const mid = Math.round((a0 + a1) / 2);
+        ctx.fillStyle = c[0]; ctx.fillRect(x, a0, mw, mid - a0);
+        ctx.fillStyle = c[1]; ctx.fillRect(x, mid, mw, a1 - mid);
+        ctx.fillStyle = c[0]; for (let i = 0; i < mw; i += 2) ctx.fillRect(x + i, mid, 1, 1); // dithered seam
+        if (a0 > y0) { ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(x - 2, a0, mw + 4, 1); }
       }
-      // camera window
+      // camera window: bracket marks
       if (info.view) {
         const v0 = Math.round(Y(info.view[0])), v1 = Math.max(v0 + 3, Math.round(Y(info.view[1])));
-        ctx.fillStyle = 'rgba(255,255,255,0.22)';
-        ctx.fillRect(x - 1, v0, mw + 2, v1 - v0);
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        ctx.fillRect(x - 1, v0, mw + 2, 1); ctx.fillRect(x - 1, v1 - 1, mw + 2, 1);
+        ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(x, v0, mw, v1 - v0);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(x - 2, v0, mw + 4, 1); ctx.fillRect(x - 2, v1 - 1, mw + 4, 1);
+        ctx.fillRect(x - 2, v0, 1, 3); ctx.fillRect(x + mw + 1, v0, 1, 3); ctx.fillRect(x - 2, v1 - 3, 1, 3); ctx.fillRect(x + mw + 1, v1 - 3, 1, 3);
       }
-      // gloss + rim
-      ctx.fillStyle = 'rgba(255,255,255,0.42)';
-      ctx.fillRect(x + 1, y0 + 2, 2, mh - 4);
-      ctx.strokeStyle = 'rgba(220,248,255,0.9)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x - 0.5, y0 - 0.5, mw + 1, mh + 1);
-      // the hook / camera marker: a glossy pill with the depth
+      // the glass: a gloss column
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(x + 1, y0 + 1, 1, mh - 2);
+      // the hook / camera marker: a pixel tag with the depth and a stepped pointer
       const zn = info.zone, my = Math.round(Y(zn.y));
       const zc = ZONE_COLORS[zn.id] || ZONE_COLORS.sunlit;
       const label = zn.depthM >= 1000 ? (zn.depthM / 1000).toFixed(zn.depthM >= 10000 ? 0 : 1) + ' km' : zn.depthM + ' m';
-      const tw = label.length * 6 + 10, px = x - tw - 8;
-      ctx.fillStyle = 'rgba(6,22,44,0.78)';
-      ctx.fillRect(px, my - 7, tw, 14);
-      ctx.fillStyle = zc[2];
-      ctx.fillRect(px, my - 7, tw, 1); ctx.fillRect(px, my + 6, tw, 1);
-      ctx.fillStyle = 'rgba(255,255,255,0.14)';
-      ctx.fillRect(px + 1, my - 6, tw - 2, 5);
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.moveTo(px + tw, my - 4); ctx.lineTo(px + tw + 5, my); ctx.lineTo(px + tw, my + 4); ctx.fill();
-      ctx.fillRect(x - 2, my, mw + 4, 1);
-      drawText(ctx, label, px + tw / 2, my - 4, { align: 'center', color: '#ffffff', outline: '#06121e' });
+      const tw = measureText(label) + 10, px = x - tw - 9;
+      pxFrame(ctx, px, my - 7, tw, 15, { u: 1, step: 1, fill: PXPAL.navy, rim: [zc[2], PXPAL.navy[1], PXPAL.ink] });
+      pxCaret(ctx, px + tw + 4, my, 4, 'right', zc[2]);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 2, my, mw + 4, 1);
+      drawText(ctx, label, px + tw / 2, my - 3, { align: 'center', color: '#ffffff', shadow: '#06121e' });
       drawText(ctx, zn.name.toUpperCase(), x + mw + 2, y0 + mh + 7, { align: 'right', font: 'small', color: zc[2], outline: '#06121e' });
       ctx.restore();
     }

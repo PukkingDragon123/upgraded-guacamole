@@ -84,7 +84,7 @@ function crownSheet(si) {
     }
     // the centre jet (bigger crowns): rises then collapses into a bead
     if (s >= 10) {
-      const hc = s * 1.7 * Math.sin(Math.PI * clamp01(p * 1.15));
+      const hc = s * (si >= 3 ? 1.25 : 1.6) * Math.sin(Math.PI * clamp01(p * 1.15));
       const cw = Math.max(1, Math.round(s * 0.1));
       for (let y = 0; y < hc; y++) {
         if (fall > 0.2 && y > hc * 0.4 && hash2(y, f, si + 9) < fall) continue;
@@ -137,7 +137,7 @@ function washSheet(si) {
       const h1 = hash2(i, 1, si * 7), h2 = hash2(i, 2, si * 7), h3 = hash2(i, 3, si * 7);
       const bx = ox + (0.15 + 0.85 * h1) * s * (0.55 + p * 1.35), by = oy + (h2 - 0.5) * s * (0.35 + p * 0.75);
       let r = s * (0.12 + 0.16 * h3) * (1 - p * 0.55);
-      const ring = p > 0.45 && h3 > 0.45; // later frames: the clump breaks into ring bubbles
+      const ring = false;
       if (r < 0.8) r = 0.8;
       const R = Math.round(r);
       for (let yy = -R; yy <= R; yy++) for (let xx = -R; xx <= R; xx++) {
@@ -147,10 +147,10 @@ function washSheet(si) {
         put(bx + xx, by + yy, (xx < 0 && yy < 0) || (xx === 0 && yy === -R) ? 3 : yy > 0 ? 1 : 2);
       }
     }
-    // a few streaks of churned water trailing out
-    for (let i = 0; i < 3; i++) {
+    // a few streaks of churned water trailing out (early frames only)
+    for (let i = 0; i < (p < 0.6 ? 3 : 0); i++) {
       const y = oy + (hash2(i, 9, si) - 0.5) * s * 0.6, x0 = ox + s * 0.2 * p, len = s * (0.6 + p * 1.2) * (0.6 + hash2(i, 8, si) * 0.5);
-      for (let x = 0; x < len; x++) if (hash2(x, i + f, si) > p * 0.7) put(x0 + x + s * p * 0.6, y, x < len * 0.3 ? 3 : 2);
+      for (let x = 0; x < len; x++) put(x0 + x + s * p * 0.6, y, x < len * 0.3 ? 3 : 2);
     }
     for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
       const v = mask[y * fw + x];
@@ -196,13 +196,13 @@ export class FightFX {
     this.ws = { x: new Float32Array(16), y: new Float32Array(16), t: new Float32Array(16), life: new Float32Array(16), si: new Uint8Array(16), on: new Uint8Array(16), dir: new Int8Array(16) };
     this.wsCur = 0;
     // rooted kelp stalks: x, floor y, height, phase
-    this.kelp = { n: 0, x: new Float32Array(6), y: new Float32Array(6), h: new Float32Array(6), ph: new Float32Array(6) };
+    this.kelp = { n: 0, cx: 0, x: new Float32Array(6), y: new Float32Array(6), h: new Float32Array(6), ph: new Float32Array(6) };
     this.commotion = 0; this.lean = 0; this.leanX = 0;
     this.thrT = 0.3; this.streamT = 0; this.lineT = 0; this.sparkT = 0;
     this.lineBuzz = 0; this.strain = 0;
     this.time = 0;
     this.lastPhase = 0; this.lastChomp = 0; this.sloshSide = 1; this.lastStun = false;
-    this.I = 1; this.sizeK = 1; this.kelpA = 0;
+    this.I = 1; this.sizeK = 1; this.kelpA = 0; this.kelpT = 0;
   }
 
   // ---------------------------------------------------------------- helpers
@@ -252,21 +252,26 @@ export class FightFX {
     const len = F.fishLen?.(f) || 30;
     this.sizeK = clamp(len / 40, 0.6, 3);
     this.I = clamp(0.55 + (B.pi4 || 0) * 0.18 + (B.power || 0) * 0.5 + (B.heavy || 0) * 0.2 + (B.boss ? 0.9 : 0), 0.4, 2.4);
-    // kelp rooted on the seabed when the floor is near the hook
-    this.kelp.n = 0; this.kelpA = 0;
+    this.kelpT = 0; this.kelp.n = 0;
+    this.plantKelp(f, len);
+  }
+
+  // Kelp rooted on the seabed around the fish when the floor is near (re-planted when the fight drifts away).
+  plantKelp(f, len) {
+    const F = this.F, k = this.kelp;
     let floor = NaN;
     try { floor = F.game?.ocean?.floorUnder?.(f.x, f.y); } catch (e) { floor = NaN; }
-    if (Number.isFinite(floor) && floor - f.y < 120 && floor - f.y > 8) {
-      const n = 3 + (Math.random() < 0.5 ? 1 : 0);
-      for (let i = 0; i < n; i++) {
-        const side = i % 2 ? 1 : -1;
-        const x = f.x + side * (len * 0.55 + 14 + i * 13 + Math.random() * 10);
-        let fy = floor;
-        try { const v = F.game.ocean.floorUnder(x, f.y); if (Number.isFinite(v)) fy = v; } catch (e) { /* keep */ }
-        const k = this.kelp;
-        k.x[k.n] = x; k.y[k.n] = fy + 1; k.h[k.n] = clamp((fy - f.y) * (0.6 + Math.random() * 0.5), 14, 70); k.ph[k.n] = Math.random() * TAU;
-        k.n++;
-      }
+    if (!(Number.isFinite(floor) && floor - f.y < 140 && floor - f.y > 8)) return;
+    if (k.n && Math.abs(k.cx - f.x) < 150) return;
+    k.n = 0; this.kelpA = 0; k.cx = f.x;
+    const n = 4 + (Math.random() < 0.5 ? 1 : 0);
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 ? 1 : -1;
+      const x = f.x + side * (len * 0.3 + 6 + (i >> 1) * 14 + Math.random() * 8);
+      let fy = floor;
+      try { const v = F.game.ocean.floorUnder(x, f.y); if (Number.isFinite(v)) fy = v; } catch (e) { /* keep */ }
+      k.x[k.n] = x; k.y[k.n] = fy + 1; k.h[k.n] = clamp((fy - f.y) * (0.55 + Math.random() * 0.5), 14, 80); k.ph[k.n] = Math.random() * TAU;
+      k.n++;
     }
   }
 
@@ -315,7 +320,7 @@ export class FightFX {
     const tail = f.anchors?.tail || [f.x - facing * len * 0.45, f.y];
     if (B.lunge?.stage === 'tele' && Math.random() < dt * 18) this.spawn(BUBBLE, tail[0], tail[1] + (Math.random() - 0.5) * 4, -facing * 20, -10, 1, Math.random() < 0.3 ? 2 : 1, C_FOAM);
     // bubbles streaming from the mouth while it pulls
-    this.streamT -= dt * (2 + 9 * I * pullK);
+    this.streamT -= dt * (3 + 11 * I * pullK);
     while (this.streamT <= 0) {
       this.streamT += 1;
       this.spawn(BUBBLE, mouth[0] + (Math.random() - 0.5) * 3, mouth[1] - 1, facing * (4 + Math.random() * 8), -(14 + Math.random() * 20), 1.2 + Math.random(), Math.random() < 0.5 ? 1 : this.bubbleSize(this.sizeK), C_FOAM);
@@ -323,7 +328,7 @@ export class FightFX {
     // thrash beats, timed to the pull
     this.thrT -= dt * (0.7 + pullK * 0.9 + (B.jitAmp || 0) * 2.5);
     if (this.thrT <= 0) {
-      this.thrT = lerp(1.05, 0.42, clamp01((I - 0.4) / 2)) * (0.75 + Math.random() * 0.5);
+      this.thrT = lerp(0.8, 0.34, clamp01((I - 0.4) / 2)) * (0.75 + Math.random() * 0.5);
       if (B.crate) this.slosh(B, f, (0.5 + pullK * 0.7) * I);
       else this.thrash(B, f, (0.45 + pullK * 0.75) * I, false);
     }
@@ -362,8 +367,10 @@ export class FightFX {
       const ph = B.boss.phase || 1;
       if (ph !== this.lastPhase) { this.lastPhase = ph; this.erupt(f, 1.6 + ph * 0.3); }
     }
-    // kelp leans away from the fish while it thrashes
+    // kelp leans away from the fish while it thrashes; re-planted when the seabed comes near
     this.leanX = f.x;
+    this.kelpT -= dt;
+    if (this.kelpT <= 0) { this.kelpT = 0.6; this.plantKelp(f, len); }
   }
 
   // ---------------------------------------------------------------- events
@@ -374,7 +381,7 @@ export class FightFX {
     const k = this.sizeK;
     this.commotion = Math.min(2.2, this.commotion + 0.22 * p);
     // the wash: a burst of churned whitewater blown out behind the tail
-    this.wash(tail[0], tail[1], p * Math.sqrt(k) * 0.8, -facing);
+    this.wash(tail[0], tail[1], (0.45 + p) * Math.sqrt(k) * 0.8, -facing);
     const nb = Math.min(20, Math.round((4 + 7 * p) * Math.sqrt(k)));
     for (let i = 0; i < nb; i++) {
       const a = Math.random() * TAU, sp = 12 + Math.random() * 36 * p;
