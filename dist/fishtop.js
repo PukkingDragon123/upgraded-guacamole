@@ -97723,15 +97723,6 @@ Water-droplet money from fish and your tank.`;
             const r = this.skipRect();
             ctx3.globalAlpha = alpha * clamp012((this.wall - 0.3) * 3);
             drawAeroButton?.(ctx3, r.x, r.y, r.w, r.h, { label: "Skip", icon: getUiIcon?.("play"), tone: "glass", state: this.skipHover ? "hover" : "normal" });
-            if (this.audio?.isUnlocked && !this.audio.isUnlocked()) {
-              const ic = getUiIcon?.("sound"), ml = getUiIcon?.("mouse_l");
-              if (ic && ml) {
-                const ww = ic.width + ml.width + 16, hh = 18, x = 10, y = 9;
-                drawAeroSurface?.(ctx3, x, y, ww, hh, { tone: "glass", r: "pill", gloss: 0.6, glossH: 8, rim: 0.8, glow: 0.4 });
-                ctx3.drawImage(ml, x + 6, y + Math.round((hh - ml.height) / 2));
-                ctx3.drawImage(ic, x + 10 + ml.width, y + Math.round((hh - ic.height) / 2));
-              }
-            }
             ctx3.globalAlpha = 1;
           }
           void drawAlagard;

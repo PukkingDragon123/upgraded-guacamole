@@ -1394,20 +1394,11 @@ export class Intro3D {
       const pw = Math.min(W - 40, Math.round(W * 0.8)), ph = this.dlg.panelH(pw);
       this.dlg.drawPanel(ctx, { x: Math.round((W - pw) / 2), y: H - bh - ph + 22, w: pw, h: ph, t: this.wall, alpha, W });
     }
-    // skip pill + sound hint
+    // skip pill (the corner 'click for sound' hint pill was removed: it read as a clock)
     if (this.skipT < 0) {
       const r = this.skipRect();
       ctx.globalAlpha = alpha * clamp01((this.wall - 0.3) * 3);
       AE.drawAeroButton?.(ctx, r.x, r.y, r.w, r.h, { label: 'Skip', icon: UIC.getUiIcon?.('play'), tone: 'glass', state: this.skipHover ? 'hover' : 'normal' });
-      if (this.audio?.isUnlocked && !this.audio.isUnlocked()) {
-        const ic = UIC.getUiIcon?.('sound'), ml = UIC.getUiIcon?.('mouse_l');
-        if (ic && ml) {
-          const ww = ic.width + ml.width + 16, hh = 18, x = 10, y = 9;
-          AE.drawAeroSurface?.(ctx, x, y, ww, hh, { tone: 'glass', r: 'pill', gloss: 0.6, glossH: 8, rim: 0.8, glow: 0.4 });
-          ctx.drawImage(ml, x + 6, y + Math.round((hh - ml.height) / 2));
-          ctx.drawImage(ic, x + 10 + ml.width, y + Math.round((hh - ic.height) / 2));
-        }
-      }
       ctx.globalAlpha = 1;
     }
     void drawAlagard;
