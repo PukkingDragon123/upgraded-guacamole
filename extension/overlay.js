@@ -41123,7 +41123,8 @@ kmlmk..
       const sp = SPECIES_BY_ID[o.rec.species];
       if (!sp) return false;
       const s = fitScale(sp, bw, bh, o.big ? 3 : 1.5);
-      drawFishFit(ctx2, sp, cx, by - bh / 2, s, t, { turn: o.spin ? Math.cos(t * 1.4) : 1, emotion: "happy" }, o.rec.variant || null);
+      const c = Math.cos(t * 1.4), turn = o.spin ? (c < 0 ? -1 : 1) * Math.min(1, Math.abs(c) * 2.4 + 0.12) : 1;
+      drawFishFit(ctx2, sp, cx, by - bh / 2, s, t, { turn, emotion: "happy" }, o.rec.variant || null);
       return true;
     }
     if (!it2 && id !== "coins") return false;
@@ -62804,7 +62805,7 @@ kmlmk..
       const jammed = cr2.stun > 0 || this.jam > 0;
       let hand = jammed ? 0 : (cr2.speed || 0) * 60 * rk;
       const inp = F2.input;
-      const meter2 = B2?.gearMode === "meter";
+      const meter2 = !B2 || B2.gearMode === "meter";
       if (meter2 && !jammed && inp) {
         const keys = ["w", "ArrowUp", "r"];
         if (keys.some((k) => inp.key?.(k))) hand = Math.max(hand, 135);
@@ -63047,7 +63048,7 @@ kmlmk..
       const T3 = B2 ? clamp(B2.tension ?? 0, 0, 1.2) : 0;
       ctx2.save();
       ctx2.globalAlpha = clamp01(vis * 1.4);
-      const meter2 = B2?.gearMode === "meter";
+      const meter2 = !B2 || B2.gearMode === "meter";
       const kk = isHi(ctx2) ? HI : 1;
       if (!meter2) {
         const plate = plateSprite(L2.rg + L2.tg + Math.round(8 * S12));
@@ -63216,7 +63217,7 @@ kmlmk..
     // streak of pixel chevrons along the rim while it spins; during a beat the gear rests ('STOP' is the meter's job).
     drawSpinHint(ctx2, cx, cy, L2, B2) {
       const t = this.t, S12 = L2.S, R2 = L2.R;
-      const slow = this.rpm < 40 && !B2.beat && !B2.stunned;
+      const slow = !!B2 && this.rpm < 40 && !B2.beat && !B2.stunned;
       if (slow) {
         const a = t * 6;
         const rr2 = R2 * 0.62;

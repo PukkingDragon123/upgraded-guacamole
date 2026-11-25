@@ -466,7 +466,14 @@ export class Hud {
   // [hot26] a button unlocked by building pops into the bar (once the bar is showing again) with 3D voxel words
   celebrateStep(dt) {
     const g = this.game;
-    if (this.cele) { if (this.show > 0.9 && this.wantShow()) this.cele.t += dt; if (this.cele.t > 3.6) this.cele = null; return; } // (paused while a cinematic hides the bar)
+    if (this.cele) {
+      // [polish32] a window opened over the moment (the player clicked the new button): the words bow out quickly
+      // instead of floating over the window
+      if (g.ui?.blocking && this.cele.t < 3) this.cele.t = 3;
+      if (this.show > 0.9 && this.wantShow()) this.cele.t += dt;
+      if (this.cele.t > 3.6) this.cele = null;
+      return;
+    } // (paused while a cinematic hides the bar)
     let H = null;
     try { H = ensureHotbar(g.state); } catch { return; }
     const ids = Object.keys(H.fresh || {});

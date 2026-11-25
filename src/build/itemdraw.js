@@ -143,7 +143,9 @@ export function drawItem(ctx, id, cx, by, o = {}) {
     const sp = SPECIES_BY_ID[o.rec.species];
     if (!sp) return false;
     const s = fitScale(sp, bw, bh, o.big ? 3 : 1.5);
-    drawFishFit(ctx, sp, cx, by - bh / 2, s, t, { turn: o.spin ? Math.cos(t * 1.4) : 1, emotion: 'happy' }, o.rec.variant || null);
+    // [polish32] the turn snaps through edge-on quickly (a slow cos spin left a tile looking empty for a second)
+    const c = Math.cos(t * 1.4), turn = o.spin ? (c < 0 ? -1 : 1) * Math.min(1, Math.abs(c) * 2.4 + 0.12) : 1;
+    drawFishFit(ctx, sp, cx, by - bh / 2, s, t, { turn, emotion: 'happy' }, o.rec.variant || null);
     return true;
   }
   if (!it && id !== 'coins') return false;

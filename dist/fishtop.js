@@ -82581,7 +82581,8 @@ Water-droplet money from fish and your tank.`;
       const sp = SPECIES_BY_ID[o.rec.species];
       if (!sp) return false;
       const s = fitScale(sp, bw, bh, o.big ? 3 : 1.5);
-      drawFishFit(ctx3, sp, cx, by - bh / 2, s, t, { turn: o.spin ? Math.cos(t * 1.4) : 1, emotion: "happy" }, o.rec.variant || null);
+      const c = Math.cos(t * 1.4), turn = o.spin ? (c < 0 ? -1 : 1) * Math.min(1, Math.abs(c) * 2.4 + 0.12) : 1;
+      drawFishFit(ctx3, sp, cx, by - bh / 2, s, t, { turn, emotion: "happy" }, o.rec.variant || null);
       return true;
     }
     if (!it2 && id2 !== "coins") return false;
@@ -102470,7 +102471,7 @@ void main() {
           const jammed = cr2.stun > 0 || this.jam > 0;
           let hand = jammed ? 0 : (cr2.speed || 0) * 60 * rk;
           const inp = F3.input;
-          const meter3 = B2?.gearMode === "meter";
+          const meter3 = !B2 || B2.gearMode === "meter";
           if (meter3 && !jammed && inp) {
             const keys = ["w", "ArrowUp", "r"];
             if (keys.some((k) => inp.key?.(k))) hand = Math.max(hand, 135);
@@ -102713,7 +102714,7 @@ void main() {
           const T5 = B2 ? clamp(B2.tension ?? 0, 0, 1.2) : 0;
           ctx3.save();
           ctx3.globalAlpha = clamp012(vis * 1.4);
-          const meter3 = B2?.gearMode === "meter";
+          const meter3 = !B2 || B2.gearMode === "meter";
           const kk = isHi(ctx3) ? HI : 1;
           if (!meter3) {
             const plate = plateSprite(L4.rg + L4.tg + Math.round(8 * S15));
@@ -102882,7 +102883,7 @@ void main() {
         // streak of pixel chevrons along the rim while it spins; during a beat the gear rests ('STOP' is the meter's job).
         drawSpinHint(ctx3, cx, cy, L4, B2) {
           const t = this.t, S15 = L4.S, R8 = L4.R;
-          const slow = this.rpm < 40 && !B2.beat && !B2.stunned;
+          const slow = !!B2 && this.rpm < 40 && !B2.beat && !B2.stunned;
           if (slow) {
             const a = t * 6;
             const rr4 = R8 * 0.62;
@@ -120101,10 +120102,11 @@ void main() {
           ctx3.fillStyle = mix(col, "#ffffff", 0.4);
           ctx3.fillRect(x + 6, y + 10, 1, h - 20);
           const name = this.art.npcName(d.npc).toUpperCase();
-          const nfs = 16, nw = Math.min(w - tx0, Math.ceil(alagardWidth(name, nfs)) + 22), nh = 19;
-          const plate = { top: mix(col, "#ffffff", 0.6), mid: col, bot: shade(col, -0.3), edge: shade(col, -0.6), a: [1, 1] };
-          ctx3.drawImage(aeroSurface(nw, nh, { tone: plate, r: "pill", gloss: 0.8, glossH: 7, curve: 1, rim: 0.8, glow: 0.4 }), x + tx0 - 6, y - 11);
-          drawAlagard(ctx3, name, x + tx0 + 5, y - 10, { size: nfs, color: "#ffffff", shadow: shade(col, -0.65) });
+          const nfs = 16, nw = Math.min(w - tx0, Math.ceil(alagardWidth(name, nfs)) + 22), nh = 21;
+          const pc = shade(col, -0.12);
+          const plate = { top: mix(pc, "#ffffff", 0.45), mid: pc, bot: shade(pc, -0.35), edge: shade(col, -0.65), a: [1, 1] };
+          ctx3.drawImage(aeroSurface(nw, nh, { tone: plate, r: "pill", gloss: 0.8, glossH: 7, curve: 1, rim: 0.8, glow: 0.4 }), x + tx0 - 6, y - 12);
+          drawAlagard(ctx3, name, x + tx0 + 5, y - 11, { size: nfs, color: "#ffffff", shadow: shade(col, -0.7), outline: true });
           const pr = Math.round(Math.min(32, h * 0.46));
           try {
             this.art.drawPortrait(ctx3, d.npc, x + 36, y + h / 2, pr, t, { talk: d.talk, mood: o.mood || "happy", key: "cine" });
@@ -131899,6 +131901,7 @@ ${hearts} ${status}
         celebrateStep(dt) {
           const g = this.game;
           if (this.cele) {
+            if (g.ui?.blocking && this.cele.t < 3) this.cele.t = 3;
             if (this.show > 0.9 && this.wantShow()) this.cele.t += dt;
             if (this.cele.t > 3.6) this.cele = null;
             return;

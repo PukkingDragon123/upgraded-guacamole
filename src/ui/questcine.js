@@ -815,10 +815,12 @@ export class QuestCine {
     ctx.fillStyle = mix(col, '#ffffff', 0.4); ctx.fillRect(x + 6, y + 10, 1, h - 20);
     // name plate (in the speaker's colour) on the top edge
     const name = this.art.npcName(d.npc).toUpperCase();
-    const nfs = 16, nw = Math.min(w - tx0, Math.ceil(alagardWidth(name, nfs)) + 22), nh = 19;
-    const plate = { top: mix(col, '#ffffff', 0.6), mid: col, bot: shade(col, -0.3), edge: shade(col, -0.6), a: [1, 1] };
-    ctx.drawImage(aeroSurface(nw, nh, { tone: plate, r: 'pill', gloss: 0.8, glossH: 7, curve: 1, rim: 0.8, glow: 0.4 }), x + tx0 - 6, y - 11);
-    drawAlagard(ctx, name, x + tx0 + 5, y - 10, { size: nfs, color: '#ffffff', shadow: shade(col, -0.65) });
+    // [polish32] a deeper plate + an outlined name (white on the pale speaker colours read weakly), centred in a taller tab
+    const nfs = 16, nw = Math.min(w - tx0, Math.ceil(alagardWidth(name, nfs)) + 22), nh = 21;
+    const pc = shade(col, -0.12);
+    const plate = { top: mix(pc, '#ffffff', 0.45), mid: pc, bot: shade(pc, -0.35), edge: shade(col, -0.65), a: [1, 1] };
+    ctx.drawImage(aeroSurface(nw, nh, { tone: plate, r: 'pill', gloss: 0.8, glossH: 7, curve: 1, rim: 0.8, glow: 0.4 }), x + tx0 - 6, y - 12);
+    drawAlagard(ctx, name, x + tx0 + 5, y - 11, { size: nfs, color: '#ffffff', shadow: shade(col, -0.7), outline: true });
     // portrait, overlapping the left edge
     const pr = Math.round(Math.min(32, h * 0.46));
     try { this.art.drawPortrait(ctx, d.npc, x + 36, y + h / 2, pr, t, { talk: d.talk, mood: o.mood || 'happy', key: 'cine' }); } catch { /* optional */ }
