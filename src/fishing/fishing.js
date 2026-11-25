@@ -42,7 +42,7 @@ import { HOOK, baitSprite, baitHook } from './baitart.js';
 import { Crank } from './crank.js';
 import { Battle, HookBite, DEFAULT_ROD } from './battle.js';
 import { BossDirector, bossVictory } from './boss.js'; // [phase9:fishing] boss fights
-import { meterLayout, meterRect, hitShockButton } from './meter.js'; // [simple24] the meter + SHOCK button
+import { meterLayout, meterRect, hitShockButton, warmMeter } from './meter.js'; // [simple24] the meter + SHOCK button
 import { updateNukeButton, warmNukeButton, nukeCrit, resetNukeButton } from './nukebtn.js'; // [nuke31] the physical button
 import { Titles, Finale, EscapeCine, Outro } from './cinematics.js';
 import { drawFightScene, drawFightBands, drawBiteCue, drawMessage } from './hud.js';
@@ -464,7 +464,7 @@ export class Fishing {
     }
     if (this.zapLine) { this.zapLine.t += rdt; if (this.zapLine.t > this.zapLine.dur + 0.15) this.zapLine = null; }
     this.gear.update(rdt, this.state === 'fight' ? this.battle : this.state === 'box' && this.box?.gearMode === 'box' ? this.box : null);
-    if ((this.state === 'idle' && h.visible) || this.state === 'nibble') { this.gear.warm(1); warmNukeButton(this, meterLayout(this)); } // cache the spin frames (+ the [nuke31] button) before a bite
+    if ((this.state === 'idle' && h.visible) || this.state === 'nibble') { this.gear.warm(1); warmNukeButton(this, meterLayout(this)); warmMeter(this); } // cache the spin frames (+ the [nuke31] button) before a bite
     try { this.boss.update(dt); } catch (e) { if (!this.bossErr) { this.bossErr = true; console.error(e); } }
     if (this.bossWin && this.bossWin.update(rdt) === 'done') this.bossWin = null;
     if (this.cine && this.cine.update(dt, rdt) === 'done') this.cine = null;

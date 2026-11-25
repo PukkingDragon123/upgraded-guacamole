@@ -1077,3 +1077,50 @@ presentation; `partRect` / `meterRect` / `meterLayout` keep their contract, the 
 - Perf (`tools/perf.mjs --only fight`, headless software raster, A/B against the same tree with the old fishing files):
   old 29.7 / 33.0 fps (cpu 47 / 42 ms per frame), new 38.8 / 36.3 fps (cpu 35 / 38 ms): no cost (the dropped full-screen
   radial vignette and soft glow sprites pay for the effects).
+- [nuke31] User direction: "the skill button make it like a physical button like nuke button etc, and the bar make it
+  like the ocean a lot a lot more, polish". Supersedes the octagon SHOCK button and the water-strip meter above
+  (gameplay, `partRect` / `meterRect` / `meterLayout` / `hitShockButton` and the square hit box are unchanged; the meter
+  is 42 px tall at S = 1 (was 32) and the console sits 4 px higher, same footprint otherwise).
+  - SHOCK button (`src/fishing/nukebtn.js`): a physical "big red button" launch console built as VOXEL models and rendered
+    by `renderVoxels` (cel bands, AO, edges, ink outline) at 1x and with a `.hi` twin for the 2x UI layer, yaw 0 /
+    pitch 24: a gunmetal housing on a plinth (deck bevels, hex bolts, an octagonal collar whose top ring is yellow /
+    black hazard striped, a dark well, hazard-striped front corners, a recessed steel plate on the front with SHOCK + MK
+    level engraved in pixel text and an 8-segment charge gauge, a lamp strip on the front lip = one square lamp per
+    charge (the next one fills as it recharges), a warning beacon on the front-right corner, hinge brackets + barrel at
+    the back), the big glossy red DOME (round, lightning emblem, hard highlight; variants by palette swap: dim while
+    charging / backfire, red, lit for hover / ready pulse / beat, white on a critical) and a hinged SAFETY COVER (glass
+    panels in a yellow / black striped frame, re-voxelised at 7 hinge angles 0..104 degrees). The housing is ONE render
+    split into a back layer and a front layer (front voxels use twin palette entries, so the render's ids say which
+    layer a pixel is in); every model carries two invisible corner voxels (cut by `keepVoxel`) so all renders share one
+    camera and line up to the pixel. Draw order: shadow, cover (when open: behind), housing back, cap (shifted down by
+    whole pixels = it really travels into the collar; 1-frame squash on bottoming out), housing front, overlays (plate
+    text, gauge, lamps, beacon), cover (when closed: in front, the cap seen through the glass), the SPACE keycap.
+    Physics (`updateNukeButton(F, B, dt, {fire, hit, L})`, called by `Fishing.updateFight` before the press resolves):
+    any shock press pushes the cap (stiff spring, ~3 frames down, held while Space / the mouse stays down on it), a clunk
+    on bottoming out (`chest_hit` + `wood_hit`), a pop on release (`ui_toggle`), a click on the press; hover lifts it a
+    pixel (`ui_hover`) and rattles a shut cover; the cover snaps open with an overshoot when a charge is ready (latch:
+    `chest_hit` + `ui_toggle`) and swings shut (`box_close`) 0.75 s after the last one is spent; ready = the beacon
+    blinks and the cap pulses; a CRITICAL press (`onShockFire` 'perfect' -> `nukeCrit`) flashes the cap white and throws
+    sparks off both housing corners. Builds: ~15 ms per voxel render (1x + 2x), 13 renders, one per ~45 ms in
+    `warmNukeButton` while waiting for a bite (missing cover frames fall back to the nearest built one).
+  - Meter (`meter.js` + baked layers in `src/fishing/oceanstrip.js`, painted once per size at cell resolution):
+    a riveted steel porthole console (stepped corners, bevels, rivets, corner screws, hazard-stripe inserts, a recessed
+    window and tube recess with metal end collars); the strip is an ocean cross-section: sky with flat pixel clouds, a
+    rolling surface (a hazy back swell and the front wave with foam caps on the crests, two periodic strips scrolled in
+    opposite directions) with glints and the line's foam dimple, 7 banded depth colours with dithered seams, far / mid
+    reef silhouettes, a caustic light net (8 Voronoi-edge frames, also dappling the sand), rippled sand with pebbles,
+    shells, coral bits and starfish, rocks with moss under giant kelp at both ends (green left, golden right; 8 sway
+    frames), sea grass / little plants (4 frames), background fish silhouettes drifting both ways, 3 bubble columns,
+    plankton motes. The zone: clearer calm teal water with dithered edges, a shimmering dithered glow band while held
+    (gold on a beat), BUOYS on the zone edges bobbing on the live wave height, chained to anchor blocks on the sand; the
+    left end is choppy coral water (whitecaps, spray beads, tumbling foam dashes, more as the marker nears), the right
+    end dark churned amber water (swirling sediment). Shield = a steel grate. The marker fish wiggles its tail and tilts
+    with its velocity (6 sheared slices), leaves a pooled bubble wake (typed array, 24 bubbles), hangs on the line from
+    the console's top rail through the surface to its mouth. Catch tube: ocean water (banded aqua -> blue) with a rolling
+    top surface (one periodic blit), a curling foam head, bubbles, the red ghost, the %.
+    Per frame: one `bed` blit (base + zone water + plant frame, composited per zone width), caustics, two wave strips,
+    the glow, kelp x2, ~8 small sprites and ~150 fillRects; `warmMeter(F)` bakes one layer per idle frame before a bite.
+    Twist overlays [deep28] draw on top as before (the blink's dark zone now stays inside the porthole).
+  - Perf: tools/perf.mjs --only fight is within its run-to-run noise (base 26.5 / 40.5 fps, new 37.3 / 39.5 fps on the
+    same machine); a direct bench of `drawCinematicHudInner` (the whole fight HUD, 100 draws) is 2.1-3.7 ms (old) vs
+    2.6-3.8 ms (new) per draw on the 2x layer.

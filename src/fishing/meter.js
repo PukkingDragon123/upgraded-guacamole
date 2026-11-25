@@ -1,41 +1,48 @@
 // [simple24] The fight HUD: ONE centred meter, the catch tube under it and the big SHOCK button.
-// [fishui30] Restyled as square pixel art that is part of the ocean (no rounded shapes, no soft round glows):
-//   console  one stepped-corner steel panel holds the meter and the catch tube.
-//   meter    a strip of pixel-art WATER seen from the side: banded depth, a sandy floor, gently scrolling surface
-//            crests and caustic dashes (two cached periodic strips, parallax), kelp fronds swaying at both ends (8
-//            cached frames, faster when the fish thrashes), rising pixel bubbles. The sweet ZONE is a patch of calm
-//            teal water between two bracket posts that shimmers while the marker is in it; the ends tint coral (it
-//            RUNS) and amber (the line SNAPS) in dithered steps. The MARKER is the hooked fish itself (its voxel icon)
-//            swimming in the strip, tail wiggling (the icon is drawn in 4 sheared slices), hanging on a 1 px line from a
-//            caret on the frame and leaving a little foam wake when it moves. Lunges: foam chevrons race through the
-//            water. Shield (bosses / mimics): the zone turns to riveted steel, LOCKED.
+// [nuke31] Restyled as a polished slice of the OCEAN in a riveted steel porthole console (square pixel art, no
+// rounded UI shapes, no light-ray fans, no expanding rings):
+//   console  one chunky steel panel (stepped corners, bevels, rivets, corner screws, hazard-stripe inserts) with a
+//            recessed porthole window for the meter and a recess for the catch tube (oceanstrip.js consoleArt).
+//   meter    a water cross-section: a strip of sky, a rolling surface (a hazy back swell + the front wave with foam
+//            crests, two scrolled periodic strips) with sparkles, banded depth water (sunlit aqua -> deep blue with
+//            dithered seams), far / mid reef silhouettes, a dancing caustic light net (8 frames) that also dapples the
+//            sand, a seabed of rippled sand, pebbles, shells, coral bits and a starfish, sea grass and little plants
+//            swaying along the floor (4 frames), giant kelp on rocks at both ends (8 frames, faster with the
+//            commotion), tiny background fish drifting across, rising bubble columns, plankton motes.
+//   zone     clearer, calm teal water (dithered edges) with a shimmering dithered glow band while you hold it (gold
+//            on a beat), marked by two bobbing BUOYS chained to anchor blocks on the sand. The ends: choppy coral water
+//            with whitecaps and spray on the left (it RUNS), dark churned amber water with swirling sediment on the
+//            right (the line SNAPS). Shield (bosses / mimics): a steel grate over the zone, LOCKED.
+//   marker   the hooked fish itself (its voxel icon) swimming in the water: tail wiggle + tilt with its motion (6
+//            sheared slices), a bubbly wake (pooled), the line coming down from the console through the surface.
 //   beat     a GOLD notch pillar at the centre and a pixel spark sweeping across: press as it crosses the notch.
-//   tube     the catch bar: a glass tube that fills with calm water from the left, a sloshing meniscus at its head,
-//            bubbles inside, a red ghost of lost progress, the percentage in crisp pixel text.
-//   button   the big SHOCK button: a chunky octagonal pixel button (steel bezel, gold face, a side for depth), the
-//            gold rising inside it as it recharges, the voxel bolt, diamond charge pips, a MK plaque and a SPACE keycap.
-// 3D voxel words (NOW!, SPIN!, LOCKED ...) stay for the pop-ups. Per frame: a few drawImage calls of cached art plus
-// a few dozen fillRects; nothing is allocated.
+//   tube     the catch bar: a glass tube filling with ocean water (banded aqua -> blue, a rolling top surface, a
+//            curling foam head, bubbles), a red ghost of lost progress, the percentage in crisp pixel text.
+//   button   the physical voxel launch button (nukebtn.js).
+// 3D voxel words (NOW!, SPIN!, LOCKED ...) stay for the pop-ups. Static layers are baked once per size (zone layers
+// per zone width); per frame: ~20 drawImage calls and ~150 fillRects, nothing allocated.
 //
 //   meterLayout(F) -> {S, u, cx, cy, w, h, x0, x1, by, bh, btn: {cx, cy, r}, panel: {x, y, w, h}}
 //   drawMeter(ctx, F, B)          meterRect(F, kind)  kind: 'meter' | 'bar' | 'shock' | 'all'
 //   hitShockButton(F, x, y) -> bool
 
-import { TAU, clamp, clamp01, lerp, ease, hash2, bayer } from '../core/math.js';
+import { TAU, clamp, clamp01, lerp, ease, hash2 } from '../core/math.js';
 import { rgba } from '../core/color.js';
-import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { voxelFishIcon } from '../fish/fishicon.js';
 import { word3D } from './cinematics.js';
-import { drawIcon3d } from './icons3d.js';
-import { PAL, pxFrame, pxHalo, pxDiamond, pxCaret, unitOf } from './pixui.js';
+import { PAL, pxFrame, pxHalo, pxCaret, unitOf } from './pixui.js';
 import { drawNukeButton } from './nukebtn.js';
+import {
+  stripGeo, baseArt, causticArt, waveArt, plantsArt, kelpArt, zoneArt, glowArt, grateArt, fishSil, buoyArt,
+  consoleArt, tubeWaveArt,
+} from './oceanstrip.js';
+import { makeCanvas, ctxOf } from '../core/canvas.js';
 
 const INK = PAL.ink;
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 const mixRgb = (a, b, t) => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t));
 const shadeRgb = (c, k) => c.map((v) => Math.max(0, Math.min(255, Math.round(k > 0 ? v + (255 - v) * k : v * (1 + k)))));
-const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 
 const ART = new Map();
 function art(key, make) {
@@ -70,14 +77,14 @@ export function meterLayout(F) {
   // keep clear of the gear on the right and the button on the left
   const maxHalf = Math.min(gearLeft - cx - Math.round(14 * S), cx - r * 2 - Math.round(70 * S));
   w = Math.min(w, Math.round(maxHalf * 2));
-  w -= w % 2;
-  const h = Math.round(32 * S);
-  const cy = Math.round(H - 80 * S);
+  w -= w % (2 * u);
+  const h = Math.round(42 * S / u) * u; // [nuke31] a little taller (was 32): room for the sky, the waves and the seabed
+  const cy = Math.round(H - 84 * S);
   const x0 = cx - Math.round(w / 2), x1 = x0 + w;
   const by = cy + Math.round(h / 2 + 9 * S), bh = Math.round(13 * S);
-  const pad = Math.round(8 * S);
-  const panel = { x: x0 - pad, y: cy - Math.round(h / 2) - Math.round(7 * S), w: w + pad * 2, h: 0 };
-  panel.h = by + bh + Math.round(7 * S) - panel.y;
+  const pad = Math.round(9 * S);
+  const panel = { x: x0 - pad, y: cy - Math.round(h / 2) - Math.round(8 * S), w: w + pad * 2, h: 0 };
+  panel.h = by + bh + Math.round(8 * S) - panel.y;
   LAY = { W, H, S, u, cx, cy, w, h, x0, x1, by, bh, panel, btn: { cx: x0 - pad - r - Math.round(22 * S), cy: Math.round(cy + 4 * S), r } };
   return LAY;
 }
@@ -91,7 +98,7 @@ export function meterRect(F, kind = 'meter') {
   return { x: L.panel.x - 2, y: top, w: L.panel.w + 4, h: L.cy + L.h / 2 + 8 - top };
 }
 
-// The button is an octagon: a square hit box (with a little slack) is fair and simple.
+// The button is a square hit box (with a little slack): fair and simple.
 export function hitShockButton(F, x, y) {
   const b = meterLayout(F).btn;
   return Math.abs(x - b.cx) <= b.r + 6 && Math.abs(y - b.cy) <= b.r + 8;
@@ -100,124 +107,8 @@ export function hitShockButton(F, x, y) {
 // meter units (-1..1) -> screen x
 const mx = (L, u) => L.cx + clamp(u, -1.15, 1.15) * (L.w / 2 - L.h * 0.35);
 
-const C = {
-  coral: hex('#ff7a66'), amber: hex('#ffa63a'), white: hex('#ffffff'), ink: hex(INK),
-  sand: [hex('#f4e2a8'), hex('#d8bc78'), hex('#a88a50')],
-  w: PAL.water.map(hex), calm: PAL.calm.map(hex), steel: PAL.steel.map(hex), gold: PAL.gold.map(hex),
-};
+const C = { white: hex('#ffffff'), ink: hex(INK) };
 
-// ------------------------------------------------------------------ the water strip (cached per zone width)
-// Banded depth (dithered seams), a sandy floor, the calm zone, dithered danger tints toward the ends, tick marks.
-function trackSprite(L, zoneW, kind) {
-  const zq = Math.round(zoneW * 50) / 50;
-  return art(`trk|${L.w}|${L.h}|${zq}|${kind}`, () => {
-    const W = L.w, H = L.h, u = L.u;
-    const half = W / 2 - H * 0.35;
-    const floor = H - 3 * u;
-    return paint(W, H, (x, y) => {
-      const m = (x + 0.5 - W / 2) / half, a = Math.abs(m);
-      const b = bayer(x, y);
-      // sand floor with pebbles
-      if (y >= floor) {
-        const sy = (y - floor) / (3 * u);
-        let c = C.sand[sy < 0.34 ? 0 : sy < 0.67 ? 1 : 2];
-        if (hash2(Math.floor(x / u), Math.floor(y / u), 7) > 0.9) c = C.sand[2];
-        if (kind === 'shield' && a <= zq) c = C.steel[3];
-        return c;
-      }
-      const v = y / floor; // 0 surface .. 1 floor
-      // depth bands (water ramp 1..4) with a checker dither at each seam
-      const bandF = 1 + v * 3.6 + (b - 0.5) * 0.35;
-      const bi = Math.min(4, Math.max(1, Math.floor(bandF)));
-      let c = C.w[bi];
-      if (y < u) c = C.w[0]; // the bright surface row
-      if (a <= zq) {
-        if (kind === 'shield') {
-          const rv = ((Math.floor(x / (3 * u)) + Math.floor(y / (3 * u))) % 2) ? 2 : 1;
-          c = C.steel[y < u ? 0 : rv + (v > 0.7 ? 1 : 0)];
-          if ((x % (8 * u)) < u && (y % (8 * u)) < u) c = C.steel[0]; // rivets
-        } else {
-          const ci = Math.min(4, Math.max(1, Math.floor(1 + v * 3.4 + (b - 0.5) * 0.35)));
-          c = y < u ? C.calm[0] : C.calm[ci];
-        }
-      } else {
-        // danger tint in three dithered steps toward each end
-        const d = clamp01((a - zq) / Math.max(0.05, 1 - zq));
-        const step = d + (b - 0.5) * 0.18;
-        const k = step > 0.72 ? 0.62 : step > 0.42 ? 0.38 : step > 0.14 ? 0.16 : 0;
-        if (k > 0) c = mixRgb(c, m < 0 ? C.coral : C.amber, k);
-      }
-      // ticks every eighth of the meter on the sand line
-      const tick = Math.round((m + 1) * 8) / 8 - 1, tx = W / 2 + tick * half;
-      if (Math.abs(tick) > 0.01 && x >= Math.round(tx) && x < Math.round(tx) + u && y >= floor - 2 * u) c = shadeRgb(c, 0.35);
-      return c;
-    });
-  });
-}
-
-// Periodic overlays: surface crests (fast) and caustic dashes (slow), P px period, alpha pixels on transparent.
-const PER = 48;
-function crestSprite(L) {
-  return art(`crest|${L.w}|${L.h}`, () => {
-    const u = L.u, P = PER * u, W = L.w + P;
-    return paint(W, 3 * u, (x, y) => {
-      const ph = (x / P) * TAU * 2;
-      const top = Math.round((1 + Math.sin(ph)) * u * 0.9);
-      if (y === top || (y === top + u && Math.sin(ph) > 0.6)) return [255, 255, 255, y === top ? 210 : 120];
-      return null;
-    });
-  });
-}
-function causticSprite(L) {
-  return art(`caus|${L.w}|${L.h}`, () => {
-    const u = L.u, P = PER * u, W = L.w + P, H = L.h - 3 * u;
-    return paint(W, H, (x, y) => {
-      if (y < 3 * u || y > H - 3 * u) return null;
-      const cx = Math.floor((x % P) / u), cy = Math.floor(y / u);
-      // short horizontal dashes at hashed spots of a tile, denser near the surface
-      const h0 = hash2(Math.floor(cx / 5), cy, 31);
-      if (h0 < 0.86 - (1 - y / H) * 0.08) return null;
-      if (cx % 5 > 2 + Math.floor(h0 * 10) % 2) return null;
-      return [255, 255, 255, 70 + Math.round((1 - y / H) * 60)];
-    });
-  });
-}
-
-// Kelp fronds (3 blades, leaflets, ink outline), 8 sway frames.
-function kelpSprite(hh, u, fr, flip) {
-  return art(`kelp|${hh}|${u}|${fr}|${flip}`, () => {
-    const w = 18 * u, c = makeCanvas(w, hh), g = ctxOf(c);
-    const blades = [[4, 0.95, 0], [9, 0.72, 2.1], [13, 0.84, 4.2]];
-    const K = PAL.kelp;
-    for (let pass = 0; pass < 2; pass++) {
-      for (const [bx, hk, ph] of blades) {
-        const bh = Math.round(hh * hk);
-        for (let y = 0; y < bh; y += u) {
-          const k = y / bh;
-          const sway = Math.sin((fr / 8) * TAU + ph + k * 2.4) * 3 * u * Math.pow(k, 1.3);
-          let x = Math.round(bx * u + sway);
-          if (flip) x = w - x - 2 * u;
-          const yy = hh - y - u;
-          const bw = k > 0.85 ? u : 2 * u;
-          if (pass === 0) { g.fillStyle = INK; g.fillRect(x - 1, yy - 1, bw + 2, u + 2); }
-          else {
-            g.fillStyle = k > 0.6 ? K[1] : K[2]; g.fillRect(x, yy, bw, u);
-            g.fillStyle = K[0]; g.fillRect(x, yy, Math.max(1, Math.round(u / 2)), u);
-          }
-          // a leaflet every few rows, alternating sides
-          if ((y / u) % 5 === 2 && k > 0.12 && k < 0.9) {
-            const side = ((y / u) % 10 === 2) ? -1 : 1, lx = side < 0 ? x - 2 * u : x + bw;
-            if (pass === 0) { g.fillStyle = INK; g.fillRect(lx - 1, yy - u - 1, 2 * u + 2, 2 * u + 2); }
-            else { g.fillStyle = K[1]; g.fillRect(lx, yy - u, 2 * u, u); g.fillStyle = K[2]; g.fillRect(lx, yy, 2 * u, u); }
-          }
-        }
-      }
-    }
-    return c;
-  });
-}
-
-// a 4-point voxel spark (the beat's sweeping spark), size s
 function sparkSprite(s, col) {
   return art(`spk|${s}|${col}`, () => {
     const S = s * 2 + 3, Cc = s + 1, cc = hex(col);
@@ -249,36 +140,6 @@ function chevron(hh, col, dir) {
 }
 
 // The SHOCK button: an octagon (corner cut in 2-px steps). face: 'gold' | 'steel' | 'red' | 'beat'.
-function buttonSprite(r, face, u) {
-  return art(`btn|${r}|${face}|${u}`, () => {
-    const n = r * 2, cut = Math.round(r * 0.52), step = 2 * u;
-    const q = (v) => Math.floor(v / step) * step; // stepped diagonal
-    const inside = (x, y, inset) => {
-      const ex = Math.min(x, n - 1 - x) - inset, ey = Math.min(y, n - 1 - y) - inset;
-      return ex >= 0 && ey >= 0 && q(ex) + q(ey) >= cut - inset;
-    };
-    const P = face === 'red' ? PAL.coral.map(hex) : face === 'steel' ? C.steel : face === 'beat' ? [hex('#ffffff'), ...C.gold.slice(0, 4)] : C.gold;
-    const bez = C.steel;
-    const bw = 3 * u;
-    return paint(n, n, (x, y) => {
-      if (!inside(x, y, 0)) return null;
-      if (!inside(x, y, u)) return [...C.ink, 255];
-      if (!inside(x, y, u + bw)) {
-        if (inside(x, y, bw)) return [...C.ink, 255]; // the inner ink line
-        const lit = (x + y) < n - 1, outer = !inside(x, y, 2 * u);
-        return [...bez[lit ? (outer ? 0 : 1) : (outer ? 4 : 3)], 255];
-      }
-      // the face: bands by height, a lit upper-left facet, a shaded lower-right rim, a hard gloss block
-      const fy = y / n;
-      let i = fy < 0.36 ? 1 : fy < 0.7 ? 2 : 3;
-      const edgeL = !inside(x - u, y, u + bw) || !inside(x, y - u, u + bw);
-      const edgeD = !inside(x + u, y, u + bw) || !inside(x, y + u, u + bw);
-      if (edgeL) i = 0; else if (edgeD) i = 4;
-      if (x > n * 0.26 && x < n * 0.42 && y > n * 0.2 && y < n * 0.28) i = 0; // gloss
-      return [...P[Math.min(P.length - 1, i)], 255];
-    });
-  });
-}
 
 // ------------------------------------------------------------------ drawing
 export function drawMeter(ctx, F, B) {
@@ -290,76 +151,190 @@ export function drawMeter(ctx, F, B) {
   ctx.save();
   ctx.translate(shake, dy);
   const t = F.t;
-  // the console: one steel panel holding the meter and the tube
-  const P = L.panel;
-  pxFrame(ctx, P.x, P.y, P.w, P.h, { u: L.u, step: 2, fill: PAL.navy, rim: PAL.rim });
+  ctx.drawImage(consoleArt(L), L.panel.x, L.panel.y); // the riveted steel console (baked)
   drawTrack(ctx, F, B, L, t);
   drawBar(ctx, F, B, L, t);
   drawButton(ctx, F, B, L, t);
   ctx.restore();
 }
 
+// the bed layer: base + zone water + floor plants frame f, composited per zone width (the 4 frames of the current
+// width are kept; a changing width (wrap twist) only re-composites, nothing is re-painted)
+const BED = new Map();
+function bedArt(L, z, f) {
+  const key = `${L.w}|${L.h}|${L.u}|${z}|${f}`;
+  let c = BED.get(key);
+  if (!c) {
+    if (BED.size > 12) BED.clear();
+    const base = baseArt(L);
+    c = makeCanvas(base.width, base.height);
+    const g = ctxOf(c);
+    g.drawImage(base, 0, 0); g.drawImage(zoneArt(L, z), 0, 0); g.drawImage(plantsArt(L, f), 0, 0);
+    BED.set(key, c);
+  }
+  return c;
+}
+// the porthole glass: a light top row, a shade row at the bottom, two short stepped glints (fillRects, no blit)
+function drawGlass(ctx, L, x0, y0) {
+  const u = L.u;
+  ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(x0, y0, L.w, u);
+  ctx.fillStyle = 'rgba(8,32,58,0.35)'; ctx.fillRect(x0, y0 + L.h - u, L.w, u);
+  ctx.fillStyle = 'rgba(255,255,255,0.32)';
+  for (let i = 0; i < 6; i++) ctx.fillRect(x0 + (6 + i * 2) * u, y0 + (6 - i) * u, 2 * u, u);
+  for (let i = 0; i < 4; i++) ctx.fillRect(x0 + (13 + i * 2) * u, y0 + (6 - i) * u, 2 * u, u);
+}
+
+// Bake the strip's layers ahead of the fight (one per call; call while waiting for a bite).
+let warmI = 0, warmKey = '';
+export function warmMeter(F) {
+  const L = meterLayout(F), key = L.w + '|' + L.h;
+  if (key !== warmKey) { warmKey = key; warmI = 0; }
+  if (warmI >= 35) return; // all baked (7 + 8 x 3 + 4 jobs)
+  const z = zq(0.3);
+  const jobs = [() => stripGeo(L), () => baseArt(L), () => waveArt(L, false), () => waveArt(L, true), () => consoleArt(L),
+    () => bedArt(L, z, 0), () => tubeWaveArt(L.u, L.w)];
+  for (let f = 0; f < 8; f++) jobs.push(() => causticArt(L, f), () => kelpArt(L, f, 'left'), () => kelpArt(L, f, 'right'));
+  for (let f = 0; f < 4; f++) jobs.push(() => plantsArt(L, f));
+  if (warmI < jobs.length) jobs[warmI++]();
+}
+
+// the zone width quantised (the zone layers are cached per width)
+const zq = (w) => Math.round(w * 50) / 50;
+
 function drawTrack(ctx, F, B, L, t) {
   const S = L.S, u = L.u, zoneW = B.zoneW, shield = !!(B.boss?.shielded || B.shielded); // [crate26] a mimic's shield too
-  const y0 = Math.round(L.cy - L.h / 2), x0 = L.x0;
+  const y0 = Math.round(L.cy - L.h / 2), x0 = L.x0, w = L.w;
+  const G = stripGeo(L), { W, P, sky, sand, sandY } = G;
   const beat = B.beat;
-  // the water window: an ink rim, then the strip
-  ctx.fillStyle = INK; ctx.fillRect(x0 - u, y0 - u, L.w + 2 * u, L.h + 2 * u);
-  ctx.drawImage(trackSprite(L, zoneW, shield ? 'shield' : 'plain'), x0, y0);
-  // scrolling caustics (slow) and surface crests (faster): one blit each from a periodic strip
-  const P = PER * u;
-  const cs = causticSprite(L);
-  ctx.drawImage(cs, Math.floor((t * 6 * u) % P), 0, L.w, cs.height, x0, y0, L.w, cs.height);
-  const cr = crestSprite(L);
-  ctx.drawImage(cr, Math.floor(P - ((t * 14 * u) % P)), 0, L.w, cr.height, x0, y0, L.w, cr.height);
   const zx0 = Math.round(mx(L, -zoneW)), zx1 = Math.round(mx(L, zoneW));
-  // the calm zone shimmers while the marker is in it, flashes gold on a beat
+  const stir = Math.abs(B.mv || 0) + (B.lunge ? 1 : 0) + (B.stunned ? 0.6 : 0); // the commotion
+  const leftK = clamp01((-B.marker - zoneW) / Math.max(0.1, 1 - zoneW)), rightK = clamp01((B.marker - zoneW) / Math.max(0.1, 1 - zoneW));
+  // the bed: sky, banded water, reef silhouettes, the seabed, the zone / danger water and the swaying floor plants
+  // (composited once per zone width x 4 sway frames: one blit)
+  ctx.drawImage(bedArt(L, zq(zoneW), Math.floor(t * (3 + Math.min(2, stir) * 3)) % 4), x0, y0, w, L.h);
+  // tiny background fish drifting across (behind the light)
+  for (let i = 0; i < 4; i++) {
+    const big = i % 3 === 0 ? 1 : 0, dir = i % 2 ? -1 : 1;
+    const sp = fishSil(big, Math.floor(t * 4 + i) % 2, dir, u);
+    const sw = sp.width / u, speed = 5 + hash2(i, 1, 91) * 7;
+    let cxl = ((t * speed + hash2(i, 2, 91) * W * 3) % (W + 40)) - 20;
+    if (dir < 0) cxl = W - cxl - sw;
+    const cyl = sky + 5 + Math.floor(hash2(i, 3, 91) * (sand - sky - 14)) + Math.round(Math.sin(t * 0.8 + i * 2) * 1.2);
+    const a = Math.max(0, -cxl), b = Math.max(0, cxl + sw - W);
+    if (a + b < sw) ctx.drawImage(sp, a * u, 0, (sw - a - b) * u, sp.height, x0 + Math.round(cxl + a) * u, y0 + cyl * u, (sw - a - b) * u, sp.height);
+  }
+  // the dancing caustic net (8 frames)
+  ctx.drawImage(causticArt(L, Math.floor(t * 7) % 8), x0, y0, w, L.h);
+  // the rolling surface: a hazy back swell drifting one way, the front wave rolling the other (periodic strips)
+  const offB = (P - (Math.floor(t * 4) % P)) % P, offF = Math.floor(t * 9) % P;
+  const wb = waveArt(L, true), wf = waveArt(L, false);
+  ctx.drawImage(wb, offB * u, 0, w, wb.height, x0, y0 + G.wTop * u, w, wb.height);
+  ctx.drawImage(wf, offF * u, 0, w, wf.height, x0, y0 + G.wTop * u, w, wf.height);
+  const surfAt = (cx) => G.surf[(clamp(cx, 0, W - 1) + offF) % (W + P)];
+  // the zone water (clear calm teal) and the danger ends (coral chop / amber murk)
   if (!shield && (B.inZone || beat)) {
-    const a = beat ? 0.2 + 0.16 * (Math.floor(t * 12) % 2) : 0.1 + 0.08 * Math.sin(t * 6) + B.steady * 0.12;
-    ctx.fillStyle = rgba(beat ? '#ffe46a' : '#e6fff4', a);
-    ctx.fillRect(zx0, y0, zx1 - zx0, L.h - 3 * u);
-    // twinkles: little plus sparkles at hashed spots of the calm water
-    ctx.fillStyle = beat ? '#fff6c0' : '#ffffff';
-    for (let i = 0; i < 5; i++) {
-      const ph = (t * 1.3 + i * 0.37) % 1;
-      if (ph > 0.5) continue;
-      const cell = Math.floor(t * 1.3 + i * 0.37);
-      const sx = zx0 + 2 * u + Math.floor(hash2(i, cell, 3) * Math.max(1, zx1 - zx0 - 4 * u)), sy = y0 + 3 * u + Math.floor(hash2(cell, i, 5) * (L.h - 9 * u));
-      ctx.fillRect(sx - u, sy, 3 * u, u); ctx.fillRect(sx, sy - u, u, 3 * u);
+    const a = beat ? 0.7 + 0.3 * (Math.floor(t * 12) % 2) : clamp01(0.45 + 0.25 * Math.sin(t * 3) + B.steady * 0.3);
+    ctx.globalAlpha = a;
+    ctx.drawImage(glowArt(L, zq(zoneW), Math.floor(t * 5) % 2), x0, y0, w, L.h);
+    ctx.globalAlpha = 1;
+    if (beat) { ctx.fillStyle = rgba('#ffe46a', 0.14 + 0.1 * (Math.floor(t * 12) % 2)); ctx.fillRect(zx0, y0 + sky * u, zx1 - zx0, (sand - sky) * u); }
+  }
+  // the left end: choppy whitecaps and spray (more when the marker is out there)
+  const zc0 = Math.round((zx0 - x0) / u), zc1 = Math.round((zx1 - x0) / u);
+  {
+    const lo = 20, hi = zc0 - 5, n = 5 + Math.round(leftK * 5);
+    // the chop: short foam dashes tumbling just under the surface
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    if (hi > lo + 4) for (let k = 0; k < 6 + Math.round(leftK * 6); k++) {
+      const cx = lo + Math.floor(hash2(k, Math.floor(t * 6 + k * 0.3), 85) * (hi - lo)), s = surfAt(cx);
+      ctx.fillRect(x0 + cx * u, y0 + (s + 1 + (k % 3)) * u, (2 + (k % 2)) * u, u);
+    }
+    if (hi > lo + 4) for (let k = 0; k < n; k++) {
+      const cyc = t * (0.9 + leftK * 0.8) + k * 0.41, cell = Math.floor(cyc), ph = cyc - cell;
+      const cx = lo + Math.floor(hash2(k, cell, 81) * (hi - lo)), s = surfAt(cx);
+      const fw = 1 + Math.round(Math.sin(ph * Math.PI) * 3);
+      ctx.globalAlpha = ph < 0.75 ? 1 : (1 - ph) * 4;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x0 + (cx - fw) * u, y0 + (s - 1) * u, (fw * 2 + 1) * u, u);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillRect(x0 + (cx - fw - 1) * u, y0 + s * u, (fw * 2 + 3) * u, u);
+      // spray beads flung up
+      ctx.fillStyle = '#ffffff';
+      const up = Math.round(ph * 4);
+      ctx.fillRect(x0 + (cx - 2 - up) * u, y0 + (s - 2 - up + Math.round(ph * ph * 4)) * u, u, u);
+      ctx.fillRect(x0 + (cx + 2 + up) * u, y0 + (s - 3 - up + Math.round(ph * ph * 5)) * u, u, u);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // the right end: dark churning water, swirling sediment
+  {
+    const lo = zc1 + 5, hi = W - 22, n = 6 + Math.round(rightK * 6);
+    if (hi > lo + 4) for (let k = 0; k < n; k++) {
+      const cx = lo + hash2(k, 4, 83) * (hi - lo), cyl = sky + 5 + hash2(k, 5, 83) * (sand - sky - 9);
+      const ang = t * (1.4 + hash2(k, 6, 83) * 1.6 + rightK * 2) + k * 1.7, r = 2 + hash2(k, 7, 83) * 4;
+      const px = Math.round(cx + Math.cos(ang) * r), py = Math.round(cyl + Math.sin(ang) * r * 0.55);
+      ctx.fillStyle = 'rgba(40,24,8,0.32)'; ctx.fillRect(x0 + (px - 1) * u, y0 + py * u, 3 * u, u);
+      const qx = Math.round(cx - Math.cos(ang) * r * 0.7), qy = Math.round(cyl - Math.sin(ang) * r * 0.4);
+      ctx.fillStyle = k % 2 ? 'rgba(232,176,96,0.75)' : 'rgba(255,214,150,0.6)'; ctx.fillRect(x0 + qx * u, y0 + qy * u, u, u);
     }
   }
-  // kelp fronds at both ends (sway faster with the commotion)
-  const kh = Math.round(L.h * 0.86);
-  const spd = 6 + (B.lunge ? 10 : 0) + Math.abs(B.mv || 0) * 6 + (B.stunned ? 8 : 0);
-  const fr = Math.floor(t * spd) % 8;
-  ctx.drawImage(kelpSprite(kh, u, fr, false), x0 + u, y0 + L.h - kh - u);
-  ctx.drawImage(kelpSprite(kh, u, (fr + 3) % 8, true), L.x1 - 19 * u, y0 + L.h - kh - u);
-  // rising pixel bubbles (deterministic: no state, no allocation)
-  const hW = L.h - 4 * u;
-  for (let i = 0; i < 9; i++) {
-    const sp = 7 + hash2(i, 1, 11) * 9, ph = hash2(i, 2, 11);
-    const k = (t * sp / hW + ph) % 1;
-    const bx = Math.round(x0 + 6 * u + hash2(i, 3, 11) * (L.w - 12 * u) + Math.sin(t * 2 + i) * u);
-    const by = Math.round(y0 + L.h - 4 * u - k * hW);
-    if (i % 3 === 0) { // a 3x3 ring bubble with a highlight
-      ctx.fillStyle = 'rgba(230,252,255,0.85)';
-      ctx.fillRect(bx, by - u, u, u); ctx.fillRect(bx - u, by, u, u); ctx.fillRect(bx + u, by, u, u); ctx.fillRect(bx, by + u, u, u);
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(bx - u, by - u, u, u);
-    } else { ctx.fillStyle = 'rgba(230,252,255,0.75)'; ctx.fillRect(bx, by, u, u); }
+  // bubble columns rising from the floor, plankton motes drifting
+  const span = sand - sky;
+  for (let c = 0; c < 3; c++) {
+    const sx = Math.floor(W * (0.28 + c * 0.24) + hash2(c, 1, 87) * 18);
+    const hh = sandY[sx] - sky - 1;
+    for (let i = 0; i < 5; i++) {
+      const k = (t * (4 + c) / Math.max(1, hh) * 2.2 + i / 5) % 1;
+      const by = Math.round(sandY[sx] - 1 - k * hh), bx = sx + Math.round(Math.sin(t * 3 + i * 2 + k * 6) * 1.2);
+      const X = x0 + bx * u, Y = y0 + by * u;
+      if (i % 2 === 0 && k > 0.15) { // a ring bubble with a highlight
+        ctx.fillStyle = 'rgba(230,252,255,0.85)';
+        ctx.fillRect(X, Y - u, u, u); ctx.fillRect(X - u, Y, u, u); ctx.fillRect(X + u, Y, u, u); ctx.fillRect(X, Y + u, u, u);
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(X - u, Y - u, u, u);
+      } else { ctx.fillStyle = 'rgba(230,252,255,0.8)'; ctx.fillRect(X, Y, u, u); }
+    }
   }
-  // zone bracket posts: ink, a light core, square caps above and below the water
-  const postCol = shield ? '#d8f0ff' : beat ? '#fff6a0' : B.inZone ? '#e6fff4' : '#ffffff';
-  for (const zx of [zx0, zx1]) {
-    const px = zx - u;
-    ctx.fillStyle = INK; ctx.fillRect(px - u, y0 - 4 * u, 4 * u, L.h + 8 * u);
-    ctx.fillStyle = postCol; ctx.fillRect(px, y0 - 3 * u, 2 * u, L.h + 6 * u);
-    ctx.fillStyle = shield ? '#8aa4bc' : '#3ccc9c'; ctx.fillRect(px + u, y0 - 3 * u, u, L.h + 6 * u);
-    ctx.fillStyle = INK; ctx.fillRect(px - 2 * u, y0 - 5 * u, 6 * u, 2 * u); ctx.fillRect(px - 2 * u, y0 + L.h + 3 * u, 6 * u, 2 * u);
+  ctx.fillStyle = 'rgba(236,255,250,0.55)';
+  for (let i = 0; i < 22; i++) {
+    if (i === 11) ctx.fillStyle = 'rgba(200,255,190,0.45)';
+    const px = Math.floor((hash2(i, 1, 89) * W + t * (0.8 + hash2(i, 2, 89) * 2.2)) % W);
+    const py = sky + 3 + Math.floor(hash2(i, 3, 89) * (span - 6) + Math.sin(t * 0.7 + i) * 2);
+    if (Math.floor(t * 2 + i) % 7 === 0) continue; // twinkle
+    ctx.fillRect(x0 + px * u, y0 + py * u, u, u);
   }
-  // the centre mark: a short dashed line in the calm water
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  for (let yy = y0 + 2 * u; yy < y0 + L.h - 4 * u; yy += 3 * u) ctx.fillRect(L.cx, yy, u, u * 2);
-  if (shield) word3D(ctx, 'LOCKED', L.cx, L.cy, { t, scale: 0.5 * S, pal: 'white', wobble: 0.4, alpha: 0.9 });
+  // buoys at the zone edges, bobbing on the waves, chained to anchor blocks on the sand
+  const bk = shield ? 'steel' : beat ? 'gold' : 'calm';
+  const lamp = beat ? Math.floor(t * 12) % 2 === 0 : Math.floor(t * 1.5) % 2 === 0 || B.inZone;
+  const buoy = buoyArt(bk, u, lamp);
+  for (const zc of [zc0, zc1]) {
+    const s = surfAt(zc), byc = s - 6;
+    const top = y0 + (byc + 8) * u, bottom = y0 + (sandY[clamp(zc, 0, W - 1)] - 1) * u;
+    for (let yy = top; yy < bottom; yy += 2 * u) { ctx.fillStyle = (yy / u) % 4 < 2 ? '#2e3c4e' : '#8aa4bc'; ctx.fillRect(x0 + zc * u, yy, u, u); }
+    ctx.fillStyle = INK; ctx.fillRect(x0 + (zc - 2) * u, bottom - u, 5 * u, 3 * u);
+    ctx.fillStyle = '#5a7490'; ctx.fillRect(x0 + (zc - 1) * u, bottom, 3 * u, u);
+    ctx.drawImage(buoy, x0 + (zc - 3) * u, y0 + byc * u);
+  }
+  // giant kelp on the rocks at both ends (sway faster with the commotion)
+  const kfr = Math.floor(t * (5 + stir * 6)) % 8;
+  const kl = kelpArt(L, kfr, 'left'), kr = kelpArt(L, (kfr + 3) % 8, 'right');
+  ctx.drawImage(kl, x0 - u, y0);
+  ctx.drawImage(kr, x0 + w - kr.width + u, y0);
+  // sparkles glinting on the surface
+  for (let i = 0; i < 6; i++) {
+    const cyc = t * 1.6 + i * 0.29, cell = Math.floor(cyc), ph = cyc - cell;
+    if (ph > 0.45) continue;
+    const cx = 24 + Math.floor(hash2(i, cell, 93) * (W - 48)), s = surfAt(cx);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x0 + cx * u, y0 + (s - 1) * u, u, u);
+    if (ph > 0.12 && ph < 0.32) { ctx.fillRect(x0 + (cx - 1) * u, y0 + (s - 1) * u, 3 * u, u); ctx.fillRect(x0 + cx * u, y0 + (s - 2) * u, u, 3 * u); }
+  }
+  // the centre mark: a faint dotted plumb line in the calm water
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  for (let yy = y0 + (sky + 3) * u; yy < y0 + (sand - 2) * u; yy += 3 * u) ctx.fillRect(L.cx, yy, u, u);
+  if (shield) {
+    ctx.drawImage(grateArt(L, zq(zoneW)), x0, y0, w, L.h);
+    word3D(ctx, 'LOCKED', L.cx, L.cy, { t, scale: 0.5 * S, pal: 'white', wobble: 0.4, alpha: 0.9 });
+  }
   if (B.twist) drawTwist(ctx, F, B, L, t); // [deep28] the deep fish's personality on the meter
   // lunge warning: foam chevrons racing through the water on the side the fish will shove the marker
   const lu = B.lunge;
@@ -367,15 +342,15 @@ function drawTrack(ctx, F, B, L, t) {
     const side = -lu.dir; // dir +1 = toward you (the marker goes right) / -1 = away (left)
     const dirS = side < 0 ? -1 : 1;
     const col = lu.stage === 'tele' ? (Math.floor(t * 10) % 2 ? '#ffd23a' : '#ffffff') : '#ff7a66';
-    const ch = chevron(Math.round(L.h * 0.62), col, dirS);
+    const ch = chevron(Math.round(L.h * 0.5), col, dirS);
     for (let i = 0; i < 3; i++) {
       const ph = (t * 2.5 + i / 3) % 1;
       const uu = dirS * (zoneW + 0.08 + ph * (0.8 - zoneW));
       ctx.globalAlpha = 1 - ph * 0.7;
-      ctx.drawImage(ch, Math.round(mx(L, uu) - ch.width / 2), Math.round(L.cy - u - ch.height / 2));
+      ctx.drawImage(ch, Math.round(mx(L, uu) - ch.width / 2), Math.round(L.cy + u - ch.height / 2));
     }
     ctx.globalAlpha = 1;
-    if (lu.stage === 'tele') word3D(ctx, dirS < 0 ? 'IT WILL RUN!' : 'IT WILL RUSH!', mx(L, dirS * 0.62), y0 - Math.round(22 * S), { t, scale: 0.45 * S, pal: 'sun', wobble: 0.8 });
+    if (lu.stage === 'tele') word3D(ctx, dirS < 0 ? 'IT WILL RUN!' : 'IT WILL RUSH!', mx(L, dirS * 0.62), y0 - Math.round(24 * S), { t, scale: 0.45 * S, pal: 'sun', wobble: 0.8 });
   }
   // the beat: the gold notch pillar + the sweeping spark
   if (beat) {
@@ -384,7 +359,6 @@ function drawTrack(ctx, F, B, L, t) {
     const ny0 = y0 - 6 * u, nh = L.h + 12 * u;
     pxHalo(ctx, L.cx, L.cy, cw * 2, nh, '#ffe46a', 0.7, u);
     const nx = Math.round(L.cx - cw), nw = cw * 2;
-    // a gold glass pillar: solid ink / gold rails, the water showing through its middle
     ctx.fillStyle = INK;
     ctx.fillRect(nx - u, ny0 - u, nw + 2 * u, 3 * u); ctx.fillRect(nx - u, ny0 + nh - 2 * u, nw + 2 * u, 3 * u);
     ctx.fillRect(nx - u, ny0, 3 * u, nh); ctx.fillRect(nx + nw - 2 * u, ny0, 3 * u, nh);
@@ -396,7 +370,6 @@ function drawTrack(ctx, F, B, L, t) {
     if (beat.stage === 'sweep') {
       const s = Math.round(10 * S);
       const inCrit = Math.abs(beat.x) <= B.critW;
-      // the trail: shrinking squares behind the spark (meter units back along its path)
       for (let i = 1; i <= 6; i++) {
         const q = 1 - i / 7;
         const hx = mx(L, beat.x - i * 0.035), hs = Math.max(u, Math.round(s * 0.5 * q));
@@ -412,7 +385,8 @@ function drawTrack(ctx, F, B, L, t) {
       word3D(ctx, 'GET READY!', L.cx, y0 - Math.round(58 * S), { t, pop: clamp01(beat.t * 5), scale: 0.62 * S, pal: 'sun', wobble: 1 });
     }
   }
-  drawMarker(ctx, F, B, L, t);
+  drawMarker(ctx, F, B, L, t, surfAt);
+  drawGlass(ctx, L, x0, y0); // the porthole glass
   // [deep28] a dazzle flash whites the meter out for a moment
   if (B.flash > 0.02) {
     ctx.fillStyle = rgba('#fffbe8', clamp01(B.flash) * 0.85);
@@ -457,7 +431,7 @@ function drawTwist(ctx, F, B, L, t) {
   if (B.blind > 0.02) {
     const zx0 = Math.round(mx(L, -(B.zoneW0 ?? B.zoneW) - 0.04)), zx1 = Math.round(mx(L, (B.zoneW0 ?? B.zoneW) + 0.04));
     ctx.fillStyle = rgba('#050a1e', 0.94 * B.blind);
-    ctx.fillRect(zx0, y0 - Math.round(6 * S), zx1 - zx0, L.h + Math.round(12 * S));
+    ctx.fillRect(zx0, y0, zx1 - zx0, L.h); // [nuke31] inside the porthole
     ctx.fillStyle = '#4ab8ff';
     for (let i = 0; i < 7; i++) {
       const ph = (t * 1.7 + i * 0.37) % 1;
@@ -476,7 +450,49 @@ function drawTwist(ctx, F, B, L, t) {
 }
 
 // The marker: the hooked fish swimming in the water strip, hanging on a line from a caret on the frame.
-function drawMarker(ctx, F, B, L, t) {
+
+// The bubbly wake behind the marker fish: a small pool (x, y relative to the strip, age, size), no allocation.
+const WN = 24, WAKE = new Float32Array(WN * 4);
+let wakeT = -1, wakeAcc = 0, wakeCur = 0;
+function stepWake(L, t, x, y, back, spd, on) {
+  let dt = wakeT < 0 ? 0 : t - wakeT;
+  if (dt < 0 || dt > 0.25) { dt = 0; WAKE.fill(0); }
+  wakeT = t;
+  for (let i = 0; i < WN; i++) {
+    const o = i * 4;
+    if (WAKE[o + 2] <= 0) continue;
+    WAKE[o + 2] -= dt;
+    WAKE[o + 1] -= dt * 9 * L.S; // they rise
+    WAKE[o] += back * dt * 4 * L.S;
+  }
+  if (!on) return;
+  wakeAcc += dt * (spd * 26);
+  while (wakeAcc >= 1) {
+    wakeAcc -= 1;
+    const o = (wakeCur++ % WN) * 4;
+    WAKE[o] = x - L.x0 + (Math.random() - 0.5) * 3 * L.S; WAKE[o + 1] = y - L.cy + (Math.random() - 0.5) * 8 * L.S;
+    WAKE[o + 2] = 0.5 + Math.random() * 0.5; WAKE[o + 3] = Math.random() < 0.35 ? 1 : 0;
+  }
+}
+function drawWake(ctx, L, top) {
+  const u = L.u;
+  for (let i = 0; i < WN; i++) {
+    const o = i * 4, age = WAKE[o + 2];
+    if (age <= 0) continue;
+    const X = Math.round(L.x0 + WAKE[o]), Y = Math.round(L.cy + WAKE[o + 1]);
+    if (Y < top || X < L.x0 || X > L.x1) continue;
+    ctx.globalAlpha = Math.min(1, age * 2.5);
+    if (WAKE[o + 3]) {
+      ctx.fillStyle = 'rgba(230,252,255,0.9)';
+      ctx.fillRect(X, Y - u, u, u); ctx.fillRect(X - u, Y, u, u); ctx.fillRect(X + u, Y, u, u); ctx.fillRect(X, Y + u, u, u);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(X - u, Y - u, u, u);
+    } else { ctx.fillStyle = '#ffffff'; ctx.fillRect(X, Y, u, u); }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// The marker: the hooked fish swimming in the water, the line coming down to it through the surface.
+function drawMarker(ctx, F, B, L, t, surfAt) {
   const S = L.S, u = L.u, y0 = Math.round(L.cy - L.h / 2);
   const m = B.marker;
   const x = Math.round(mx(L, m));
@@ -485,42 +501,44 @@ function drawMarker(ctx, F, B, L, t) {
   const col = red ? '#ff3a4a' : B.stunned ? '#bff8ff' : inZ ? (B.centre ? '#ffffff' : '#e6fff4') : Math.abs(m) > 0.8 ? '#ff8a7a' : '#ffffff';
   const vanta = B.vanta || 0; // [deep28] the blackdragon turns ultra-black: only its chin light shows
   const fw = Math.round(48 * S), fh = Math.round(30 * S);
-  const facing = (B.mv || 0) < -0.05 ? -1 : (B.mv || 0) > 0.05 ? 1 : m < -0.05 ? -1 : 1;
+  const mv = B.mv || 0;
+  const facing = mv < -0.05 ? -1 : mv > 0.05 ? 1 : m < -0.05 ? -1 : 1;
   const ic = B.markerIcon?.(fw, fh, facing, t) || voxelFishIcon(F.sp, fw, fh, { dir: facing }); // [crate26] a crate rides as itself
   const crate = !!B.markerIcon;
-  const fy = Math.round(L.cy - u - (ic ? ic.height / 2 : fh / 2)); // the icon's top
-  // the wake: foam dashes on the surface and bubble pixels behind the fish when it moves
-  const spd = Math.abs(B.mv || 0);
-  if (spd > 0.12 && ic && vanta < 0.5) {
-    const back = -Math.sign(B.mv), n = Math.min(5, 1 + Math.floor(spd * 4));
-    for (let i = 0; i < n; i++) {
-      const wx = Math.round(x + back * (ic.width * 0.42 + i * 5 * u + ((t * 30) % (5 * u))));
-      ctx.fillStyle = rgba('#ffffff', 0.75 - i * 0.13);
-      ctx.fillRect(wx - u, y0 + u, 3 * u, u);
-      if (i % 2 === 0) ctx.fillRect(wx, Math.round(L.cy + Math.sin(t * 9 + i) * 2 * u), u, u);
-    }
-  }
+  const fy = Math.round(L.cy + u - (ic ? ic.height / 2 : fh / 2)); // the icon's top
+  const spd = Math.abs(mv);
+  // the bubbly wake
+  const iw = ic ? ic.width : fw;
+  stepWake(L, t, x - facing * iw * 0.42, L.cy + u, -facing, spd + (B.lunge?.stage === 'go' ? 0.8 : 0), spd > 0.1 && vanta < 0.5);
+  drawWake(ctx, L, y0 + 8 * u);
   if (vanta > 0.02) ctx.globalAlpha = 1 - vanta * 0.94;
-  // the line: from a caret on the panel's top edge straight down to the fish
+  // the line: from a caret on the console's top rail down through the surface to the fish's mouth
+  const lx = crate ? x : Math.round(x + facing * iw * 0.36), mouthY = Math.round(fy + (crate ? 2 * u : (ic ? ic.height : fh) * 0.45));
   const lineTop = L.panel.y + 2 * u;
-  ctx.fillStyle = INK; ctx.fillRect(x - u, lineTop, 3 * u, Math.max(0, fy + 4 * u - lineTop));
-  ctx.fillStyle = col; ctx.fillRect(x, lineTop, u, Math.max(0, fy + 4 * u - lineTop));
-  pxCaret(ctx, x, L.panel.y + 4 * u, 4 * u, 'down', col);
-  // the fish, its tail wiggling: four vertical slices sheared up / down (the tail slice the most)
-  if (inZ) pxHalo(ctx, x, L.cy - u, ic ? ic.width * 0.6 : fw * 0.6, ic ? ic.height * 0.5 : fh * 0.5, B.centre ? '#ffffff' : '#c8ffe4', 0.35 + 0.15 * Math.sin(t * 8), u);
+  ctx.fillStyle = INK; ctx.fillRect(lx - u, lineTop, 3 * u, Math.max(0, mouthY - lineTop));
+  ctx.fillStyle = col; ctx.fillRect(lx, lineTop, u, Math.max(0, mouthY - lineTop));
+  pxCaret(ctx, lx, L.panel.y + 4 * u, 4 * u, 'down', col);
+  if (surfAt) { // the line slices the surface: a little foam dimple
+    const s = surfAt(Math.round((lx - L.x0) / u));
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(lx - 2 * u, y0 + s * u, 2 * u, u); ctx.fillRect(lx + u, y0 + s * u, 2 * u, u);
+  }
+  if (inZ) pxHalo(ctx, x, L.cy + u, iw * 0.6, (ic ? ic.height : fh) * 0.5, B.centre ? '#ffffff' : '#c8ffe4', 0.3 + 0.12 * Math.sin(t * 8), u);
   if (ic) {
     const bob = B.stunned ? Math.round(Math.sin(t * 40) * 1.5) : Math.round(Math.sin(t * (inZ ? 3 : 7)) * u);
     const ix = Math.round(x - ic.width / 2), iy = fy + bob;
     if (crate) {
       ctx.drawImage(ic, ix, iy);
     } else {
+      // six sheared slices: the tail wiggles, the whole body tilts with the motion (nose up when it surges)
       const fq = B.stunned ? 30 : B.lunge?.stage === 'go' ? 22 : inZ ? 8 : 14;
       const amp = (B.stunned ? 1 : B.lunge ? 2.2 : 1.4) * u;
-      const n = 4, sw = Math.ceil(ic.width / n);
+      const tilt = clamp(mv * 4.5, -3, 3) * u * (B.stunned ? 0.3 : 1);
+      const n = 6, sw = Math.ceil(ic.width / n);
       for (let j = 0; j < n; j++) {
         const tail = facing > 0 ? j : n - 1 - j; // 0 = tail slice
-        const k = [1, 0.55, 0.2, 0][tail];
-        const off = Math.round(Math.sin(t * fq - tail * 0.9) * amp * k);
+        const k = [1, 0.6, 0.28, 0.08, 0, 0][tail];
+        const lean = (j / (n - 1)) * 2 - 1; // -1 left .. 1 right
+        const off = Math.round(Math.sin(t * fq - tail * 0.8) * amp * k - tilt * lean * (facing > 0 ? 1 : -1) * facing);
         const sx = j * sw, ww = Math.min(sw, ic.width - sx);
         if (ww > 0) ctx.drawImage(ic, sx, 0, ww, ic.height, ix + sx, iy + off, ww, ic.height);
       }
@@ -554,53 +572,66 @@ function drawMarker(ctx, F, B, L, t) {
   }
 }
 
-// The catch tube: calm water filling a glass tube from the left with a sloshing head.
+// The catch tube: ocean water filling a glass tube from the left: banded aqua -> blue, a rolling top surface,
+// a curling foam head, bubbles, a red ghost of lost progress, the percentage riding the head.
 function drawBar(ctx, F, B, L, t) {
   const S = L.S, u = L.u;
   const p = clamp01(B.progress), g = clamp01(B.ghost ?? p);
   const x0 = L.x0, y = L.by, w = L.w, h = L.bh;
-  // the tube: ink, dark glass with a faint grid every 10 %
-  pxFrame(ctx, x0 - 2 * u, y - 2 * u, w + 4 * u, h + 4 * u, { u, step: 1, fill: ['#0c3354', '#0a2a48', '#08223c'], rim: ['#2a6a9a', '#0a2a48', '#06182c'] });
-  ctx.fillStyle = 'rgba(160,220,255,0.16)';
-  for (let i = 1; i < 10; i++) ctx.fillRect(Math.round(x0 + (w * i) / 10), y + u, u, h - 2 * u);
   const head = (k) => Math.round(x0 + w * k);
   const rows = Math.max(1, Math.floor(h / u));
-  const slosh = (r) => Math.round(Math.sin(t * 7 + r * 0.9) * 1.4 * u + Math.sin(t * 3.1) * u);
+  const slosh = (r) => Math.round(Math.sin(t * 7 + r * 0.9) * 1.2 * u + Math.sin(t * 3.1) * u);
   // ghost: lost progress as dim red water
   if (g > p + 0.003) {
-    ctx.fillStyle = 'rgba(240,88,74,0.55)';
-    ctx.fillRect(head(p), y, Math.max(u, head(g) - head(p)), h);
+    ctx.fillStyle = 'rgba(240,88,74,0.5)';
+    ctx.fillRect(head(p), y + 2 * u, Math.max(u, head(g) - head(p)), h - 2 * u);
   }
   if (p > 0.002) {
     const stun = B.stunned && Math.floor(t * 14) % 2;
-    const pal = stun ? ['#ffffff', '#c8fbff', '#7ff0ff', '#2fc8e8'] : ['#f0fff4', '#9ff2c8', '#4cd89e', '#22a878'];
-    for (let r = 0; r < rows; r++) {
-      const ry = y + r * u, fr = r / rows;
-      ctx.fillStyle = r === 0 ? pal[0] : fr < 0.4 ? pal[1] : fr < 0.75 ? pal[2] : pal[3];
-      const hx = Math.min(x0 + w, Math.max(x0, head(p) + (p < 0.995 ? slosh(r) : 0)));
-      ctx.fillRect(x0, ry, hx - x0, u);
+    const pal = stun ? ['#ffffff', '#c8fbff', '#7ff0ff', '#2fc8e8'] : ['#7ae4f6', '#42c0ea', '#2a9edc', '#1c78c0'];
+    const hx = head(p), fillW = hx - x0;
+    // the body in bands under a rolling top surface (one blit of a periodic strip)
+    const top = y + 2 * u;
+    const b1 = Math.round((h - 2 * u) * 0.35), b2 = Math.round((h - 2 * u) * 0.7);
+    for (let r = 2; r < rows; r++) {
+      const ry = y + r * u, fr = (r * u - 2 * u) / (h - 2 * u);
+      ctx.fillStyle = fr < 0.35 ? pal[1] : fr < 0.7 ? pal[2] : pal[3];
+      const ex = Math.min(x0 + w, Math.max(x0, hx + (p < 0.995 ? slosh(r) : 0)));
+      ctx.fillRect(x0, ry, ex - x0, u);
     }
-    // the meniscus: a bright foam column at the head
+    void b1; void b2;
+    if (!stun && fillW > u) {
+      const tw = tubeWaveArt(u, w), off = Math.floor(t * 10) % 24;
+      ctx.drawImage(tw, off * u, 0, Math.min(fillW, w), tw.height, x0, top - 2 * u, Math.min(fillW, w), tw.height);
+    } else { ctx.fillStyle = pal[0]; ctx.fillRect(x0, top, fillW, u); }
+    // the curling foam head
     if (p < 0.995) {
-      ctx.fillStyle = '#ffffff';
-      for (let r = 0; r < rows; r += 2) ctx.fillRect(Math.min(x0 + w - u, head(p) + slosh(r)), y + r * u, u, u);
+      for (let r = 1; r < rows; r++) {
+        const fx = Math.min(x0 + w - u, hx + slosh(r));
+        ctx.fillStyle = r % 2 ? '#ffffff' : '#d8faff';
+        ctx.fillRect(fx, y + r * u, u, u);
+        if (r <= 3) ctx.fillRect(fx + u, y + r * u, Math.min(2, 4 - r) * u, u); // the lip curls over
+      }
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.min(x0 + w - u, hx + slosh(1) + 2 * u), y + 2 * u, u, u);
     }
-    // bubbles rising inside the water
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    const fillW = head(p) - x0;
-    for (let i = 0; i < 5; i++) {
+    // bubbles rising in the water
+    for (let i = 0; i < 6; i++) {
       if (fillW < 8 * u) break;
       const k = (t * (0.9 + hash2(i, 4, 2) * 0.8) + hash2(i, 5, 2)) % 1;
-      ctx.fillRect(Math.round(x0 + 2 * u + hash2(i, 6, 2) * (fillW - 4 * u)), Math.round(y + h - u - k * (h - u)), u, u);
+      const bx = Math.round(x0 + 2 * u + hash2(i, 6, 2) * (fillW - 6 * u)), byy = Math.round(y + h - u - k * (h - 3 * u));
+      ctx.fillStyle = i % 3 ? 'rgba(255,255,255,0.8)' : '#ffffff';
+      ctx.fillRect(bx, byy, u, u);
+      if (i % 3 === 0 && k > 0.3) { ctx.fillStyle = 'rgba(230,252,255,0.7)'; ctx.fillRect(bx + u, byy + u, u, u); }
     }
   }
-  // the glass: a gloss line along the top and a short bright dash
-  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(x0, y + u, w, u);
-  ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(x0 + 4 * u, y + u, 14 * u, u);
+  // the glass: a gloss line along the top and a short bright dash, a darker line at the bottom
+  ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillRect(x0 + 4 * u, y + u, w - 8 * u, u);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(x0 + 6 * u, y + u, 14 * u, u); ctx.fillRect(x0 + 22 * u, y + u, 3 * u, u);
+  ctx.fillStyle = 'rgba(4,20,40,0.35)'; ctx.fillRect(x0 + 4 * u, y + h - u, w - 8 * u, u);
   // the percentage, crisp pixel text riding the head of the water
   const txt = Math.round(p * 100) + '%';
   const tw = measureText(txt, 'normal', u);
-  const tx = clamp(head(p) + 4 * u, x0 + 2 * u, x0 + w - tw - 3 * u);
+  const tx = clamp(head(p) + 5 * u, x0 + 6 * u, x0 + w - tw - 6 * u);
   drawText(ctx, txt, tx, y + Math.round((h - 7 * u) / 2), { scale: u, color: '#ffffff', outline: INK });
   if (B.inZone && !B.beat && B.steady > 0.98) word3D(ctx, 'STEADY x1.35', L.x1 - Math.round(52 * S), L.by + L.bh + Math.round(13 * S), { t, scale: 0.4 * S, pal: 'leaf', wobble: 0.5 });
 }

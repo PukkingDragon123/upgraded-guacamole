@@ -381,7 +381,7 @@ export function updateNukeButton(F, B, dt, o = {}) {
   const ct = want ? 1 : 0;
   st.coverV += ((ct - st.cover) * (want ? 260 : 120) - st.coverV * (want ? 13 : 18)) * dt;
   st.cover = clamp(st.cover + st.coverV * dt, -0.05, 1.12);
-  st.crit = Math.max(0, st.crit - dt * 3.2);
+  st.crit = Math.max(0, st.crit - dt * 1.8);
   st.readyT = want ? st.readyT + dt : 0;
 }
 export function nukeCrit(F) { stateOf(F).crit = 1; }
@@ -423,7 +423,7 @@ export function drawNukeButton(ctx, F, B, L, t) {
   if (cover && ci >= BACK_FROM) ctx.drawImage(cover, ox, oy);
   ctx.drawImage(house.back, ox, oy);
   // the cap: variant, travel, squash
-  let variant = bad ? 'dim' : st.crit > 0.35 && Math.floor(t * 20) % 2 === 0 ? 'white' : st.crit > 0.6 ? 'white' : beat ? (Math.floor(t * 10) % 2 ? 'lit' : 'red') : !ready ? 'dim' : st.hover > 0.5 ? 'lit' : (Math.floor(st.readyT * 2.2) % 2 && st.readyT < 6) || Math.floor(t * 1.6) % 4 === 0 ? 'lit' : 'red';
+  let variant = st.crit > 0.55 || (st.crit > 0.15 && Math.floor(t * 16) % 2 === 0) ? 'white' : bad ? 'dim' : beat ? (Math.floor(t * 10) % 2 ? 'lit' : 'red') : !ready ? 'dim' : st.hover > 0.5 ? 'lit' : (Math.floor(st.readyT * 2.2) % 2 && st.readyT < 6) || Math.floor(t * 1.6) % 4 === 0 ? 'lit' : 'red';
   const cap = ensure(bk, 'cap:' + variant);
   if (cap) {
     const travel = Math.round(st.travel * 4 * VOX * S * Math.cos((PITCH * Math.PI) / 180)); // 4 voxels at full press
@@ -432,21 +432,21 @@ export function drawNukeButton(ctx, F, B, L, t) {
     else ctx.drawImage(cap, ox, oy + travel);
   }
   ctx.drawImage(house.front, ox, oy);
-  drawPanel(ctx, F, B, L, t, P, st);
+  drawPanel(ctx, B, L, t, P);
   if (cover && ci < BACK_FROM) ctx.drawImage(cover, ox, oy);
   // the critical flash: a white stepped halo over the dome
   if (st.crit > 0.5) { const [hx, hy] = P(CX, 15, ZC); pxHalo(ctx, hx, hy, Math.round(30 * S), Math.round(18 * S), '#ffffff', st.crit * 0.7, u); }
   if (beat) { const [wx, wy] = P(CX, 30, ZC); word3D(ctx, 'SHOCK!', wx, wy - Math.round(6 * S), { t, scale: 0.55 * S, pal: 'sun', wobble: 1.4, alpha: 0.95 }); }
-  drawKeycap(ctx, B, L, P, beat, st, u, S);
+  drawKeycap(ctx, B, L, beat, st, u, S);
 }
 
 // the plate text, the charge gauge, the charge lamps and the beacon (overlays on the voxel housing)
-function drawPanel(ctx, F, B, L, t, P, st) {
+function drawPanel(ctx, B, L, t, P) {
   const u = L.u, S = L.S;
   const ready = B.charges > 0, beat = B.beat?.stage === 'sweep';
   // the front plate (model x 8..31, y 4..8 at z 40): engraved SHOCK + the MK level, a gauge row below
   const [px0, py0] = P(6, 9, 42), [px1, py1] = P(34, 3, 42);
-  const pw = px1 - px0, ph = py1 - py0;
+  const pw = px1 - px0;
   const ty = Math.round(py0 + 1 * u);
   const mk = 'MK ' + ROMAN[B.level || 1];
   const mw = measureText(mk, 'small', u);
@@ -458,7 +458,7 @@ function drawPanel(ctx, F, B, L, t, P, st) {
   const n = 8, gy = Math.round(py1 - 3 * u), gx0 = Math.round(px0 + 2 * u), gw = Math.round(pw - 4 * u);
   const segW = Math.max(u, Math.floor((gw - (n - 1) * u) / n));
   const fill = ready ? 1 : clamp01(B.chargeK ?? 0);
-  ctx.fillStyle = '#121a26'; ctx.fillRect(gx0 - u, gy - u, (segW + u) * n + u, 2 * u + 2 * u - u);
+  ctx.fillStyle = '#121a26'; ctx.fillRect(gx0 - u, gy - u, (segW + u) * n + u, 3 * u);
   for (let i = 0; i < n; i++) {
     const on = (i + 1) / n <= fill + 1e-6, part = !on && i / n < fill;
     let col = '#24364a';
@@ -468,7 +468,6 @@ function drawPanel(ctx, F, B, L, t, P, st) {
     ctx.fillStyle = col;
     ctx.fillRect(gx0 + i * (segW + u), gy, segW, u);
   }
-  void ph;
   // charge lamps on the front lip (one per charge; the next one glows as it fills)
   const nMax = Math.max(1, B.shockMax || 1);
   const [lx0, ly0] = P(10, DECK + 1, 40), [lx1, ly1] = P(30, DECK + 1, 42);
@@ -477,7 +476,7 @@ function drawPanel(ctx, F, B, L, t, P, st) {
   const tot = nMax * cell + (nMax - 1) * gap * 2, lxs = Math.round(lx0 + (lw - tot) / 2);
   for (let i = 0; i < nMax; i++) {
     const x = lxs + i * (cell + gap * 2), y = Math.round(ly0);
-    const has = i < B.charges, next = i === B.charges && !ready ? clamp01(B.chargeK ?? 0) : i === B.charges ? clamp01(B.chargeK ?? 0) : 0;
+    const has = i < B.charges, next = i === B.charges ? clamp01(B.chargeK ?? 0) : 0;
     if (has) {
       ctx.fillStyle = beat && Math.floor(t * 14) % 2 ? '#ffffff' : '#ffd23a'; ctx.fillRect(x, y, cell, lh);
       ctx.fillStyle = '#fffbd0'; ctx.fillRect(x, y, cell, u);
@@ -497,11 +496,10 @@ function drawPanel(ctx, F, B, L, t, P, st) {
     ctx.fillStyle = beat ? '#ffffff' : '#ffb0a0'; ctx.fillRect(Math.round(bx0), Math.round(by0), Math.round(bw), u);
     ctx.fillRect(Math.round(bx0), Math.round(by0), u, Math.round(bh));
   }
-  void st; void F;
 }
 
 // the pixel SPACE keycap left of the housing (pressed while the cap is down, lit during the sweep)
-function drawKeycap(ctx, B, L, P, beat, st, u, S) {
+function drawKeycap(ctx, B, L, beat, st, u, S) {
   const b = L.btn;
   const kw = Math.round(34 * S), kh = Math.round(15 * S);
   const kx = Math.round(b.cx - b.r - 12 * S - kw), down = st.travel > 0.5 ? u : 0;
@@ -517,5 +515,4 @@ function drawKeycap(ctx, B, L, P, beat, st, u, S) {
   ctx.fillStyle = '#ffffff'; ctx.fillRect(kx + u, ky + u, kw - 2 * u, u);
   drawText(ctx, 'SPACE', kx + kw / 2, ky + Math.round((kh - 2 * u - 5 * u) / 2) + u, { font: 'small', align: 'center', scale: u, color: beat ? '#3a1e06' : '#1a3048' });
   ctx.globalAlpha = 1;
-  void P;
 }
