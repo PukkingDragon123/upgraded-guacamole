@@ -43,6 +43,7 @@ import { Crank } from './crank.js';
 import { Battle, HookBite, DEFAULT_ROD } from './battle.js';
 import { BossDirector, bossVictory } from './boss.js'; // [phase9:fishing] boss fights
 import { meterLayout, meterRect, hitShockButton } from './meter.js'; // [simple24] the meter + SHOCK button
+import { updateNukeButton, warmNukeButton, nukeCrit, resetNukeButton } from './nukebtn.js'; // [nuke31] the physical button
 import { Titles, Finale, EscapeCine, Outro } from './cinematics.js';
 import { drawFightScene, drawFightBands, drawBiteCue, drawMessage } from './hud.js';
 import { Gear } from './gear.js';
@@ -463,7 +464,7 @@ export class Fishing {
     }
     if (this.zapLine) { this.zapLine.t += rdt; if (this.zapLine.t > this.zapLine.dur + 0.15) this.zapLine = null; }
     this.gear.update(rdt, this.state === 'fight' ? this.battle : this.state === 'box' && this.box?.gearMode === 'box' ? this.box : null);
-    if ((this.state === 'idle' && h.visible) || this.state === 'nibble') this.gear.warm(1); // cache the spin frames before a bite
+    if ((this.state === 'idle' && h.visible) || this.state === 'nibble') { this.gear.warm(1); warmNukeButton(this, meterLayout(this)); } // cache the spin frames (+ the [nuke31] button) before a bite
     try { this.boss.update(dt); } catch (e) { if (!this.bossErr) { this.bossErr = true; console.error(e); } }
     if (this.bossWin && this.bossWin.update(rdt) === 'done') this.bossWin = null;
     if (this.cine && this.cine.update(dt, rdt) === 'done') this.cine = null;
@@ -650,7 +651,7 @@ export class Fishing {
     this.tension = this.battle.tension;
     this.splats = [];
     this.holdKind = null;
-    this.btnPress = 0; this.btnBad = 0; this.btnDenied = 0; this.meterShake = 0; this.tickT = 0; this.chainArcs = [];
+    this.btnPress = 0; this.btnBad = 0; this.btnDenied = 0; this.meterShake = 0; this.tickT = 0; this.chainArcs = []; resetNukeButton(this);
     this.gear.reset();
     this.gear.flashOn('#ffffff', 1);
     this.gear.kick(1);
@@ -701,7 +702,10 @@ export class Fishing {
     // SHOCK: Space, or a click (anywhere during a beat, or on the button), or the right button
     const onBtn = inp.pressed && hitShockButton(this, inp.x, inp.y);
     const fire = inp.keyPressed?.(' ') || inp.rpressed || onBtn || (inp.pressed && !!B.beat);
-    if (fire && !g.ui?.blocking) { B.pressShock(); if (inp.pressed) inp.consume?.(); }
+    const fired = fire && !g.ui?.blocking;
+    // [nuke31] the button's physics (press travel, hover, the safety cover) before the press resolves
+    updateNukeButton(this, B, rdt, { fire: fired, hit: hitShockButton(this, inp.x, inp.y), L: meterLayout(this) });
+    if (fired) { B.pressShock(); if (inp.pressed) inp.consume?.(); }
     g.timeScaleTarget = 1;
     const r = B.update(dt);
     this.ffx.fight(B, dt); // [fishui30] splashes / bubbles timed to its pulls
@@ -820,6 +824,12 @@ export class Fishing {
     this.fx.zapBurst?.(bx, by, strong ? 8 : 4, { layer: 'fg', r: 14, ramp: strong ? 'gold' : 'cyan' });
     this.fx.sparks(bx, by, strong ? 18 : 8, { speed: [80, 240], colors: ['#ffffff', '#fff6a0', '#ffd23a', '#7ff4ff'], g: 200 });
     this.fx.impact?.(bx, by, strong ? 2 : 1, { ramp: 'gold', layer: 'fg' });
+    if (strong) { // [nuke31] a critical press: the cap flashes white, sparks fly off the housing's corners
+      nukeCrit(this);
+      const ML = meterLayout(this), S = ML.S, r = ML.btn.r;
+      for (const sx of [-1, 1]) this.fx.sparks(bx + sx * r * 0.95, by + 10 * S, 7, { speed: [60, 190], colors: ['#ffffff', '#fff6a0', '#ffd23a'], g: 320 });
+      this.sfx('chest_hit', { vol: 0.5, pitch: 0.9 });
+    }
     const [rx, ry] = this.rodTip();
     this.particles.electrify?.(rx, ry, 8, strong ? 3 : 1, { flat: 1 });
     this.meterShake = strong ? 1 : 0.5;
@@ -1006,7 +1016,7 @@ export class Fishing {
     this.tension = this.battle.tension;
     this.splats = [];
     this.holdKind = null;
-    this.btnPress = 0; this.btnBad = 0; this.btnDenied = 0; this.meterShake = 0; this.tickT = 0; this.chainArcs = [];
+    this.btnPress = 0; this.btnBad = 0; this.btnDenied = 0; this.meterShake = 0; this.tickT = 0; this.chainArcs = []; resetNukeButton(this);
     this.gear.reset();
     this.gear.flashOn('#ffffff', 1);
     this.gear.kick(1);

@@ -29,6 +29,7 @@ import { voxelFishIcon } from '../fish/fishicon.js';
 import { word3D } from './cinematics.js';
 import { drawIcon3d } from './icons3d.js';
 import { PAL, pxFrame, pxHalo, pxDiamond, pxCaret, unitOf } from './pixui.js';
+import { drawNukeButton } from './nukebtn.js';
 
 const INK = PAL.ink;
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -604,70 +605,7 @@ function drawBar(ctx, F, B, L, t) {
   if (B.inZone && !B.beat && B.steady > 0.98) word3D(ctx, 'STEADY x1.35', L.x1 - Math.round(52 * S), L.by + L.bh + Math.round(13 * S), { t, scale: 0.4 * S, pal: 'leaf', wobble: 0.5 });
 }
 
-function drawButton(ctx, F, B, L, t) {
-  const S = L.S, u = L.u, b = L.btn, r = b.r;
-  const ready = B.charges > 0, beat = B.beat?.stage === 'sweep';
-  const fill = ready ? 1 : clamp01(B.chargeK ?? 0);
-  const bad = F.btnBad > 0;
-  const press = F.btnPress || 0;
-  const depth = Math.round(7 * S), pd = Math.round(press * 5 * S);
-  const x = b.cx - r, y = b.cy - r + pd;
-  // the halo: stepped squares, pulsing on a beat
-  if (beat || B.beat) pxHalo(ctx, b.cx, y + r, r * 2, r * 2, '#ffe46a', 0.55 + 0.35 * (Math.floor(t * 12) % 2), u);
-  else if (ready) pxHalo(ctx, b.cx, y + r, r * 2, r * 2, '#ffe46a', 0.25 + 0.1 * Math.sin(t * 4), u);
-  // the button's side (its depth): the octagon in dark bronze, a little lower
-  const sideSpr = art(`btnside|${r}|${u}`, () => {
-    const c = makeCanvas(r * 2, r * 2), g = ctxOf(c);
-    g.drawImage(buttonSprite(r, 'steel', u), 0, 0);
-    g.globalCompositeOperation = 'source-in';
-    g.fillStyle = '#5a3208'; g.fillRect(0, 0, r * 2, r * 2);
-    g.globalCompositeOperation = 'source-over';
-    return c;
-  });
-  for (let d = depth - pd; d > 0; d -= u) ctx.drawImage(sideSpr, x, y + d);
-  ctx.drawImage(sideSpr, x, y + depth - pd + u); // bottom ink-ish edge
-  // the face: steel while charging, the gold rising in it from the bottom (a sloshing top line)
-  const faceKind = bad ? 'red' : beat ? 'beat' : 'gold';
-  if (ready || bad || beat) ctx.drawImage(buttonSprite(r, faceKind, u), x, y);
-  else {
-    ctx.drawImage(buttonSprite(r, 'steel', u), x, y);
-    const inner = 4 * u, ih = r * 2 - inner * 2;
-    const lvl = Math.round(ih * fill);
-    if (lvl > 0) {
-      const gy = y + inner + ih - lvl;
-      const gold = buttonSprite(r, 'gold', u);
-      ctx.drawImage(gold, 0, gy - y, r * 2, r * 2 - (gy - y), x, gy, r * 2, r * 2 - (gy - y));
-      // the sloshing surface: a bright line with 1-unit bumps travelling across
-      const cut = Math.round(r * 0.52);
-      const yy = gy - y, ey = Math.min(yy, r * 2 - 1 - yy);
-      const inset = Math.max(inner, cut - Math.floor(ey / (2 * u)) * 2 * u + u);
-      ctx.fillStyle = '#fffbd0';
-      ctx.fillRect(x + inset, gy, r * 2 - inset * 2, u);
-      for (let xx = x + inset; xx < x + r * 2 - inset - 2 * u; xx += 6 * u) {
-        const bump = Math.floor((xx / u + t * 10) / 3) % 2;
-        if (bump) ctx.fillRect(xx, gy - u, 3 * u, u);
-      }
-    }
-  }
-  const den = F.btnDenied > 0 ? Math.round(Math.sin(t * 60) * 3 * F.btnDenied) : 0;
-  drawIcon3d(ctx, ready ? 'bolt' : 'bolt_off', b.cx + den, y + r, Math.round(r * 1.2), Math.sin(t * 2) * 0.5);
-  // charge pips: diamonds under the button
-  const n = B.shockMax, pr = Math.max(3, Math.round(4 * S)), gap = pr * 2 + Math.round(5 * S);
-  const px0 = Math.round(b.cx - ((n - 1) * gap) / 2), py = Math.round(b.cy + r + depth + 7 * S);
-  for (let i = 0; i < n; i++) pxDiamond(ctx, px0 + i * gap, py, pr, i < B.charges ? '#ffd23a' : '#3a4a58', { lite: i < B.charges ? '#fffbd0' : '#56687a' });
-  // the weapon level on a small plaque above
-  const mk = 'MK ' + ROMAN[B.level || 1];
-  const mw = measureText(mk, 'small', u) + 12 * u, mh = 9 * u;
-  pxFrame(ctx, b.cx - mw / 2, b.cy - r - mh - Math.round(4 * S), mw, mh, { u, step: 1, fill: B.chain ? ['#ffe46a', '#ffc81e', '#e8920a'] : PAL.navy, rim: B.chain ? ['#fffbd0', '#ffc81e', '#a85a06'] : PAL.rim });
-  drawText(ctx, mk, b.cx, b.cy - r - mh - Math.round(4 * S) + 2 * u, { font: 'small', align: 'center', scale: u, color: B.chain ? '#3a1e06' : '#e8fbff' });
-  // the SPACE keycap (pressed and lit during the sweep)
-  const kw = Math.round(36 * S), kh = Math.round(16 * S), kx = Math.round(b.cx - r - 10 * S - kw), ky = Math.round(b.cy - kh / 2) + (beat ? u : 0);
-  ctx.globalAlpha = ready ? 1 : 0.6;
-  if (!beat) { ctx.fillStyle = INK; ctx.fillRect(kx + u, ky + kh, kw - 2 * u, 2 * u); }
-  pxFrame(ctx, kx, ky, kw, kh, { u, step: 1, fill: beat ? ['#fffbd0', '#ffe46a', '#ffc81e'] : ['#f0f8ff', '#c2d6e6', '#8aa4bc'], rim: beat ? ['#ffffff', '#ffe46a', '#e8920a'] : ['#ffffff', '#c2d6e6', '#5a7490'] });
-  drawText(ctx, 'SPACE', kx + kw / 2, ky + Math.round((kh - 5 * u) / 2), { font: 'small', align: 'center', scale: u, color: beat ? '#3a1e06' : '#1a3048' });
-  ctx.globalAlpha = 1;
-  if (beat) word3D(ctx, 'SHOCK!', b.cx, y + r, { t, scale: 0.55 * S, pal: 'sun', wobble: 1.4, alpha: 0.9 });
-}
+// [nuke31] the SHOCK button is a physical voxel launch button (nukebtn.js)
+function drawButton(ctx, F, B, L, t) { drawNukeButton(ctx, F, B, L, t); }
 
 export { TAU, lerp };
