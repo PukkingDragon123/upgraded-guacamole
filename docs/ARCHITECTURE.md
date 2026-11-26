@@ -426,8 +426,8 @@ that feels hand-made."
   - Currencies: `aerobuck` / `aerobucks` (the glossy drop, aliases of `coin` / `aero`) and `gem` / `bytegem` (the faceted
     violet Byte Gem: octagonal crown + pavilion, alternating facet tones, cyan emissive "byte" pixels, white glint).
     `has3D(name)` also answers true for every `UI3D_VOX` name. src/ui/gemui.js (the wallet, quest rewards, the gem Skip
-    button, `{abdrop}` / `{bytegem}`) draws these voxel frames (EXCEPT the wallet plaques: [wallet32] uses the hand-drawn
-    pixel droplet / gem there) (`icon3dFrame`, the gem turns once per shine sweep, the
+    button, `{abdrop}` / `{bytegem}`) draws these voxel frames (EXCEPT the wallet: [wallet33] renders its own 3D glass
+    droplet / faceted gem there) (`icon3dFrame`, the gem turns once per shine sweep, the
     drop squashes about its foot); its own pixel sprites only stand in until a frame is built.
   - Lab: `labIcon('fish')` / `fish:` (no id) = the grouper; `fish:<species>` keeps the species' voxel fish.
 - Icons [icons15] (replaces the low-res toy-block icons): every model icon (bigicons.modelFrame / iconFrame / getBigIcon /
@@ -715,7 +715,7 @@ and the boss charge-dodge / minion clicks.
   `getUiIcon('aerobuck')` / `getUiIcon('gem')` pixel icons exist (3D renders are ignored); `drawDrop`, `drawGem`
   (diagonal glint sweep), `drawDropSplash`, `drawGemShards`, `pixelPlate`, `drawGemButton`, `gemSkipButton(ui, ...)`,
   `drawEggChip`, inline text icons `{abdrop}` / `{bytegem}`.
-- Wallet: SUPERSEDED by [wallet32] (brass-framed plaque, pixel sprites, header wallets). Original [cur26] notes:
+- Wallet: SUPERSEDED by [wallet32] and then [wallet33] (3D Frutiger-Aero glass slab). Original [cur26] notes:
   (`UI.drawWallet` in ui.js, replaces the glossy Aero pill): a pixel-art plaque top right (stepped corners, ink
   outline, broken highlight line, ripple marks, rivets; blue droplet half + violet gem half, inset wells, pixel-font
   numbers). Coins tick up as before (`coinShown`, splash on `coinBump`); gems tick up one by one (`gemShown`,
@@ -974,6 +974,8 @@ User direction: "the 3D stuff more cel-shaded and the shading very good".
   within its run-to-run noise.
 
 ## Wallet plaque + header wallets, hand-drawn pixel leaves [wallet32]
+(The wallet / header-wallet DRAWING below is SUPERSEDED by [wallet33] (3D glass slab, src/ui/walletglass.js); the
+placement, slide-away, flight-target and header-wallet rules still apply. The leaves part is current.)
 User direction: "Make the currency UI a lot better like before, this is too ugly, and the leaves like 2D pixel art
 detailed". Supersedes the [cur26] wallet drawing and the voxel / rotated leaf ornaments.
 - Wallet (`src/ui/gemui.js`, `drawWalletPlaque(ctx, ui, {right, y, p, mini, hov, id})`; `UI.drawWallet` in ui.js only
@@ -1190,4 +1192,52 @@ User direction: "make game polish". Presentation only (no gameplay / balance / s
   tank view (they sat on the build toolbar); the NEW BUTTON words bow out when a window opens over them.
 - Spinning fish thumbnails (Satchel) snap through edge-on instead of vanishing for a second.
 - Text: "Need more Aero Bucks...", the chapter 1 cutscene line says Nano Tank (was "goldfish jar").
+
+## Wallet as a glossy 3D Frutiger-Aero glass slab [wallet33]
+User direction: "new money and gem UI more like Frutiger Aero and 3D" (the [wallet32] brass pixel plaque was rejected).
+Supersedes the [wallet32] wallet DRAWING; its placement / slide-away / flight-target / header-wallet rules are unchanged.
+- Code: `src/ui/walletglass.js` (gemui.js re-exports `drawWalletPlaque`, `walletSize`, `walletTip`, `walletTick`,
+  `drawHeaderWallet`, `walletP`, `WALLET_ART`, so ui.js / quests / lab / workshop / wardrobe / shoppanel are untouched).
+  `WALLET_BAKE` exposes the bakers for dev pages / screenshots.
+- Rendering: small CPU 3D renders baked at DEVICE resolution, D device px per wallet unit (unit = `walletP(mode)`
+  logical px; D = 2p on the 2x UI layer, p at 1x; `isHi(ctx)`), blitted 1:1 with nearest neighbour at whole device px.
+  All use the [cel29] model: one top-left key light (`LIT`, half vector `HV`), light quantised into hand-picked
+  hue-shifted 8-step ramps (`AQUA`, `LILAC` for the gem half, `WATER`, `VIOLET`, `LEAF`), hard specular shapes, a lit
+  rim away from the light, dark ink outlines (1 device px, 2 from D >= 4). Rounded glass edges are an explicit exception
+  to [pixui30]'s "no rounded" rule for this one element (crisp, no blur, no anti-aliasing).
+  - Slab (`bakeSlab`, cached per spec / digit-field widths / D): a capsule height field (`slabHeight`: quarter-round
+    bevel `B`, a concave spherical dimple at each icon (`dimR`, `dimDep`; the droplet's is concentric with the left end
+    cap), a sunken rounded number channel per half (`chH`, `chDep`), a groove between the halves), normals by central
+    differences on a per-pixel height grid. Body bands: darker under the top, glowing toward the bottom, bottom bevel
+    glow, a light Fresnel rim (bottom-right) + a crisp light glass edge (top-left), the top bevel kept saturated; a
+    crisp 3-band white GLOSS LENS over the top half with puffy cloud reflections (`cloudAt`), channels darker (number
+    contrast), three baked micro bubbles, glass alpha ~0.91, a 2-band hard drop shadow. The Byte Gem half (right of the
+    groove) uses the periwinkle-violet ramp.
+  - Caustic shimmer: 8 sparse overlay frames (`causticFrame`, thresholded sine interference in the lower glass),
+    cross-faded two at a time. Gloss sweep / hover lift: a white silhouette (`slabMask`) masks a diagonal light band
+    (and a 13 % white lift on hover) in one reusable scratch canvas.
+  - Leaf accent (`bakeLeaf`, HUD slab only): two glossy 3D leaves (almond dome height field with a midrib crease, lime
+    cel ramp, spec) sprouting behind the left end, swaying 1 device px.
+  - Aero Buck (`bakeDrop(D, heightUnits, squashLevel)`): an uneven-capsule SDF droplet with dome normals, inverted
+    refraction banding (deeper top, bright caustic crescent low right), hard white spec streak, back glints, ink
+    outline; 7 squash levels (-3 stretch .. +3 squash) for the gain wobble, grounded at the foot.
+  - Byte Gem (`bakeGem(D, widthUnits, frame, bright)`): an octagonal brilliant (table, 8 crown trapezoids, 8 pavilion
+    triangles, seen 17 degrees from above) rasterised per pixel with flat cel facets, alternating facet tones, light
+    facet edges, cyan "byte" pixels in the pavilion and a cyan table glint. 8 frames cover one 45 degree step of its
+    8-fold symmetry (seamless spin); the `bright` twin is cross-faded in for the gain flash.
+  - Digits (`bakeGlyph`): the game's 'big' pixel face at D px per font px, white with a pale-aqua (gem: pale-lilac)
+    lower half, a 1 device px cyan (gem: lilac) rim, a dark ink outline and a hard drop shadow; flashing digits get a
+    lime rim. Fixed-width cells (no jitter while counting). At D = 1 (1x layer, normal size) the 7 px face is used and
+    the rim is dropped (`specOf`) so the digits stay legible.
+- Specs (`WALLET_ART`, units): FULL 24 tall (bevel 3.4, dimples r 8.1, channel 15, 'big' digits, min field '0000',
+  leaf); MINI 19 tall (bevel 2.4, dimples r 6.7, channel 13.6, 'big' digits, min '000', no leaf). Width = layout of
+  both digit fields (`layoutOf`), so the slab only re-bakes when a field grows past its minimum (~20-40 ms once;
+  `walletTick` pre-bakes the MINI slab, icons and digits one job per frame ~3 s after boot so the first window open
+  does not hitch).
+- Motion (`walletTick` + `ui.walletFx`): on gain the droplet wobbles through the squash frames and 7 glossy beads
+  (`bakeBead`) burst up out of it and fall away; the gem hops, spins fast (`gemSpin`, <= ~1 baked frame per tick so it
+  never strobes) with its bright twin cross-faded in and three pixel twinkles (`star`); changed digits hop 2 units (1
+  on the mini) and flash; a gloss sweep runs across the glass. Idle: a gloss sweep every ~7 s, caustics shimmer, a
+  hollow glossy bubble (`bakeBubble`) rises in each half, the gem turns two facets every ~5.5 s with a twinkle, the
+  droplet bobs 1 device px. Reduced motion freezes all of it. No light-ray fans, no expanding rings. Tooltips per half.
 

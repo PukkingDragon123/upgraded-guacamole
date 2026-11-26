@@ -123,10 +123,10 @@ one, or when a chapter story is waiting. Hover it to keep it open; `Q` opens the
 
 ### Currencies
 
-The wallet in the top-right corner is a small pixel-art plaque with two counters:
+The wallet in the top-right corner is a glossy 3D aqua glass slab with two counters:
 - **Aero Bucks** (the water droplet) are the everyday money. Fish, your tank, crates and quests pay them. You spend
   them on bait, Lab research, crafting, tank gear and most cosmetics.
-- **Byte Gems** (the violet pixel crystal) come **only from quests**:
+- **Byte Gems** (the faceted violet crystal) come **only from quests**:
 
   | Source | Byte Gems |
   | --- | --- |

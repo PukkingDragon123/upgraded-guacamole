@@ -5825,11 +5825,11 @@
     }
     return RAMPS.white;
   }
-  function fromAscii(rows, ramp3) {
+  function fromAscii(rows, ramp4) {
     const w = Math.max(...rows.map((r) => r.length)), h = rows.length;
     const c = makeCanvas(w, h);
     const g = ctxOf(c);
-    const map2 = { o: ramp3[0], 1: ramp3[1], 2: ramp3[2], 3: ramp3[3], 4: ramp3[4], w: "#ffffff", k: "#14102a" };
+    const map2 = { o: ramp4[0], 1: ramp4[1], 2: ramp4[2], 3: ramp4[3], 4: ramp4[4], w: "#ffffff", k: "#14102a" };
     for (let y = 0; y < h; y++) for (let x = 0; x < rows[y].length; x++) {
       const col = map2[rows[y][x]];
       if (!col) continue;
@@ -5838,9 +5838,9 @@
     }
     return c;
   }
-  function shaded(w, h, inside, ramp3, o = {}) {
+  function shaded(w, h, inside, ramp4, o = {}) {
     const buf = new PixelBuffer(w, h);
-    const P6 = ramp3.map((c) => pack(c));
+    const P6 = ramp4.map((c) => pack(c));
     const cx = o.cx ?? w / 2, cy = o.cy ?? h / 2, rx2 = o.rx ?? w / 2, ry2 = o.ry ?? h / 2;
     const lx = -0.62, ly = -0.78;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -5894,7 +5894,7 @@
     }
     return c;
   }
-  function puffFrames(R2, ramp3, n2 = 5, seed = 1) {
+  function puffFrames(R2, ramp4, n2 = 5, seed = 1) {
     const lumps = [[0, 0.15, 0.72], [-0.48, 0.3, 0.5], [0.5, 0.28, 0.55], [0.05, -0.32, 0.55], [-0.25, -0.1, 0.5]];
     const out = [];
     for (let f = 0; f < n2; f++) {
@@ -5902,7 +5902,7 @@
       const s = Math.ceil(R2 * 2.6) + 2;
       const cx = s / 2, cy = s / 2;
       const inside = (x, y) => lumps.some(([lx, ly, lr]) => Math.hypot(x - (cx + lx * R2), y - (cy + ly * R2)) < lr * R2 * grow3);
-      const c = shaded(s, s, inside, ramp3, { cx, cy, rx: R2, ry: R2, dither: 0.5 });
+      const c = shaded(s, s, inside, ramp4, { cx, cy, rx: R2, ry: R2, dither: 0.5 });
       if (f >= 2) {
         const cut = (f - 1) / (n2 - 0.5);
         const g = ctxOf(c);
@@ -5915,7 +5915,7 @@
     }
     return out;
   }
-  function impactFrames(R2, ramp3) {
+  function impactFrames(R2, ramp4) {
     const out = [];
     const spikes = 8;
     const frames = [[0.45, 0.22, false], [0.85, 0.36, false], [1, 0.42, false], [1, 0.55, true], [1.05, 0.75, true]];
@@ -5941,7 +5941,7 @@
         inside = (x, y) => polys.some((p) => p(x, y));
       }
       const buf = new PixelBuffer(s, s);
-      const P6 = ramp3.map((c) => pack(c));
+      const P6 = ramp4.map((c) => pack(c));
       for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
         if (!inside(x + 0.5, y + 0.5)) continue;
         const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / Math.max(1, ro) + (bayer(x, y) - 0.5) * 0.18;
@@ -5952,7 +5952,7 @@
     }
     return out;
   }
-  function leafFrames(len, wid, ramp3, petal = false) {
+  function leafFrames(len, wid, ramp4, petal = false) {
     const out = [];
     for (const ang of [0, 0.7, 1.5, 2.3]) {
       const s = Math.ceil(len) + 4, cx = s / 2, cy = s / 2;
@@ -5966,67 +5966,67 @@
         const half = wid / 2 * flat * (petal ? Math.sqrt(1 - t * t) * (1 - 0.25 * t) : Math.sin(Math.acos(t)) * (1 - 0.15 * t));
         return Math.abs(v) <= half;
       };
-      const c = shaded(s, s, inside, ramp3, { dither: 0.5 });
+      const c = shaded(s, s, inside, ramp4, { dither: 0.5 });
       if (!petal) {
         const g = ctxOf(c);
-        g.fillStyle = ramp3[1];
+        g.fillStyle = ramp4[1];
         for (let i = -len / 2 + 1.5; i < len / 2 - 1; i += 1) g.fillRect(Math.round(cx + ca * i - 0.5), Math.round(cy + sa * i - 0.5), 1, 1);
       }
       out.push(c);
     }
     return out;
   }
-  function confettiFrames(ramp3) {
+  function confettiFrames(ramp4) {
     const out = [];
     for (const [w, h, lvl] of [[3, 3, 2], [2, 3, 2], [1, 3, 3], [2, 3, 3], [3, 2, 1]]) {
       const c = makeCanvas(w + 2, h + 2);
       const g = ctxOf(c);
-      g.fillStyle = ramp3[0];
+      g.fillStyle = ramp4[0];
       g.fillRect(0, 1, w + 2, h);
       g.fillRect(1, 0, w, h + 2);
-      g.fillStyle = ramp3[lvl];
+      g.fillStyle = ramp4[lvl];
       g.fillRect(1, 1, w, h);
       if (w > 1) {
-        g.fillStyle = ramp3[4];
+        g.fillStyle = ramp4[4];
         g.fillRect(1, 1, 1, 1);
       }
       out.push(c);
     }
     return out;
   }
-  function shardFrames(ramp3) {
+  function shardFrames(ramp4) {
     const out = [];
     for (const pts of [[[0, 0], [5, 1], [2, 4]], [[1, 0], [4, 2], [0, 5]], [[0, 2], [5, 0], [4, 4]]]) {
-      out.push(shaded(7, 7, inPoly(pts.map(([x, y]) => [x + 1, y + 1])), ramp3, { cx: 3.5, cy: 3.5, rx: 3, ry: 3, spec: [2, 2], specShape: [[0, 0]] }));
+      out.push(shaded(7, 7, inPoly(pts.map(([x, y]) => [x + 1, y + 1])), ramp4, { cx: 3.5, cy: 3.5, rx: 3, ry: 3, spec: [2, 2], specShape: [[0, 0]] }));
     }
     return out;
   }
-  function build(name, ramp3, size) {
+  function build(name, ramp4, size) {
     switch (name) {
       case "heart":
-        return (size === 0 ? ART.heart0 : ART.heart).map((r) => fromAscii(r, ramp3));
+        return (size === 0 ? ART.heart0 : ART.heart).map((r) => fromAscii(r, ramp4));
       case "star":
-        return (size === 0 ? ART.star0 : ART.star).map((r) => fromAscii(r, ramp3));
+        return (size === 0 ? ART.star0 : ART.star).map((r) => fromAscii(r, ramp4));
       case "sparkle":
-        return (size === 0 ? ART.sparkle0 : ART.sparkle).map((r) => fromAscii(r, ramp3));
+        return (size === 0 ? ART.sparkle0 : ART.sparkle).map((r) => fromAscii(r, ramp4));
       case "drop":
-        return (size === 0 ? ART.drop0 : ART.drop).map((r) => fromAscii(r, ramp3));
+        return (size === 0 ? ART.drop0 : ART.drop).map((r) => fromAscii(r, ramp4));
       case "aero":
-        return ART.aero.map((r) => fromAscii(r, ramp3));
+        return ART.aero.map((r) => fromAscii(r, ramp4));
       case "scale":
-        return ART.scale.map((r) => fromAscii(r, ramp3));
+        return ART.scale.map((r) => fromAscii(r, ramp4));
       case "pop":
-        return ART.pop.map((r) => fromAscii(r, ramp3));
+        return ART.pop.map((r) => fromAscii(r, ramp4));
       case "note":
-        return ART.note.map((r) => fromAscii(r, ramp3));
+        return ART.note.map((r) => fromAscii(r, ramp4));
       case "wave":
-        return ART.wave.map((r) => fromAscii(r, ramp3));
+        return ART.wave.map((r) => fromAscii(r, ramp4));
       case "zap":
-        return ART.zap.map((r) => fromAscii(r, ramp3));
+        return ART.zap.map((r) => fromAscii(r, ramp4));
       case "spark":
-        return ART.spark.map((r) => fromAscii(r, ramp3));
+        return ART.spark.map((r) => fromAscii(r, ramp4));
       case "ribbon":
-        return ART.ribbon.map((r) => fromAscii(r, ramp3));
+        return ART.ribbon.map((r) => fromAscii(r, ramp4));
       case "bubble": {
         const r = [2, 3, 4, 5, 7][size] ?? 3, c = bubble(r);
         return [withHi(c, () => fitHi(c, bubble(r * 2)))];
@@ -6035,26 +6035,26 @@
       case "puff":
       case "smoke":
       case "dust":
-        return puffFrames([3, 4.5, 6.5][size] ?? 4.5, ramp3, 5, size);
+        return puffFrames([3, 4.5, 6.5][size] ?? 4.5, ramp4, 5, size);
       case "impact":
-        return impactFrames([9, 13, 20][size] ?? 13, ramp3);
+        return impactFrames([9, 13, 20][size] ?? 13, ramp4);
       case "leaf":
-        return leafFrames([7, 9, 12][size] ?? 9, [4, 5, 6][size] ?? 5, ramp3, false);
+        return leafFrames([7, 9, 12][size] ?? 9, [4, 5, 6][size] ?? 5, ramp4, false);
       case "petal":
-        return leafFrames([5, 6, 8][size] ?? 6, [4, 5, 6][size] ?? 5, ramp3, true);
+        return leafFrames([5, 6, 8][size] ?? 6, [4, 5, 6][size] ?? 5, ramp4, true);
       case "confetti":
-        return confettiFrames(ramp3);
+        return confettiFrames(ramp4);
       case "shard":
-        return shardFrames(ramp3);
+        return shardFrames(ramp4);
       default:
-        return [fromAscii(ART.sparkle0[1], ramp3)];
+        return [fromAscii(ART.sparkle0[1], ramp4)];
     }
   }
   function pixelBubble(r) {
     return bubble(Math.max(1, Math.round(r)));
   }
-  function pxFrames(name, ramp3 = "white", size = 1) {
-    const R2 = rampOf(ramp3);
+  function pxFrames(name, ramp4 = "white", size = 1) {
+    const R2 = rampOf(ramp4);
     const key = name + "|" + R2.join("") + "|" + size;
     let f = sheets.get(key);
     if (!f) {
@@ -21776,7 +21776,7 @@ void main() {
     const top = new TTpl();
     const col = (k) => rgb01(sp[k]);
     const BASE2 = col("base"), DARK = col("dark"), OLV = col("olive"), AMB2 = col("amber"), OCH = col("ochre"), SEAM = col("seam");
-    const RIM = col("rimEdge"), UND = col("under"), PL = col("plast"), PLS = col("plastSeam");
+    const RIM2 = col("rimEdge"), UND = col("under"), PL = col("plast"), PLS = col("plastSeam");
     const NA = 168, NR = 44;
     const seamAt = (x, z, d) => {
       const s0 = S12.at(x, z).id;
@@ -21820,7 +21820,7 @@ void main() {
         else if (fl < -0.6) c = tmix(c, OCH, 0.5);
       }
       if (band) c = tmix(c, OCH, 0.22);
-      if (q.kind === 2 && q.rho > 0.965) c = tmix(c, RIM, 0.55);
+      if (q.kind === 2 && q.rho > 0.965) c = tmix(c, RIM2, 0.55);
       return tclampC(toneRGB(c, (hash2(Math.floor(x * 1.9), Math.floor(z * 1.9), 77) - 0.5) * 0.12));
     };
     for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) {
@@ -21858,7 +21858,7 @@ void main() {
     }
     for (let j = 0; j < NA; j++) {
       const a = V2[NR][j], b = V2[NR][j + 1], c2 = U2[NR][j + 1], d = U2[NR][j];
-      const k = tmix(RIM, DARK, 0.25 + 0.2 * hash2(j, 1, 79));
+      const k = tmix(RIM2, DARK, 0.25 + 0.2 * hash2(j, 1, 79));
       top.quad(a, b, c2, d, Math.round(j / NA * 25 * 2) % 2 ? k : tmix(k, SEAM, 0.35));
     }
     return { tpl: top, S: S12 };
@@ -23724,9 +23724,9 @@ void main() {
           return x < 0 || y < 0 || x >= this.w || y >= this.h ? 0 : this.d[y * this.w + x];
         }
         // shaded fill: inside(px, py) on pixel centres, shade(px, py) -> lightness -1..1 (positive = lit)
-        fill(inside, ramp3, shadeFn, o = {}) {
-          const R2 = rampP(ramp3);
-          const tid = this.tags.push(ramp3) - 1;
+        fill(inside, ramp4, shadeFn, o = {}) {
+          const R2 = rampP(ramp4);
+          const tid = this.tags.push(ramp4) - 1;
           for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
             const px3 = x + 0.5, py = y + 0.5;
             if (!inside(px3, py)) continue;
@@ -23737,26 +23737,26 @@ void main() {
           }
         }
         // sphere-ish ellipse
-        ell(cx, cy, rx2, ry2, ramp3, o = {}) {
+        ell(cx, cy, rx2, ry2, ramp4, o = {}) {
           const lx = -0.6, ly = -0.8;
-          this.fill((x, y) => ((x - cx) / rx2) ** 2 + ((y - cy) / ry2) ** 2 <= 1, ramp3, (x, y) => {
+          this.fill((x, y) => ((x - cx) / rx2) ** 2 + ((y - cy) / ry2) ** 2 <= 1, ramp4, (x, y) => {
             const nx = (x - cx) / rx2, ny = (y - cy) / ry2, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
             return (nx * lx + ny * ly) * 0.9 + nz * 0.35 - 0.25 + (o.bias || 0);
           }, o);
         }
         // pillow-shaded polygon
-        poly(pts, ramp3, o = {}) {
+        poly(pts, ramp4, o = {}) {
           const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
           const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
           const rx2 = Math.max(1, (Math.max(...xs) - Math.min(...xs)) / 2), ry2 = Math.max(1, (Math.max(...ys) - Math.min(...ys)) / 2);
           const ins = inPoly2(pts);
-          this.fill(ins, ramp3, (x, y) => {
+          this.fill(ins, ramp4, (x, y) => {
             const nx = (x - cx) / rx2, ny = (y - cy) / ry2;
             return -(nx * 0.55 + ny * 0.8) * 0.75 + (o.bias || 0);
           }, o);
         }
-        rect(x, y, w, h, ramp3, o = {}) {
-          this.poly([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], ramp3, o);
+        rect(x, y, w, h, ramp4, o = {}) {
+          this.poly([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], ramp4, o);
         }
         line(x0, y0, x1, y1, c) {
           const n2 = Math.max(1, Math.round(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
@@ -23782,8 +23782,8 @@ void main() {
               }
             }
             if (n2 < 0) continue;
-            const ramp3 = this.tags[tg[n2]];
-            this.d[i] = ramp3 ? rampP(ramp3)[0] : darker(src[n2]);
+            const ramp4 = this.tags[tg[n2]];
+            this.d[i] = ramp4 ? rampP(ramp4)[0] : darker(src[n2]);
           }
         }
         // inner edge darkening on the bottom-right side of every shape (crisp form)
@@ -23795,9 +23795,9 @@ void main() {
             if (!src[i]) continue;
             const empty = (xx, yy) => xx < 0 || yy < 0 || xx >= w || yy >= h || !src[yy * w + xx];
             if (empty(x + 1, y) || empty(x, y + 1)) {
-              const ramp3 = this.tags[this.tag[i]];
-              if (ramp3) {
-                const R2 = rampP(ramp3);
+              const ramp4 = this.tags[this.tag[i]];
+              if (ramp4) {
+                const R2 = rampP(ramp4);
                 const k = R2.indexOf(src[i]);
                 if (k > 1) this.d[i] = R2[k - 1];
               }
@@ -23831,8 +23831,8 @@ void main() {
         },
         kelp_fibre(p) {
           for (const [ox, ph, r] of [[8, 0, "kelp"], [12, 1.4, "kelp"], [15.5, 2.6, "kelp"], [10.5, 3.3, "lime"]]) {
-            const ramp3 = r === "lime" ? ["#1d5a12", "#3c9a24", "#7ad83a", "#c8f56a", "#f4ffd8"] : r;
-            p.fill((x, y) => y > 2 && y < 22 && Math.abs(x - (ox + Math.sin(y * 0.45 + ph) * 1.6)) < 1.7 - (y < 5 ? (5 - y) * 0.3 : 0), ramp3, (x, y) => (ox + Math.sin(y * 0.45 + ph) * 1.6 - x) * 0.6 + 0.1);
+            const ramp4 = r === "lime" ? ["#1d5a12", "#3c9a24", "#7ad83a", "#c8f56a", "#f4ffd8"] : r;
+            p.fill((x, y) => y > 2 && y < 22 && Math.abs(x - (ox + Math.sin(y * 0.45 + ph) * 1.6)) < 1.7 - (y < 5 ? (5 - y) * 0.3 : 0), ramp4, (x, y) => (ox + Math.sin(y * 0.45 + ph) * 1.6 - x) * 0.6 + 0.1);
           }
           p.rect(6, 9, 13, 2.2, "tan", { bias: 0.2 });
           p.rect(6, 15, 13, 2.2, "tan");
@@ -23937,7 +23937,7 @@ void main() {
           for (const [x, y] of [[11, 12], [10, 12]]) p.over(x, y, P3.rune[4]);
         },
         abyss_crystal(p) {
-          const shard = (pts, ramp3, b) => p.poly(pts, ramp3, { bias: b });
+          const shard = (pts, ramp4, b) => p.poly(pts, ramp4, { bias: b });
           shard([[4, 21], [5, 12], [8, 9], [10, 21]], "crystalB", -0.1);
           shard([[14, 21], [15, 10], [18, 8], [20, 21]], "crystalB", 0);
           shard([[8, 21], [9, 6], [12, 2], [15, 6], [16, 21]], "crystal", 0.1);
@@ -40053,6 +40053,38 @@ kmlmk..
     }
   });
 
+  // src/ui/walletglass.js
+  var hexRGB2, ramp3, AQUA, LILAC, WATER, VIOLET, LEAF, INK6, RIM, LIT, HV;
+  var init_walletglass = __esm({
+    "src/ui/walletglass.js"() {
+      init_canvas();
+      init_font();
+      init_gems();
+      init_aero();
+      init_hires();
+      hexRGB2 = (h) => {
+        const n2 = parseInt(h.slice(1), 16);
+        return [n2 >> 16 & 255, n2 >> 8 & 255, n2 & 255];
+      };
+      ramp3 = (arr) => arr.map(hexRGB2);
+      AQUA = ramp3(["#06436a", "#08648f", "#0a88b2", "#12aacc", "#2ccadc", "#74e6e4", "#c4faee", "#ffffff"]);
+      LILAC = ramp3(["#1e1868", "#2c278e", "#3d3cae", "#5155cc", "#6e74e2", "#9a9ef2", "#d2d4fc", "#ffffff"]);
+      WATER = ramp3(["#072a72", "#0b46a6", "#1168d0", "#1c8eec", "#38b2f8", "#78d6fc", "#c6f2ff", "#ffffff"]);
+      VIOLET = ramp3(["#2a0a66", "#43129a", "#6020c4", "#8236e6", "#a35cf8", "#c890ff", "#ecd6ff", "#ffffff"]);
+      LEAF = ramp3(["#0c3e22", "#13602e", "#1f863a", "#3aac3c", "#70cc44", "#aee868", "#e2fbb0", "#ffffff"]);
+      INK6 = { a: hexRGB2("#06284a"), g: hexRGB2("#170f4e"), drop: hexRGB2("#061d52"), gem: hexRGB2("#1c0646"), leaf: hexRGB2("#08311a") };
+      RIM = { a: hexRGB2("#8af0ff"), g: hexRGB2("#c2c4ff") };
+      LIT = (() => {
+        const v = [-0.5, -0.72, 0.85], l = Math.hypot(...v);
+        return v.map((c) => c / l);
+      })();
+      HV = (() => {
+        const v = [LIT[0], LIT[1], LIT[2] + 1], l = Math.hypot(...v);
+        return v.map((c) => c / l);
+      })();
+    }
+  });
+
   // src/ui/gemui.js
   function fromArt(rows, pal2) {
     const h = rows.length, w = rows[0].length;
@@ -40114,8 +40146,7 @@ kmlmk..
       init_font();
       init_icons3d();
       init_gems();
-      init_aero();
-      init_hires();
+      init_walletglass();
       DROP_ART = [
         ".....o.....",
         "....oWo....",
@@ -40239,7 +40270,7 @@ kmlmk..
       ...st
     });
   }
-  var BIOMES, BIOME_BY_ID, INK6, INK_SOFT, INK_FAINT, boxCache;
+  var BIOMES, BIOME_BY_ID, INK7, INK_SOFT, INK_FAINT, boxCache;
   var init_journal = __esm({
     "src/ui/journal.js"() {
       init_math();
@@ -40269,7 +40300,7 @@ kmlmk..
         { id: "abyss", name: "The Deep Ocean", tab: "Deep", color: "#4a5ad8", icon: "moon", water: ["#6a8ae0", "#101a5a"] }
       ];
       BIOME_BY_ID = Object.fromEntries(BIOMES.map((b) => [b.id, b]));
-      INK6 = AERO.ink;
+      INK7 = AERO.ink;
       INK_SOFT = AERO.inkSoft;
       INK_FAINT = AERO.inkFaint;
       boxCache = /* @__PURE__ */ new Map();
@@ -43143,14 +43174,14 @@ kmlmk..
   });
 
   // src/world/sky.js
-  function recolor2(src, ramp3, gamma = 1, vshade = 0) {
+  function recolor2(src, ramp4, gamma = 1, vshade = 0) {
     const w = src.width, h = src.height;
     let s = pixelsOf.get(src);
     if (!s || s.length !== w * h * 4) {
       s = ctxOf(src).getImageData(0, 0, w, h).data;
       pixelsOf.set(src, s);
     }
-    const R2 = ramp3.map(hexToRgb);
+    const R2 = ramp4.map(hexToRgb);
     const n2 = R2.length - 1;
     let lo = 1, hi = 0;
     for (let i = 0; i < s.length; i += 4) {
@@ -45312,9 +45343,9 @@ kmlmk..
         if (solid3[i]) continue;
         if (x > 0 && solid3[i - 1] || x < W4 - 1 && solid3[i + 1] || y > 0 && solid3[i - W4] || y < H - 1 && solid3[i + W4]) {
           const j = i * 4;
-          d[j] = INK7[0];
-          d[j + 1] = INK7[1];
-          d[j + 2] = INK7[2];
+          d[j] = INK8[0];
+          d[j + 1] = INK8[1];
+          d[j + 2] = INK8[2];
           d[j + 3] = 255;
           adds.push(i);
         }
@@ -45959,7 +45990,7 @@ kmlmk..
       rect: { x: rx0, y: ry0, w: Math.max(...xs) - rx0 + size * k * 0.08, h: Math.max(...ys) - ry0 + size * k * 0.08 }
     };
   }
-  var GROUPER_INFO, add9, sub3, scl2, dot3, cross4, norm3, rx, ry, rz, h38, rgb, mixC2, lit, sm2, C3, LID, LID_D, BROW, LOOK, GROUPER_VOXEL, BODY, JAW, X0, X1, BODY_SEG, BODY_ROWS, HINGE, HP, PIV, MID_Y, EYE, EYE_R, EYE_N, TAIL0, C0, CELL_W, CELL_H, YAW0, TILT0, YAW_FRONT, TILT_FRONT, seamX, mouthY, PaintMesh, GRILLE, GRILLE_C, HATCH, paintPalate, paintLipU, paintLipL, SPINES, GSTAT, S11, CO, POINT_E, finDir, GROUPER_ANIMS, GROUPER_ALIAS, SHEETS, SIZES, JAW_LV, jawOf, INK7, GROUPER_OUTLINE, JOBS, pumpT, FACESTATE, FPX, RIDE, FLAT, JIG, COMP, talkLevel;
+  var GROUPER_INFO, add9, sub3, scl2, dot3, cross4, norm3, rx, ry, rz, h38, rgb, mixC2, lit, sm2, C3, LID, LID_D, BROW, LOOK, GROUPER_VOXEL, BODY, JAW, X0, X1, BODY_SEG, BODY_ROWS, HINGE, HP, PIV, MID_Y, EYE, EYE_R, EYE_N, TAIL0, C0, CELL_W, CELL_H, YAW0, TILT0, YAW_FRONT, TILT_FRONT, seamX, mouthY, PaintMesh, GRILLE, GRILLE_C, HATCH, paintPalate, paintLipU, paintLipL, SPINES, GSTAT, S11, CO, POINT_E, finDir, GROUPER_ANIMS, GROUPER_ALIAS, SHEETS, SIZES, JAW_LV, jawOf, INK8, GROUPER_OUTLINE, JOBS, pumpT, FACESTATE, FPX, RIDE, FLAT, JIG, COMP, talkLevel;
   var init_grouper = __esm({
     "src/gfx/grouper.js"() {
       init_lowpoly();
@@ -46374,7 +46405,7 @@ kmlmk..
       SIZES = [16, 20, 24, 28, 32, 36, 40, 44, 48, 56, 64, 72, 80, 96, 112, 128];
       JAW_LV = (A2) => A2.jl || 1;
       jawOf = (lv, nl) => nl <= 1 || !lv ? 0 : nl === 2 ? 0.6 : lv * 0.5;
-      INK7 = [16, 12, 8];
+      INK8 = [16, 12, 8];
       GROUPER_OUTLINE = (size) => size >= 52 ? 2 : 1;
       JOBS = /* @__PURE__ */ new Map();
       pumpT = -1e9;
@@ -47833,7 +47864,7 @@ kmlmk..
     ctxOf(c).drawImage(src, 0, y0, src.width, h, 0, 0, src.width, h);
     return c;
   }
-  var SKY2, SKYHZ, OVERCAST, WATER, ORB_TINTS, PAR, qmix, tri, OsceanBiome;
+  var SKY2, SKYHZ, OVERCAST, WATER2, ORB_TINTS, PAR, qmix, tri, OsceanBiome;
   var init_oscean = __esm({
     "src/world/biomes/oscean.js"() {
       init_base();
@@ -47864,7 +47895,7 @@ kmlmk..
         dusk: [[0, "#54508a"], [1, "#c8a2b6"]],
         night: [[0, "#060c1c"], [1, "#182844"]]
       };
-      WATER = {
+      WATER2 = {
         day: [[0, "#d6fbff"], [0.05, "#78dcff"], [0.22, "#38b2ff"], [0.6, "#1e8cf2"], [1, "#166ee0"]],
         dusk: [[0, "#ffd6c2"], [0.04, "#c2b6e2"], [0.14, "#6aa0da"], [0.5, "#3a68b8"], [1, "#283f8e"]],
         night: [[0, "#4a8ed0"], [0.1, "#2e6eb0"], [0.5, "#1e5094"], [1, "#133676"]]
@@ -47943,7 +47974,7 @@ kmlmk..
           lap("sky");
           yield;
           const wo = { y0: this.base - 2, y1: H, levels: 24 };
-          this.water = { day: gradientStrip(H, WATER.day, wo), dusk: gradientStrip(H, WATER.dusk, wo), night: gradientStrip(H, WATER.night, wo) };
+          this.water = { day: gradientStrip(H, WATER2.day, wo), dusk: gradientStrip(H, WATER2.dusk, wo), night: gradientStrip(H, WATER2.night, wo) };
           this.terrain();
           lap("terrain");
           yield;
@@ -48335,7 +48366,7 @@ kmlmk..
           this.cols.sub = tri("#b8f6ff", "#e0b8c0", "#5a90d0", tod);
           this.fogColor = tri("#5cc4f2", "#5a7ac0", "#1e4c90", tod);
           const fkey = Math.round(tod.day * 40) + "," + Math.round(tod.dusk * 40);
-          this.decor.refog((y) => waterColorAt(WATER, tod, y, this.base - 2, H), fkey);
+          this.decor.refog((y) => waterColorAt(WATER2, tod, y, this.base - 2, H), fkey);
           const q = quality(env);
           const sy = this.surfaceAt(env);
           const wind = 1 + wx.bubbles * 1.6 + wx.rain * 0.5;
@@ -48641,13 +48672,13 @@ kmlmk..
         drawOrb(ctx2, o, fogA, dx, dy) {
           const b = voxBall(o.r, o.tint, { spec: 0.95 });
           const y = o.y + Math.sin(this.t * 0.8 + o.ph) * 4;
-          const col = waterColorAt(WATER, this.tod, y, this.base - 2, this.H);
+          const col = waterColorAt(WATER2, this.tod, y, this.base - 2, this.H);
           ctx2.drawImage(this.fog.get(b.canvas, col, fogA), Math.round(o.x + dx - b.ox), Math.round(y + dy - b.oy));
         }
         drawPod(ctx2) {
           const p = this.pod;
           if (!p) return;
-          const col = waterColorAt(WATER, this.tod, p.y, this.base - 2, this.H);
+          const col = waterColorAt(WATER2, this.tod, p.y, this.base - 2, this.H);
           for (const [ox, oy, k] of [[0, 0, 0], [-46, 14, 1.3], [-80, -6, 2.4]]) {
             const f = this.dolphin.frame(p.ph + k, p.dir);
             const c = this.giantFog.get(f.canvas, col, 0.55);
@@ -48661,7 +48692,7 @@ kmlmk..
           for (const tb of this.turbines) {
             if (tb.band !== band) continue;
             const R2 = hi ? tb.R2 : null, R3 = R2 || tb.R, f = R3.frames[Math.floor(tb.ph / (TAU / 3) * R3.n % R3.n + R3.n) % R3.n];
-            const col = waterColorAt(WATER, tod, tb.y, this.base - 2, this.H);
+            const col = waterColorAt(WATER2, tod, tb.y, this.base - 2, this.H);
             const c = this.fog.get(f, col, this.D.fog(tb.z));
             if (R2) ctx2.drawImage(c, Math.round(tb.x + dx) - R2.cx / 2, Math.round(tb.y + dy) - R2.cy / 2, c.width / 2, c.height / 2);
             else ctx2.drawImage(c, Math.round(tb.x + dx - R3.cx), Math.round(tb.y + dy - R3.cy));
@@ -49258,7 +49289,7 @@ kmlmk..
   __export(shallows_exports, {
     ShallowsBiome: () => ShallowsBiome
   });
-  var SKY3, SKYHZ2, OVERCAST2, WATER2, RIDDLES, qmix2, tri2, ShallowsBiome;
+  var SKY3, SKYHZ2, OVERCAST2, WATER3, RIDDLES, qmix2, tri2, ShallowsBiome;
   var init_shallows = __esm({
     "src/world/biomes/shallows.js"() {
       init_base();
@@ -49286,7 +49317,7 @@ kmlmk..
         dusk: [[0, "#40344e"], [1, "#a47c7a"]],
         night: [[0, "#04060c"], [1, "#141a28"]]
       };
-      WATER2 = {
+      WATER3 = {
         day: [[0, "#9af8f0"], [0.06, "#4ae0f0"], [0.3, "#1eb4f0"], [0.62, "#1288e0"], [1, "#0c66c4"]],
         dusk: [[0, "#f2b48a"], [0.03, "#b0a8a8"], [0.1, "#4a92b4"], [0.42, "#2c649c"], [1, "#1e3a74"]],
         night: [[0, "#3a86a8"], [0.1, "#2a6e98"], [0.5, "#1c5088"], [1, "#12346c"]]
@@ -49349,7 +49380,7 @@ kmlmk..
           yield* this.buildSky$();
           const t1 = performance.now();
           const wo = { y0: this.base - 2, y1: H, levels: 24 };
-          this.water = { day: gradientStrip(H, WATER2.day, wo), dusk: gradientStrip(H, WATER2.dusk, wo), night: gradientStrip(H, WATER2.night, wo) };
+          this.water = { day: gradientStrip(H, WATER3.day, wo), dusk: gradientStrip(H, WATER3.dusk, wo), night: gradientStrip(H, WATER3.night, wo) };
           yield;
           yield* this.buildDepth$();
           const t2 = performance.now();
@@ -49837,7 +49868,7 @@ kmlmk..
           this.fogColor = tri2("#33b2cc", "#2e6e98", "#1c5284", tod);
           if (wx.rain > 0.05) this.fogColor = qmix2(this.fogColor, "#5a7484", wx.rain * 0.35);
           const fkey = Math.round(tod.day * 40) + "," + Math.round(tod.dusk * 40);
-          this.decor.refog((y) => waterColorAt(WATER2, tod, y, this.base - 2, H), fkey);
+          this.decor.refog((y) => waterColorAt(WATER3, tod, y, this.base - 2, H), fkey);
           const q = quality(env);
           const sy = this.surfaceAt(env);
           if (wx.rain > 0.05) {
@@ -50157,7 +50188,7 @@ kmlmk..
           if (!gi) return;
           const f = this.giantV(gi.kind).frame(gi.ph, gi.dir);
           if (!f) return;
-          const col = waterColorAt(WATER2, this.tod, gi.y, this.base - 2, this.H);
+          const col = waterColorAt(WATER3, this.tod, gi.y, this.base - 2, this.H);
           const c = this.giantFog.get(f.canvas, col, gi.kind === "whale" ? 0.66 : 0.58);
           ctx2.drawImage(c, Math.round(gi.x - f.ox + this.par.x * 1.1), Math.round(gi.y - f.oy + this.par.y * 0.5), f.w, f.h);
         }
@@ -50470,7 +50501,7 @@ kmlmk..
       return pack(x === 1 ? mix(c, "#ffffff", 0.4) : x === 4 ? mix(c, "#200810", 0.4) : y === 3 ? "#f0f0f0" : c);
     });
   }
-  var SKY4, SKYHZ3, WATER3, qmix3, tri3, SCREEN_TEXT, VEND, ScreenFX, JunkyardBiome;
+  var SKY4, SKYHZ3, WATER4, qmix3, tri3, SCREEN_TEXT, VEND, ScreenFX, JunkyardBiome;
   var init_junkyard = __esm({
     "src/world/biomes/junkyard.js"() {
       init_base();
@@ -50496,7 +50527,7 @@ kmlmk..
         night: [[0, "#010203"], [0.6, "#05080a"], [1, "#121a1c"]]
       };
       SKYHZ3 = { day: "#c4ecd0", dusk: "#c2704e", night: "#0c1214" };
-      WATER3 = {
+      WATER4 = {
         day: [[0, "#9ae8cc"], [0.05, "#4ac0a8"], [0.3, "#26948a"], [0.65, "#1a6a6a"], [1, "#104a50"]],
         dusk: [[0, "#d0a874"], [0.05, "#82907a"], [0.35, "#40645e"], [1, "#18343a"]],
         night: [[0, "#447672"], [0.08, "#326664"], [0.5, "#204c4e"], [1, "#123236"]]
@@ -50669,7 +50700,7 @@ kmlmk..
           this.waterBlend = new Blend();
           yield* this.buildSky$();
           const wo = { y0: this.base - 2, y1: H, levels: 24 };
-          this.water = { day: gradientStrip(H, WATER3.day, wo), dusk: gradientStrip(H, WATER3.dusk, wo), night: gradientStrip(H, WATER3.night, wo) };
+          this.water = { day: gradientStrip(H, WATER4.day, wo), dusk: gradientStrip(H, WATER4.dusk, wo), night: gradientStrip(H, WATER4.night, wo) };
           yield;
           this.fx = new ScreenFX();
           yield;
@@ -51215,7 +51246,7 @@ kmlmk..
           this.cols.crest = tri3("#d0f4dc", "#ffd8b0", "#7aa8a0", tod);
           this.cols.sub = tri3("#86c4a8", "#c0a080", "#3a6a66", tod);
           this.fogColor = qmix3(tri3("#2f6e64", "#4a5a50", "#1c4448", tod), "#141a14", wx.oil * 0.35);
-          this.decor.refog((y) => waterColorAt(WATER3, tod, y, this.base - 2, H), Math.round(tod.day * 40) + "," + Math.round(tod.dusk * 40));
+          this.decor.refog((y) => waterColorAt(WATER4, tod, y, this.base - 2, H), Math.round(tod.day * 40) + "," + Math.round(tod.dusk * 40));
           this.flicker = wx.static > 0.2 && Math.random() < 0.06 * wx.static ? Math.random() * 0.5 : this.flicker * Math.exp(-dt * 12);
           if (wx.static > 0.3 && !this.tear && Math.random() < dt * 0.8 * wx.static) this.tear = { y: Math.random() * H, h: 4 + Math.random() * 16, dx: Math.round((Math.random() - 0.5) * 12), t: 0.12 };
           if (this.tear) {
@@ -51647,7 +51678,7 @@ kmlmk..
     const s = r * 2 + 1;
     return paint5(s, s, (x, y) => Math.hypot(x - r, y - r) <= r + 0.2 ? pack("#ffffff") : 0);
   }
-  var SKY_NIGHT, UPPER, WATER4, GLYPHS, GLYPH_IDS, ORDER, STRATA, AbyssBiome;
+  var SKY_NIGHT, UPPER, WATER5, GLYPHS, GLYPH_IDS, ORDER, STRATA, AbyssBiome;
   var init_abyss = __esm({
     "src/world/biomes/abyss.js"() {
       init_base();
@@ -51665,7 +51696,7 @@ kmlmk..
       init_scenery();
       SKY_NIGHT = { night: [[0, "#010208"], [0.6, "#050a1e"], [0.9, "#0c1838"], [1, "#18305a"]] };
       UPPER = [[0, "#3a6a9a"], [0.05, "#2c5688"], [0.35, "#22447a"], [1, "#1c2e60"]];
-      WATER4 = [[0, "#1c2e60"], [0.3, "#2a4280"], [0.5, "#34529a"], [0.62, "#2c4686"], [0.8, "#1c2e60"], [1, "#101c40"]];
+      WATER5 = [[0, "#1c2e60"], [0.3, "#2a4280"], [0.5, "#34529a"], [0.62, "#2c4686"], [0.8, "#1c2e60"], [1, "#101c40"]];
       GLYPHS = {
         moon: ["..###..", ".##....", "##.....", "##.....", "##.....", ".##....", "..###.."],
         eye: [".......", "..###..", ".#...#.", "#..#..#", ".#...#.", "..###..", "......."],
@@ -51728,7 +51759,7 @@ kmlmk..
           this.level = Math.round(this.top * 0.46);
           this.ys = new Int16Array(W4 + 2);
           this.ys.fill(this.level);
-          this.waterStrip = gradientStrip(H, WATER4, { levels: 22 });
+          this.waterStrip = gradientStrip(H, WATER5, { levels: 22 });
           yield;
           yield* this.buildAbove$();
           yield* this.buildDepth$();
@@ -52827,7 +52858,7 @@ kmlmk..
     }, (x, y, z) => y > 3 ? hash2(x, z, seed) < 0.15 ? snow[1] : snow[0] : y > 1 ? side[0] : side[1]);
     return { m, yaw: 0, pitch: 34 };
   }
-  var tinted2, qmix4, tri4, MODELS5, SPRITES, SKY5, OVERCAST3, WATER5, MT, STRATA2, NEON_ICE, FjordBiome;
+  var tinted2, qmix4, tri4, MODELS5, SPRITES, SKY5, OVERCAST3, WATER6, MT, STRATA2, NEON_ICE, FjordBiome;
   var init_fjord = __esm({
     "src/world/biomes/fjord.js"() {
       init_base();
@@ -52866,7 +52897,7 @@ kmlmk..
         dusk: [[0, "#463a56"], [1, "#a88890"]],
         night: [[0, "#05070e"], [1, "#18202e"]]
       };
-      WATER5 = {
+      WATER6 = {
         day: [[0, "#bff8f2"], [0.05, "#86e8e6"], [0.26, "#42bcd2"], [0.58, "#2488b6"], [1, "#165c90"]],
         dusk: [[0, "#f2c8b8"], [0.04, "#a4c0cc"], [0.14, "#5094b8"], [0.5, "#2e6098"], [1, "#1a3a6c"]],
         night: [[0, "#5aa8c4"], [0.1, "#2e7aa0"], [0.5, "#1c5282"], [1, "#103262"]]
@@ -52933,7 +52964,7 @@ kmlmk..
           this.base = this.baseSurface(H);
           this.ys = new Int16Array(W4 + 2).fill(this.base);
           const tOf = (y) => clamp01((y - (this.base - 2)) / (H - this.base + 2));
-          this.water = { day: worldStrip(H, this.top, WATER5.day, tOf), dusk: worldStrip(H, this.top, WATER5.dusk, tOf), night: worldStrip(H, this.top, WATER5.night, tOf) };
+          this.water = { day: worldStrip(H, this.top, WATER6.day, tOf), dusk: worldStrip(H, this.top, WATER6.dusk, tOf), night: worldStrip(H, this.top, WATER6.night, tOf) };
           yield;
           this.waterBlend = new Blend();
           this.skyBlend = new Blend();
@@ -53768,7 +53799,7 @@ kmlmk..
           let r = 0, g = 0, b = 0;
           const t = clamp01((y - (this.base - 2)) / (this.H - this.base + 2));
           for (const k of ["day", "dusk", "night"]) {
-            const c = lerpStops(WATER5[k], t), w = tod[k];
+            const c = lerpStops(WATER6[k], t), w = tod[k];
             r += c[0] * w;
             g += c[1] * w;
             b += c[2] * w;
@@ -54510,7 +54541,7 @@ kmlmk..
   function fishSprite(c, i = 0) {
     return voxelFishIcon(TRAFFIC_FISH[i % TRAFFIC_FISH.length], 14, 8, { tint: c, tintA: 0.3 }) || makeCanvas(14, 8);
   }
-  var WATER6, SKY6, FACADES, NEON, SIGNS, ADS, TRAFFIC_FISH, MetropolisBiome;
+  var WATER7, SKY6, FACADES, NEON, SIGNS, ADS, TRAFFIC_FISH, MetropolisBiome;
   var init_metropolis = __esm({
     "src/world/biomes/metropolis.js"() {
       init_base();
@@ -54526,7 +54557,7 @@ kmlmk..
       init_fishicon();
       init_scenery();
       init_fjord();
-      WATER6 = [[0, "#5a8ac8"], [0.12, "#30589a"], [0.32, "#1e3070"], [0.6, "#181e50"], [1, "#120f38"]];
+      WATER7 = [[0, "#5a8ac8"], [0.12, "#30589a"], [0.32, "#1e3070"], [0.6, "#181e50"], [1, "#120f38"]];
       SKY6 = {
         day: [[0, "#2a5ac8"], [0.6, "#7aaaf0"], [1, "#e0ecff"]],
         dusk: [[0, "#1e1a4a"], [0.5, "#6a3a7a"], [0.85, "#e0708a"], [1, "#ffb08a"]],
@@ -54603,7 +54634,7 @@ kmlmk..
           this.top = worldTop(H);
           const sy = this.surfY();
           this.ys = new Int16Array(W4 + 2).fill(sy);
-          this.water = worldStrip(H, this.top, WATER6, (y) => clamp01((y - sy) / (H - sy)), 24);
+          this.water = worldStrip(H, this.top, WATER7, (y) => clamp01((y - sy) / (H - sy)), 24);
           yield;
           this.skyBlend = new Blend();
           this.mtnBlend = new Blend();
@@ -55616,7 +55647,7 @@ kmlmk..
     }
     return out;
   }
-  var WATER7, SKY7, VOLC, VolcanoBiome;
+  var WATER8, SKY7, VOLC, VolcanoBiome;
   var init_volcano = __esm({
     "src/world/biomes/volcano.js"() {
       init_base();
@@ -55631,7 +55662,7 @@ kmlmk..
       init_voxcritters();
       init_scenery();
       init_fjord();
-      WATER7 = [[0, "#56605e"], [0.1, "#323a40"], [0.3, "#1e1e28"], [0.55, "#1c1420"], [0.8, "#26141a"], [1, "#3a1a14"]];
+      WATER8 = [[0, "#56605e"], [0.1, "#323a40"], [0.3, "#1e1e28"], [0.55, "#1c1420"], [0.8, "#26141a"], [1, "#3a1a14"]];
       SKY7 = {
         day: [[0, "#3a2a78"], [0.45, "#a03a8a"], [0.78, "#f06a5a"], [0.92, "#ffaa5a"], [1, "#ffe0a0"]],
         dusk: [[0, "#1a1024"], [0.4, "#4a1a30"], [0.75, "#a83a2a"], [1, "#ff8a4a"]],
@@ -55698,7 +55729,7 @@ kmlmk..
           this.top = worldTop(H);
           const sy = this.surfY();
           this.ys = new Int16Array(W4 + 2).fill(sy);
-          this.water = worldStrip(H, this.top, WATER7, (y) => clamp01((y - sy) / (H - sy)), 26);
+          this.water = worldStrip(H, this.top, WATER8, (y) => clamp01((y - sy) / (H - sy)), 26);
           yield;
           this.skyBlend = new Blend();
           this.mtnBlend = new Blend();
@@ -57576,11 +57607,11 @@ kmlmk..
     // One hand-drawn sprite particle. opts: ramp, size, scale, anim ('life'|'loop'|'twinkle'|'fixed'), fps, frame,
     // vx, vy, g, drag, life, sway, layer, delay, blink (flicker out at the end), pop (bubble pops when done).
     pixel(sheet2, x, y, o = {}) {
-      const ramp3 = pickOf(o.ramp ?? "white");
+      const ramp4 = pickOf(o.ramp ?? "white");
       return this.add({
         kind: "px",
         sheet: sheet2,
-        ramp: ramp3,
+        ramp: ramp4,
         sz: o.size ?? 1,
         sc: Math.max(1, Math.round(o.scale ?? 1)),
         x,
@@ -57641,10 +57672,10 @@ kmlmk..
     // Comic impact: a spiky burst that pops into shards, plus sparkles and tiny stars. size 0 | 1 | 2.
     impact(x, y, size = 1, o = {}) {
       size = size === 0 || size === 2 ? size : 1;
-      const layer2 = o.layer || "fg", ramp3 = o.ramp || "gold";
-      const q = this.pixel("impact", x, y, { ramp: ramp3, size, life: 0.3 + size * 0.04, layer: layer2, delay: o.delay });
-      this.pixelBurst("sparkle", x, y, o.sparkles ?? 4 + size * 3, { layer: layer2, ramp: o.sparkRamp || ramp3, speed: [40 + size * 30, 90 + size * 60], delay: o.delay, stagger: false });
-      if (size >= 1) this.pixelBurst("star", x, y, 2 + size * 2, { layer: layer2, ramp: o.sparkRamp || ramp3, size: 0, speed: [60, 140 + size * 40], delay: o.delay, stagger: false });
+      const layer2 = o.layer || "fg", ramp4 = o.ramp || "gold";
+      const q = this.pixel("impact", x, y, { ramp: ramp4, size, life: 0.3 + size * 0.04, layer: layer2, delay: o.delay });
+      this.pixelBurst("sparkle", x, y, o.sparkles ?? 4 + size * 3, { layer: layer2, ramp: o.sparkRamp || ramp4, speed: [40 + size * 30, 90 + size * 60], delay: o.delay, stagger: false });
+      if (size >= 1) this.pixelBurst("star", x, y, 2 + size * 2, { layer: layer2, ramp: o.sparkRamp || ramp4, size: 0, speed: [60, 140 + size * 40], delay: o.delay, stagger: false });
       return q;
     }
     // A cute "poof" (cloud puffs + a couple of sparkles): spawns, despawns, UI closes.
@@ -57702,9 +57733,9 @@ kmlmk..
     }
     // Unlocking: a big impact, a star fountain and drifting sparkles.
     unlock(x, y, o = {}) {
-      const layer2 = o.layer || "ui", ramp3 = o.ramp || "gold";
-      this.impact(x, y, 1, { layer: layer2, ramp: ramp3 });
-      this.pixelBurst("star", x, y, 6, { layer: layer2, ramp: ramp3, dir: -Math.PI / 2, spread: 1.2, speed: [80, 180] });
+      const layer2 = o.layer || "ui", ramp4 = o.ramp || "gold";
+      this.impact(x, y, 1, { layer: layer2, ramp: ramp4 });
+      this.pixelBurst("star", x, y, 6, { layer: layer2, ramp: ramp4, dir: -Math.PI / 2, spread: 1.2, speed: [80, 180] });
       this.pixelBurst("sparkle", x, y, 6, { layer: layer2, ramp: "white", w: 18, h: 12, delay: 0.3 });
       this.pixelBurst("confetti", x, y, 8, { layer: layer2 });
     }
@@ -57717,24 +57748,24 @@ kmlmk..
     }
     // Chest / crate cracking open: a rarity-coloured impact, shards, coins, stars and confetti.
     chestOpen(x, y, rarity = "common", o = {}) {
-      const layer2 = o.layer || "ui", ramp3 = RARITY_RAMP[rarity] || "gold";
+      const layer2 = o.layer || "ui", ramp4 = RARITY_RAMP[rarity] || "gold";
       const pw = { common: 0.7, uncommon: 0.85, rare: 1, epic: 1.25, legendary: 1.6, mythic: 1.8 }[rarity] ?? 1;
-      this.impact(x, y, pw > 1.2 ? 2 : 1, { layer: layer2, ramp: ramp3, sparkRamp: "gold" });
-      this.pixelBurst("shard", x, y, Math.round(6 * pw), { layer: layer2, ramp: ramp3 });
+      this.impact(x, y, pw > 1.2 ? 2 : 1, { layer: layer2, ramp: ramp4, sparkRamp: "gold" });
+      this.pixelBurst("shard", x, y, Math.round(6 * pw), { layer: layer2, ramp: ramp4 });
       this.pixelBurst("dust", x, y + 6, 5, { layer: layer2, speed: [30, 70], dir: -Math.PI / 2, spread: 1.6 });
       this.coins(x, y, Math.round(4 * pw), { layer: layer2, speed: [90, 200] });
-      this.pixelBurst("star", x, y, Math.round(5 * pw), { layer: layer2, ramp: ramp3, speed: [80, 200] });
-      if (pw >= 1) this.celebrate(x, y, pw * 0.7, { layer: layer2, ramp: ramp3 });
+      this.pixelBurst("star", x, y, Math.round(5 * pw), { layer: layer2, ramp: ramp4, speed: [80, 200] });
+      if (pw >= 1) this.celebrate(x, y, pw * 0.7, { layer: layer2, ramp: ramp4 });
     }
     // A catch: splash, scales in the fish's colours, rarity stars and (for good ones) hearts and confetti.
     catchBurst(x, y, rarity = "common", o = {}) {
-      const layer2 = o.layer || "fg", ramp3 = RARITY_RAMP[rarity] || "aqua";
+      const layer2 = o.layer || "fg", ramp4 = RARITY_RAMP[rarity] || "aqua";
       const pw = { common: 0.6, uncommon: 0.8, rare: 1, epic: 1.3, legendary: 1.7, mythic: 1.9 }[rarity] ?? 1;
       this.pixelSplash(x, y, pw, { layer: layer2 });
       this.pixelBurst("scale", x, y, Math.round(4 + 4 * pw), { layer: layer2, ramp: o.scaleRamp || "aqua" });
-      this.pixelBurst("star", x, y, Math.round(3 + 3 * pw), { layer: layer2, ramp: ramp3, speed: [70, 180] });
+      this.pixelBurst("star", x, y, Math.round(3 + 3 * pw), { layer: layer2, ramp: ramp4, speed: [70, 180] });
       if (pw >= 1) this.hearts(x, y - 8, Math.round(2 * pw), { layer: layer2 });
-      if (pw >= 1.3) this.celebrate(x, y - 10, pw * 0.6, { layer: layer2, ramp: ramp3 });
+      if (pw >= 1.3) this.celebrate(x, y - 10, pw * 0.6, { layer: layer2, ramp: ramp4 });
     }
     // Converts legacy ring adds into pixel effects (water rings -> wavelets, flat rings -> pops / impacts).
     ringFx(q) {
@@ -62575,10 +62606,10 @@ kmlmk..
     grey: ["#3a4a58", "#56687a", "#7a8c9c", "#a4b4c2", "#d4e0ea"]
   };
   var RAMP_RGB2 = Object.fromEntries(Object.entries(RAMPS2).map(([k, v]) => [k, v.map(hex4)]));
-  var rampAt = (ramp3, l) => ramp3[Math.max(0, Math.min(ramp3.length - 1, Math.round(clamp01(l) * (ramp3.length - 1))))];
+  var rampAt = (ramp4, l) => ramp4[Math.max(0, Math.min(ramp4.length - 1, Math.round(clamp01(l) * (ramp4.length - 1))))];
   function tubeRing(r, th, rampName, alpha = 255) {
     return art3(`ring${r}|${th}|${rampName}|${alpha}`, () => {
-      const C4 = r + th, S12 = C4 * 2 + 1, ramp3 = RAMP_RGB2[rampName], hw = th / 2;
+      const C4 = r + th, S12 = C4 * 2 + 1, ramp4 = RAMP_RGB2[rampName], hw = th / 2;
       return paint3(S12, S12, (x, y) => {
         const dx = x - C4, dy = y - C4, d = Math.hypot(dx, dy);
         const u = (d - r) / hw;
@@ -62589,7 +62620,7 @@ kmlmk..
         const nz = Math.sqrt(Math.max(0, 1 - u * u));
         let l = 0.3 + 0.5 * nz - 0.28 * u * facing;
         if (u < -0.15 && u > -0.6 && facing < 0.2) l = Math.max(l, 0.95);
-        return [...rampAt(ramp3, l), alpha];
+        return [...rampAt(ramp4, l), alpha];
       });
     });
   }
@@ -62614,7 +62645,7 @@ kmlmk..
   }
   function sphere2(r, rampName) {
     return art3(`sph${r}|${rampName}`, () => {
-      const ramp3 = RAMP_RGB2[rampName], s = r * 2 + 1;
+      const ramp4 = RAMP_RGB2[rampName], s = r * 2 + 1;
       return paint3(s, s, (x, y) => {
         const dx = (x - r) / (r + 0.35), dy = (y - r) / (r + 0.35);
         const d2 = dx * dx + dy * dy;
@@ -62625,7 +62656,7 @@ kmlmk..
         const hx = (dx + 0.36) / 0.28, hy = (dy + 0.42) / 0.18;
         if (hx * hx + hy * hy < 1) return [255, 255, 255, 255];
         if (dy > 0.35 && d2 < 0.6) l = Math.min(1, l + 0.15);
-        return [...rampAt(ramp3, l), 255];
+        return [...rampAt(ramp4, l), 255];
       });
     });
   }
