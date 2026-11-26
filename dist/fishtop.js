@@ -27808,24 +27808,31 @@ void main() {
     const r = o.radius ?? "pill";
     const down = st === "down";
     const n2 = notchOf(r, w, h);
-    if (st === "hover") {
-      ctx3.fillStyle = rgba(T5.glow || "#bff4ff", 0.5);
-      ctx3.fillRect(x + n2, y - 2, w - n2 * 2, 1);
-      ctx3.fillRect(x - 1, y + n2 - 1, 1, h - n2 * 2 + 1);
-      ctx3.fillRect(x + w, y + n2 - 1, 1, h - n2 * 2 + 1);
-    }
-    const key = `btn|${w}|${h}|${r}|${typeof toneName === "object" ? JSON.stringify(toneName) : toneName}|${st}`;
-    const c = aeroCached(key, () => surfaceTex(w, h, { tone: look, r, gloss: down ? 0.25 : 0.75, glossH: Math.max(2, Math.round(h * (down ? 0.3 : 0.42))), rim: down ? 0.35 : 0.9, glow: down ? 0.2 : 0.6, inset: false }));
-    const base = aeroCached(key + "|base", () => tinted(c, st === "disabled" ? "#6a7a8c" : shade(T5.edge || "#0b4a8a", -0.1)));
-    const lift = st === "hover" ? -1 : down ? 1 : 0;
-    if (h >= 10) {
-      const ga = ctx3.globalAlpha;
-      ctx3.globalAlpha = ga * 0.85;
-      ctx3.drawImage(base, x, y + 2);
-      ctx3.globalAlpha = ga;
+    const bub2 = o.bubble ?? (!o.label && !!o.icon && Math.abs(w - h) <= 3 && Math.min(w, h) >= 11);
+    let lift;
+    if (bub2) {
+      const d = Math.min(w, h);
+      lift = bubbleButtonBody(ctx3, x + Math.floor((w - d) / 2), y + Math.floor((h - d) / 2), d, T5, st);
+    } else {
+      if (st === "hover") {
+        ctx3.fillStyle = rgba(T5.glow || "#bff4ff", 0.5);
+        ctx3.fillRect(x + n2, y - 2, w - n2 * 2, 1);
+        ctx3.fillRect(x - 1, y + n2 - 1, 1, h - n2 * 2 + 1);
+        ctx3.fillRect(x + w, y + n2 - 1, 1, h - n2 * 2 + 1);
+      }
+      const key = `btn|${w}|${h}|${r}|${typeof toneName === "object" ? JSON.stringify(toneName) : toneName}|${st}`;
+      const c = aeroCached(key, () => surfaceTex(w, h, { tone: look, r, gloss: down ? 0.25 : 0.75, glossH: Math.max(2, Math.round(h * (down ? 0.3 : 0.42))), rim: down ? 0.35 : 0.9, glow: down ? 0.2 : 0.6, inset: false }));
+      const base = aeroCached(key + "|base", () => tinted(c, st === "disabled" ? "#6a7a8c" : shade(T5.edge || "#0b4a8a", -0.1)));
+      lift = st === "hover" ? -1 : down ? 1 : 0;
+      if (h >= 10) {
+        const ga = ctx3.globalAlpha;
+        ctx3.globalAlpha = ga * 0.85;
+        ctx3.drawImage(base, x, y + 2);
+        ctx3.globalAlpha = ga;
+      }
+      ctx3.drawImage(c, x, y + lift);
     }
     y += lift;
-    ctx3.drawImage(c, x, y);
     const ic = o.icon || null;
     const iw = ic ? ic.width + (o.label ? 4 : 0) : 0;
     let label3 = o.label || "";
@@ -27940,14 +27947,14 @@ void main() {
     return b.toCanvas();
   }
   function pixelOrbCanvas(r, color = AERO.aqua) {
-    r = Math.max(1.5, Math.round(r * 2) / 2);
-    return aeroCached(`orb30|${r}|${color}`, () => pixelArt(orbTex(r, color)));
+    const d = Math.max(3, Math.round(r * 2));
+    return pixelBubbleCanvas(d, d, { tint: color });
   }
   function drawGlossOrb(ctx3, cx, cy, r, color = AERO.aqua, t = 0) {
-    r = Math.max(1.5, Math.round(r * 2) / 2);
-    const c = aeroCached(`orb30|${r}|${color}`, () => pixelArt(orbTex(r, color)));
+    const c = pixelOrbCanvas(r, color);
     ctx3.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
     void t;
+    void orbTex;
   }
   function hiBubble(r) {
     const c1 = pixelBubble(r);
@@ -28082,7 +28089,8 @@ void main() {
     const AL = [0.55, 0.3, 0.13];
     for (let y = 0; y < S15; y++) for (let x = 0; x < S15; x++) {
       const dx = Math.abs(x + 0.5 - r), dy = Math.abs(y + 0.5 - r);
-      const d = Math.max(dx, dy, (dx + dy) * k2 * 1.04) / r;
+      const d = Math.hypot(dx, dy) / r;
+      void k2;
       if (d >= 1) continue;
       const q = d * 3 + (bayer(x, y) - 0.5) * 0.35;
       const i = q < 1 ? 0 : q < 2 ? 1 : q < 3 ? 2 : -1;
@@ -28094,23 +28102,14 @@ void main() {
   }
   function drawAeroGlow(ctx3, cx, cy, r, color = "#bff6ff", alpha = 0.5) {
     r = Math.max(2, Math.round(r));
-    const c = aeroCached(`glow30|${r}|${color}`, () => pixelArt(glowTex(r, color)));
+    const c = aeroCached(`glow34|${r}|${color}`, () => pixelArt(glowTex(r, color)));
     const ga = ctx3.globalAlpha;
     ctx3.globalAlpha = ga * Math.round(Math.min(1, alpha) * 8) / 8;
     ctx3.drawImage(c, Math.round(cx - r), Math.round(cy - r));
     ctx3.globalAlpha = ga;
   }
   function drawAeroBadge(ctx3, right, top, value, t = 0) {
-    if (value === null || value === void 0 || value === 0 || value === false) return null;
-    const txt = value === "!" ? "!" : typeof value === "number" && value > 99 ? "99+" : String(value);
-    const font = uiMode === "huge" ? "big" : uiFont("small");
-    const tw = measureText(txt, font), ch = capH(font);
-    const h = ch + 6 + (font === "big" ? 2 : 0), w = Math.max(h, tw + 8);
-    const x = Math.round(right - w), y = Math.round(top + (Math.sin(t * 5) > 0.85 ? -1 : 0));
-    const tone5 = value === "!" ? "orange" : "red";
-    ctx3.drawImage(aeroCached(`badge30|${w}|${h}|${tone5}`, () => surfaceTex(w, h, { tone: tone5, r: 2, gloss: 0.6, glossH: Math.round(h * 0.4), rim: 1, glow: 0.3, edge: tone5 === "orange" ? "#6a2a00" : "#5a0614", edgeA: 1 })), x, y);
-    drawText(ctx3, txt, x + Math.round((w - tw) / 2), y + Math.round((h - ch) / 2), { font, color: "#ffffff", shadow: toneOf(tone5).shadow });
-    return { x, y, w, h };
+    return pixelBubbleBadge(ctx3, right, top, value, t);
   }
   function drawAeroLabel(ctx3, text, x, y, o = {}) {
     const font = o.fixedFont ? o.font || "normal" : uiFont(o.font || "normal");
@@ -28465,13 +28464,290 @@ void main() {
   function pixelGlassPlate(ctx3, cx, cy, size, o = {}) {
     const S15 = Math.max(6, Math.round(size));
     const tint = o.tint || "#e8fbff", rim = o.rim || "#2fb8e0";
-    const c = aeroCached(`gplate|${S15}|${tint}|${rim}`, () => pixelArt(glassOctTex(S15, tint, rim)));
+    void glassOctTex;
+    const c = pixelBubbleCanvas(S15, S15, { glass: true, tint: rim, fill: tint });
     const ga = ctx3.globalAlpha;
     if (o.alpha != null) ctx3.globalAlpha = ga * o.alpha;
     ctx3.drawImage(c, Math.round(cx - S15 / 2), Math.round(cy - S15 / 2));
     ctx3.globalAlpha = ga;
   }
-  var CURRENCY, AERO, UI_SCALES, uiMode, PROMOTE, AERO_TONES, TONE_ALIAS, customTones, tex, rgbCache2, NOTCHES, mixC, WHITE3, trimCache, PANEL_TONE, coin3d, decor3d, icon3dDraw, pixelButton, pixelBar, pixelBadge;
+  function circleInsets(d) {
+    d = Math.max(1, Math.round(d));
+    let v = circleMemo.get(d);
+    if (v) return v;
+    let half = CIRCLE_HALF[d];
+    if (!half) {
+      half = [];
+      const R8 = d / 2;
+      for (let y = 0; y < Math.ceil(d / 2); y++) {
+        const dy = y + 0.5 - R8;
+        half.push(Math.max(0, Math.round(R8 - Math.sqrt(Math.max(0, R8 * R8 - dy * dy)) - 0.08)));
+      }
+    }
+    v = [];
+    for (let y = 0; y < d; y++) v.push(half[Math.min(y, d - 1 - y)]);
+    circleMemo.set(d, v);
+    return v;
+  }
+  function irisAt(a) {
+    let c = IRIS[0][1];
+    for (const [a0, col] of IRIS) if (a >= a0) c = col;
+    return a < -150 ? IRIS[4][1] : c;
+  }
+  function bubTone(o) {
+    if (o.tone && typeof o.tone === "object") return o.tone;
+    if (o.tint) return toneFrom(o.tint);
+    return toneOf(o.tone || (o.glass ? "clear" : "aqua"));
+  }
+  function bubKey(o) {
+    const t = o.tone && typeof o.tone === "object" ? `${o.tone.top}${o.tone.mid}${o.tone.bot}${o.tone.edge}${o.tone.glow || ""}` : o.tint || o.tone || "";
+    const t2 = o.tone2 ? (typeof o.tone2 === "object" ? `${o.tone2.top}${o.tone2.mid}${o.tone2.bot}${o.tone2.edge}` : o.tone2) + "@" + o.split : "";
+    return `${t}|${o.glass ? 1 : 0}|${o.iris ?? ""}|${o.gloss ?? ""}|${o.shadow || 0}|${o.fill || ""}|${o.outline || ""}|${t2}|${o.glossSpans ? o.glossSpans.join(";") : ""}`;
+  }
+  function bubbleRaster(w, h, o) {
+    const T5 = bubTone(o);
+    const sh = o.shadow | 0;
+    const b = new PixelBuffer(w, h + sh);
+    const ins = circleInsets(h);
+    const inside = (x, y) => y >= 0 && y < h && x >= ins[y] && x < w - ins[y];
+    const dep = new Uint8Array(w * h), q = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (!inside(x, y)) continue;
+      if (!inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1)) {
+        dep[y * w + x] = 1;
+        q.push(x, y);
+      }
+    }
+    for (let i = 0; i < q.length; i += 2) {
+      const x = q[i], y = q[i + 1], d = dep[y * w + x];
+      for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+        if (!inside(nx, ny) || dep[ny * w + nx]) continue;
+        dep[ny * w + nx] = d + 1;
+        q.push(nx, ny);
+      }
+    }
+    const glass2 = !!o.glass;
+    const palOf3 = (TT, outline) => {
+      const Lt2 = rgbOf(TT.top), Md2 = rgbOf(TT.mid), Sh = rgbOf(TT.bot), Ed = rgbOf(outline || TT.edge || "#0b4a8a"), Gl2 = rgbOf(TT.glow || "#ffffff");
+      const lightEdge = Ed[0] * 0.3 + Ed[1] * 0.59 + Ed[2] * 0.11 > 150;
+      const O2 = lightEdge ? mixC(Sh, [4, 20, 50], 0.62) : mixC(Ed, [4, 14, 36], 0.25);
+      const Dk = mixC(Sh, O2, 0.4);
+      return { Lt: Lt2, Md: Md2, Sh, Gl: Gl2, O: O2, tones: [Dk, Sh, Md2, mixC(Md2, Lt2, 0.55)] };
+    };
+    const P1 = palOf3(T5, o.outline), P22 = o.tone2 ? palOf3(typeof o.tone2 === "object" ? o.tone2 : toneOf(o.tone2)) : null;
+    const split = P22 ? Math.round(o.split) : 1e9;
+    let { Lt, Md, Gl, O, tones } = P1;
+    const fill = glass2 ? rgbOf(o.fill || mix(T5.mid, "#ffffff", 0.55)) : null;
+    const R8 = h / 2, c0 = R8, c1 = w - R8;
+    const iris = (o.iris ?? h >= 9) && h >= 7;
+    const gl2 = o.gloss !== false;
+    const gd = h >= 14 ? 3 : 2;
+    const straight = c1 - c0;
+    const put3 = (x, y, c, a = 255) => b.set(x, y, packRGB(Math.round(c[0]), Math.round(c[1]), Math.round(c[2]), Math.round(a)));
+    if (sh) {
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inside(x, y) && !inside(x, y + sh)) put3(x, y + sh, [3, 24, 58], 90);
+    }
+    const glossAt = (px4, qx, ny, a, d) => {
+      if (!gl2 || h < 6) return false;
+      if (d !== gd && !(h >= 20 && d === gd + 1 && a > -150 && a < -112)) return false;
+      if (qx === 0 && ny < 0 && straight > 0) {
+        if (o.glossSpans) return o.glossSpans.some(([g0, g1]) => px4 >= g0 && px4 < g1);
+        const f = (px4 - c0) / straight;
+        return f < 0.42 || f > 0.52 && f < 0.6;
+      }
+      if (qx > 0) return false;
+      if (a > -162 && a < -104) return true;
+      return h >= 15 && straight <= 0 && a > -94 && a < -82;
+    };
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const d = dep[y * w + x];
+      if (!d) continue;
+      if (P22) ({ Lt, Md, Gl, O, tones } = x >= split ? P22 : P1);
+      if (P22 && d >= 2 && (x === split - 1 || x === split)) {
+        put3(x, y, x === split ? mixC(P22.Lt, WHITE3, 0.2) : P1.O);
+        continue;
+      }
+      const px4 = x + 0.5, py = y + 0.5;
+      const qx = px4 - Math.max(c0, Math.min(c1, px4)), qy = py - R8;
+      const nx = qx / R8, ny = qy / R8, rr4 = Math.min(1, nx * nx + ny * ny), nz = Math.sqrt(1 - rr4);
+      const a = Math.atan2(qy, qx || (straight > 0 ? 0 : 1e-6)) * 180 / Math.PI;
+      if (d === 1) {
+        put3(x, y, O, glass2 ? 235 : 255);
+        continue;
+      }
+      if (glossAt(px4, qx, ny, a, d)) {
+        put3(x, y, WHITE3);
+        continue;
+      }
+      const lit2 = nx * BUB_LIGHT[0] + ny * BUB_LIGHT[1] + nz * BUB_LIGHT[2];
+      if (d === 2) {
+        const litSide = a < -40 && a > -178;
+        if (glass2) {
+          put3(x, y, iris && !litSide ? irisAt(a) : mixC(Lt, WHITE3, 0.5), litSide ? 230 : 215);
+          continue;
+        }
+        if (litSide || !iris) {
+          put3(x, y, litSide ? mixC(Lt, WHITE3, 0.25) : Md);
+          continue;
+        }
+        put3(x, y, mixC(Md, irisAt(a), 0.42));
+        continue;
+      }
+      const lowGlow = d === 3 && h >= 11 && a > 28 && a < 152;
+      if (glass2) {
+        if (lowGlow) {
+          put3(x, y, mixC(Gl, WHITE3, 0.3), 150);
+          continue;
+        }
+        const k2 = lit2 > 0.55 ? 0 : lit2 > 0.15 ? 1 : 2;
+        put3(x, y, k2 === 0 ? mixC(fill, WHITE3, 0.5) : k2 === 1 ? fill : mixC(fill, Md, 0.35), [118, 92, 120][k2]);
+        continue;
+      }
+      if (lowGlow) {
+        put3(x, y, mixC(Md, Gl, 0.6));
+        continue;
+      }
+      const dd = Math.hypot(nx + 0.36, (ny + 0.4) * (straight > 0 ? 1.25 : 1));
+      const k = dd < 0.5 ? 3 : dd < 0.98 ? 2 : dd < 1.26 ? 1 : 0;
+      put3(x, y, tones[k]);
+    }
+    if (gl2 && h >= 7) {
+      const gx = Math.round(c0 - R8 * 0.36 - 0.5 + (h >= 12 ? 0.5 : 0)), gy = Math.round(R8 - R8 * 0.4 - 0.5 + (h >= 12 ? 0.5 : 0));
+      const W1 = packRGB(255, 255, 255);
+      const ok = (xx, yy) => yy >= 0 && yy < h && dep[yy * w + xx] >= 2;
+      if (ok(gx, gy)) b.set(gx, gy, W1);
+      if (h >= 12) {
+        if (ok(gx + 1, gy)) b.set(gx + 1, gy, W1);
+        if (ok(gx, gy + 1)) b.set(gx, gy + 1, W1);
+      }
+      if (h >= 18 && ok(gx + 1, gy + 1)) b.set(gx + 1, gy + 1, packRGB(225, 250, 255));
+    }
+    return b.toCanvas();
+  }
+  function pixelBubbleCanvas(w, h, o = {}) {
+    h = Math.max(3, Math.round(h));
+    w = Math.max(h, Math.round(w));
+    return aeroCached(`pb34|${w}|${h}|${bubKey(o)}`, () => pixelArt(bubbleRaster(w, h, o)));
+  }
+  function blitA(ctx3, c, x, y, a) {
+    if (a == null || a >= 1) {
+      ctx3.drawImage(c, x, y);
+      return;
+    }
+    const ga = ctx3.globalAlpha;
+    ctx3.globalAlpha = ga * a;
+    ctx3.drawImage(c, x, y);
+    ctx3.globalAlpha = ga;
+  }
+  function pixelBubble2(ctx3, cx, cy, r, o = {}) {
+    const d = Math.max(3, Math.round(r * 2));
+    const c = pixelBubbleCanvas(d, d, o);
+    const x = Math.round(cx - d / 2), y = Math.round(cy - d / 2);
+    blitA(ctx3, c, x, y, o.alpha);
+    return { x, y, w: d, h: d };
+  }
+  function pixelBubbleCapsule(ctx3, x, y, w, h, o = {}) {
+    x = Math.round(x);
+    y = Math.round(y);
+    blitA(ctx3, pixelBubbleCanvas(w, h, o), x, y, o.alpha);
+  }
+  function bubbleSolid(w, h, color) {
+    return aeroCached(`pbs34|${w}|${h}|${color}`, () => {
+      const c = makeCanvas(w, h), g = ctxOf(c), ins = circleInsets(h);
+      g.fillStyle = color;
+      for (let y = 0; y < h; y++) g.fillRect(ins[y], y, w - ins[y] * 2, 1);
+      return pixelArt(c);
+    });
+  }
+  function bubbleRingTex(w, h, color) {
+    return aeroCached(`pbr34|${w}|${h}|${color}`, () => {
+      const W11 = w + 2, H8 = h + 2, c = makeCanvas(W11, H8), g = ctxOf(c), iO = circleInsets(H8), iI = circleInsets(h);
+      const inO = (x, y) => y >= 0 && y < H8 && x >= iO[y] && x < W11 - iO[y];
+      const inI = (x, y) => y >= 1 && y <= h && x >= 1 + iI[y - 1] && x < 1 + w - iI[y - 1];
+      g.fillStyle = color;
+      for (let y = 0; y < H8; y++) for (let x = 0; x < W11; x++) if (inO(x, y) && !inI(x, y) && (inI(x - 1, y) || inI(x + 1, y) || inI(x, y - 1) || inI(x, y + 1) || inI(x - 1, y - 1) || inI(x + 1, y + 1) || inI(x - 1, y + 1) || inI(x + 1, y - 1))) g.fillRect(x, y, 1, 1);
+      return pixelArt(c);
+    });
+  }
+  function pixelBubbleRing(ctx3, cx, cy, r, color = "#ffffff", alpha = 0.6) {
+    const d = Math.max(3, Math.round(r * 2));
+    blitA(ctx3, bubbleRingTex(d, d, color), Math.round(cx - d / 2) - 1, Math.round(cy - d / 2) - 1, alpha);
+  }
+  function glyphTex(kind2, s, ink) {
+    return aeroCached(`pbg34|${kind2}|${s}|${ink}`, () => {
+      const t = s >= 7 ? 2 : 1;
+      if ((s - t) % 2) s++;
+      const c = makeCanvas(s, s + 1), g = ctxOf(c);
+      const plot = (col, dy) => {
+        g.fillStyle = col;
+        const m = Math.floor((s - t) / 2);
+        if (kind2 === "+" || kind2 === "-") {
+          g.fillRect(0, m + dy, s, t);
+          if (kind2 === "+") g.fillRect(m, dy, t, s);
+        } else for (let i = 0; i < s; i++) {
+          g.fillRect(i, i + dy, t, 1);
+          g.fillRect(s - t - i, i + dy, t, 1);
+        }
+      };
+      plot(ink, 1);
+      plot("#ffffff", 0);
+      return pixelArt(c);
+    });
+  }
+  function bubbleButtonBody(ctx3, x, y, d, T5, st) {
+    const look = btnLook(T5, st);
+    const down = st === "down";
+    if (st === "hover") blitA(ctx3, bubbleRingTex(d, d, T5.glow || "#bff4ff"), x - 1, y - 2, 0.6);
+    blitA(ctx3, bubbleSolid(d, d, st === "disabled" ? "#6a7a8c" : shade(T5.edge || "#0b4a8a", -0.1)), x, y + 2, 0.85);
+    const o = { tone: look, iris: d >= 11 && st !== "disabled" };
+    if (down) {
+      ctx3.drawImage(pixelBubbleCanvas(d + 2, d - 2, o), x - 1, y + 3);
+      return 2;
+    }
+    const lift = st === "hover" ? -1 : 0;
+    ctx3.drawImage(pixelBubbleCanvas(d, d, o), x, y + lift);
+    return lift;
+  }
+  function pixelBubbleButton(ctx3, cx, cy, r, o = {}) {
+    const d = Math.max(9, Math.round(r * 2));
+    const x = Math.round(cx - d / 2), y = Math.round(cy - d / 2);
+    const T5 = o.tone && typeof o.tone === "object" ? o.tone : o.tint ? toneFrom(o.tint) : toneOf(o.tone || "aqua");
+    const st = o.state || "normal";
+    const ga = ctx3.globalAlpha;
+    if (o.alpha != null) ctx3.globalAlpha = ga * o.alpha;
+    const lift = bubbleButtonBody(ctx3, x, y, d, T5, st);
+    const ic = o.icon || (o.glyph ? glyphTex(o.glyph, Math.max(5, Math.round(d * 0.42)), mixHex(T5.edge || "#0b4a8a")) : null);
+    if (ic) {
+      if (st === "disabled") ctx3.globalAlpha *= 0.55;
+      ctx3.drawImage(ic, Math.round(x + (d - ic.width) / 2), Math.round(y + (d - ic.height) / 2) + lift);
+    }
+    ctx3.globalAlpha = ga;
+    return { x, y, w: d, h: d, lift };
+  }
+  function pixelBubbleBadge(ctx3, right, top, value, t = 0, o = {}) {
+    if (value === null || value === void 0 || value === 0 || value === false) return null;
+    const txt = value === "!" ? "!" : typeof value === "number" && value > 99 ? "99+" : String(value);
+    const font = uiMode === "huge" ? "big" : uiFont("small");
+    const tw = measureText(txt, font), ch = capH(font);
+    const h = ch + 6 + (font === "big" ? 2 : 0) + ((ch + 6) % 2 === 0 ? 1 : 0), w = Math.max(h, tw + 8);
+    const x = Math.round(right - w), y = Math.round(top + (Math.sin(t * 5) > 0.85 ? -1 : 0));
+    const tone5 = o.tone || (value === "!" ? "orange" : "red");
+    ctx3.drawImage(pixelBubbleCanvas(w, h, { tone: tone5, shadow: 1, iris: false }), x, y);
+    const T5 = toneOf(tone5);
+    drawText(ctx3, txt, x + Math.round((w - tw) / 2), y + Math.round((h - ch) / 2), { font, color: "#ffffff", shadow: T5.shadow });
+    return { x, y, w, h };
+  }
+  function pixelBubbleTag(ctx3, x, y, text, o = {}) {
+    const font = o.font || "small", tw = measureText(text, font), ch = capH(font);
+    const h = ch + 6, w = Math.max(h, tw + 8 + (ch > 5 ? 2 : 0));
+    const tone5 = o.tone || "red";
+    x = Math.round(o.align === "right" ? x - w : x);
+    y = Math.round(y);
+    ctx3.drawImage(pixelBubbleCanvas(w, h, { tone: tone5, shadow: 1, iris: false }), x, y);
+    drawText(ctx3, text, x + Math.round((w - tw) / 2), y + Math.round((h - ch) / 2), { font, color: "#ffffff", shadow: toneOf(tone5).shadow || "#000000" });
+    return { x, y, w, h };
+  }
+  var CURRENCY, AERO, UI_SCALES, uiMode, PROMOTE, AERO_TONES, TONE_ALIAS, customTones, tex, rgbCache2, NOTCHES, mixC, WHITE3, trimCache, PANEL_TONE, coin3d, decor3d, icon3dDraw, pixelButton, pixelBar, pixelBadge, CIRCLE_HALF, circleMemo, IRIS, BUB_LIGHT, mixHex;
   var init_aero = __esm({
     "src/ui/aero.js"() {
       init_color();
@@ -28544,6 +28820,32 @@ void main() {
       pixelButton = (...a) => drawAeroButton(...a);
       pixelBar = (...a) => drawAeroBar(...a);
       pixelBadge = (...a) => drawAeroBadge(...a);
+      CIRCLE_HALF = {
+        1: [0],
+        2: [0],
+        3: [1, 0],
+        4: [1, 0],
+        5: [1, 0, 0],
+        6: [1, 0, 0],
+        7: [2, 1, 0, 0],
+        8: [2, 1, 0, 0],
+        9: [3, 1, 1, 0, 0],
+        10: [3, 1, 1, 0, 0],
+        11: [3, 2, 1, 1, 0, 0],
+        12: [4, 2, 1, 1, 0, 0],
+        13: [4, 2, 1, 1, 0, 0, 0],
+        14: [5, 3, 2, 1, 1, 0, 0],
+        15: [5, 3, 2, 1, 1, 0, 0, 0],
+        16: [5, 3, 2, 1, 1, 0, 0, 0],
+        17: [6, 4, 3, 2, 1, 1, 0, 0, 0]
+      };
+      circleMemo = /* @__PURE__ */ new Map();
+      IRIS = [[-150, [150, 244, 255]], [-62, [255, 176, 232]], [8, [200, 178, 255]], [78, [206, 255, 132]], [150, [150, 244, 255]]];
+      BUB_LIGHT = (() => {
+        const v = [-0.5, -0.62, 0.6], l = Math.hypot(...v);
+        return v.map((q) => q / l);
+      })();
+      mixHex = (e) => shade(e, -0.2);
     }
   });
 
@@ -28893,12 +29195,12 @@ void main() {
     }
     for (let i = 0; i < 4; i++) box(mb, -0.4, 0.42 - i * 0.18, 0.04, i === 3 ? 0.1 : 0.4, 0.48 - i * 0.18, 0.06, "#c8a878");
     prism(mb, circle(10, 0.27, 0.3, -0.36), 0.04, 0.16, "#e8303a", { front: (i) => jit("#f04848", i, 0.05), side: "#a81c28" });
-    const star2 = [];
+    const star = [];
     for (let i = 0; i < 10; i++) {
       const a = Math.PI / 2 + i / 10 * Math.PI * 2, r = i % 2 ? 0.07 : 0.17;
-      star2.push([Math.cos(a) * r + 0.3, Math.sin(a) * r - 0.36]);
+      star.push([Math.cos(a) * r + 0.3, Math.sin(a) * r - 0.36]);
     }
-    prism(mb, star2, 0.16, 0.22, "#ffd44a", { side: "#d89a1c" });
+    prism(mb, star, 0.16, 0.22, "#ffd44a", { side: "#d89a1c" });
     return { mesh: mb.build(), yaw: -0.28, pitch: 0.16, spin: "wobble" };
   }
   function coin() {
@@ -30988,7 +31290,7 @@ void main() {
     const m = new VoxelModel(30, 30, 10);
     const chrome = m.color("#e4f2fa", { spec: 2.2, smooth: 0.6 });
     const shirt2 = m.color("#2fb0f0", { jitter: 0.03, smooth: 0.4, spec: 1.2 }), stripe = m.color("#ffffff", { light: 0.1 }), collar = m.color("#0e4a8a");
-    const star2 = m.color("#ffe24a", { spec: 1.6 }), tie = m.color("#ff5a5a", { spec: 1.2 });
+    const star = m.color("#ffe24a", { spec: 1.6 }), tie = m.color("#ff5a5a", { spec: 1.2 });
     m.tube([[14.5, 21, 5, 0.6], [14.5, 25, 5, 0.6], [16, 28, 5, 0.6], [18, 27.5, 5, 0.6], [18.5, 26, 5, 0.6]], chrome);
     m.tube([[3, 18, 5, 0.9], [9, 20.5, 5, 0.9], [14.5, 21.5, 5, 0.9], [20, 20.5, 5, 0.9], [26, 18, 5, 0.9]], chrome);
     m.fill((x, y, z) => {
@@ -31003,11 +31305,11 @@ void main() {
       m.set(17 - k, 19 - k, 8, collar);
     }
     m.box(14, 11, 8, 15, 13, 8, tie);
-    m.set(18, 8, 8, star2);
-    m.set(17, 8, 8, star2);
-    m.set(19, 8, 8, star2);
-    m.set(18, 9, 8, star2);
-    m.set(18, 7, 8, star2);
+    m.set(18, 8, 8, star);
+    m.set(17, 8, 8, star);
+    m.set(19, 8, 8, star);
+    m.set(18, 9, 8, star);
+    m.set(18, 7, 8, star);
     return { m, yaw: 26, pitch: 18 };
   }
   function aeroGlobe() {
@@ -36021,12 +36323,12 @@ kmlmk..
           m.set(x, y + 1, z, c);
           m.set(x + 1, y + 1, z, i % 2 ? shellP : shellW);
         });
-        const star2 = m.color("#ff8a3d", { jitter: 0.05 });
+        const star = m.color("#ff8a3d", { jitter: 0.05 });
         for (let k = 0; k < 5; k++) {
           const a = k / 5 * Math.PI * 2 - Math.PI / 2;
-          m.line(10, 3.6, 40, 10 + Math.cos(a) * 3.5, 3.6, 40 + Math.sin(a) * 3.5, star2, 0.6);
+          m.line(10, 3.6, 40, 10 + Math.cos(a) * 3.5, 3.6, 40 + Math.sin(a) * 3.5, star, 0.6);
         }
-        m.set(10, 4, 40, star2);
+        m.set(10, 4, 40, star);
         return { m, yaw: 30 };
       });
       def2("treasure_chest", { name: "Treasure Chest", biome: "shallows", tags: ["wreck", "treasure"], decor: { price: 250, size: 1 } }, ({ frame: frame2, rng: rng2 }) => {
@@ -39066,7 +39368,7 @@ kmlmk..
         const stick = m.color("#e83a3a", { smooth: 0.8, spec: 1.2 });
         const btn = ["#ffd84a", "#4af4ff", "#ff6ad8"].map((c) => m.color(c, { smooth: 0.6, spec: 1 }));
         const em = (c) => m.color(c, { emissive: 1, jitter: 0 });
-        const bg4 = em("#10184a"), star2 = em("#8aa0ff"), yel = em("#ffd84a"), org = em("#ff8a2a"), wht = em("#ffffff"), red = em("#ff4a5a"), grn = em("#5aff8a"), cyan = em("#4af4ff"), pnk = em("#ff6ad8");
+        const bg4 = em("#10184a"), star = em("#8aa0ff"), yel = em("#ffd84a"), org = em("#ff8a2a"), wht = em("#ffffff"), red = em("#ff4a5a"), grn = em("#5aff8a"), cyan = em("#4af4ff"), pnk = em("#ff6ad8");
         const marq = em("#ffd84a");
         const front = (y) => y <= 30 ? 30 : y <= 37 ? 30 + (y - 30) * 0.6 : y <= 61 ? 25 : y <= 73 ? 29 : y <= 75 ? 28 : -1;
         shape(m, 6, 0, 6, 33, 75, 34, (x, y, z) => z <= front(Math.floor(y)) + 1, (x, y, z) => x <= 7 || x >= 32 ? purpleL : purple);
@@ -39106,14 +39408,14 @@ kmlmk..
             if (fu2 >= 0 && fu2 <= 7 && Math.abs(fv2) <= 2 - (fu2 === 0 || fu2 === 7 ? 1 : 0)) return fu2 === 5 && fv2 === -1 ? wht : org;
             if (fu2 === -1 && Math.abs(fv2) <= 2) return org;
             if (v === 17 && u % 3 !== 0 && u > 2 && u < 17) return wht;
-            return h35(u, v, 1, 2) < 0.04 ? star2 : bg4;
+            return h35(u, v, 1, 2) < 0.04 ? star : bg4;
           }
           if (v === 0) return u < 8 ? cyan : bg4;
           if (v >= 3 && v <= 4 && (u % 6 === 2 || u % 6 === 3)) return v === 3 ? red : grn;
           if (u === 9 && v >= 7 && v <= 12 && v % 2) return wht;
           const fu = u - 6, fv = v - 15;
           if (fu >= 0 && fu <= 6 && Math.abs(fv) <= 1) return fu === 4 && fv === -1 ? wht : org;
-          return h35(u, v, 2, 2) < 0.05 ? star2 : bg4;
+          return h35(u, v, 2, 2) < 0.05 ? star : bg4;
         };
         for (let v = 0; v < 20; v++) for (let u = 0; u < 20; u++) m.set(10 + u, 59 - v, 26, pix(u, v));
         m.box(8, 38, 26, 31, 39, 26, black);
@@ -43643,13 +43945,13 @@ kmlmk..
       return yy >= -3.4 && yy < WAIST && (Math.abs(dx) / f) ** 2.2 + (Math.abs(dz) / (f * 0.78)) ** 2.2 <= 1;
     }, (x, y, z) => Math.floor(Math.atan2(z - cz, x - cx) * 4) & 1 ? pants : pantsD);
     if (b === "astro") R8((dx, yy) => Math.abs(yy - 0.4) < 0.5 ? K(kit2, "#ff8a2a") : null);
-    const bubbles = (test) => {
+    const bubbles2 = (test) => {
       const w = KG(kit2, "#ffffff", { spec: 1.6 });
       surf((dx, yy, dz, x, y, z) => test(yy) && hsh(x, y, z, 17) < 0.07 ? w : null);
     };
-    if (bt.glass) bubbles((yy) => yy < WAIST);
+    if (bt.glass) bubbles2((yy) => yy < WAIST);
     if (tp.glass) {
-      bubbles((yy) => yy >= WAIST);
+      bubbles2((yy) => yy >= WAIST);
       R8((dx, yy, dz) => yy >= WAIST && Math.abs(yy - 4 - Math.sin(dx * 0.9 + dz * 0.5) * 0.8) < 0.45 ? topD : null);
     }
     const t = L4.top;
@@ -45942,9 +46244,9 @@ kmlmk..
     let T5 = cross4(Wd, D2);
     if (twist) {
       const c = Math.cos(twist), s = Math.sin(twist);
-      const W22 = add8(scl2(Wd, c), scl2(T5, s));
+      const W23 = add8(scl2(Wd, c), scl2(T5, s));
       T5 = sub3(scl2(T5, c), scl2(Wd, s));
-      Wd = W22;
+      Wd = W23;
     }
     const seg = 8, n2 = widths.length, rows = [];
     for (let i = 0; i < n2; i++) {
@@ -58289,15 +58591,15 @@ kmlmk..
     const DUSK = { surface: "#c87a6a", horizon: "#ffd0a0", sheen: "#fff0d8", glint: "#fff0c0", crest: "#fff4e8", ray: "#ffd8b0", caustic: "#ffe0c0" };
     for (const c of Object.keys(NIGHT)) {
       let v = P7[c];
-      if (DUSK[c] && k > 0) v = mixHex(v, DUSK[c], k * 0.45);
-      if (night > 0) v = mixHex(v, NIGHT[c], night * (id2 === "abyss" || id2 === "metropolis" ? 0.35 : 0.7));
+      if (DUSK[c] && k > 0) v = mixHex2(v, DUSK[c], k * 0.45);
+      if (night > 0) v = mixHex2(v, NIGHT[c], night * (id2 === "abyss" || id2 === "metropolis" ? 0.35 : 0.7));
       p[c] = v;
     }
     if (palMemo.size > 400) palMemo.clear();
     palMemo.set(key, p);
     return p;
   }
-  var TAU5, SUB, MAX_LIFT, MAX_RINGS, SWELLS, WEATHER2, weatherWater, WATER_PALETTES, hexRgb2, rgbHex, mixHex, palMemo, WaterSim;
+  var TAU5, SUB, MAX_LIFT, MAX_RINGS, SWELLS, WEATHER2, weatherWater, WATER_PALETTES, hexRgb2, rgbHex, mixHex2, palMemo, WaterSim;
   var init_watersim = __esm({
     "src/world/watersim.js"() {
       TAU5 = Math.PI * 2;
@@ -58348,7 +58650,7 @@ kmlmk..
       };
       hexRgb2 = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
       rgbHex = (c) => "#" + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
-      mixHex = (a, b, t) => {
+      mixHex2 = (a, b, t) => {
         const A2 = hexRgb2(a), B2 = hexRgb2(b);
         return rgbHex([A2[0] + (B2[0] - A2[0]) * t, A2[1] + (B2[1] - A2[1]) * t, A2[2] + (B2[2] - A2[2]) * t]);
       };
@@ -63775,7 +64077,7 @@ kmlmk..
     }
     return [mx2 + 0.5, y1 + 1.5, zc + 0.5];
   }
-  function engine(m, p, id2, x, y, zc, A2, spin, bubbles, o = {}) {
+  function engine(m, p, id2, x, y, zc, A2, spin, bubbles2, o = {}) {
     if (id2 === "outboard") {
       m.box(x - 3, y, zc - 2, x, y + 5, zc + 2, p.white);
       m.box(x - 3, y + 2, zc - 2, x, y + 2, zc + 2, p.aqua);
@@ -63800,7 +64102,7 @@ kmlmk..
       m.box(x - 1, y, zc - 1, x + 1, y + 1, zc + 1, p.chrome);
       m.set(x - 1, y + 3, zc + 3, p.led);
       A2.bubbles0 = [x - 3.5, y - 1, zc + 0.5];
-      bubbles.push("bubbles0");
+      bubbles2.push("bubbles0");
     } else if (id2 === "paddle") {
       const cy = y + 1;
       for (let a = 0; a < TAU; a += 0.14) {
@@ -63823,7 +64125,7 @@ kmlmk..
     const m = new VoxelModel(64, 56, 22);
     const p = aeroPal(m, paint9, trim);
     const X02 = 10, LEN = 40, ZC3 = 11, WL = 3, DECK2 = 6;
-    const A2 = {}, spin = [], bubbles = [];
+    const A2 = {}, spin = [], bubbles2 = [];
     for (const s of [-1, 1]) {
       const z = ZC3 + s * 5.5;
       shapeIn2(m, X02 - 2, 0, z - 4, X02 + LEN + 3, 7, z + 4, (x, y, zz) => {
@@ -63847,14 +64149,14 @@ kmlmk..
     m.line(X02 + 6, DECK2 + 3, ZC3 + 5, X02 + 6, DECK2 + 6, ZC3 + 5, p.leaf, 0);
     m.set(X02 + 5, DECK2 + 6, ZC3 + 5, p.leafL);
     m.set(X02 + 7, DECK2 + 7, ZC3 + 5, p.leafL);
-    engine(m, p, parts.engine, X02 + 1, DECK2 + 1, ZC3, A2, spin, bubbles, { x0: X02 + 4, x1: X02 + 20, h: 22 });
+    engine(m, p, parts.engine, X02 + 1, DECK2 + 1, ZC3, A2, spin, bubbles2, { x0: X02 + 4, x1: X02 + 20, h: 22 });
     return finish5({
       m,
       front: /* @__PURE__ */ new Set(),
       wl: WL,
       zc: ZC3,
       spin,
-      bubbles,
+      bubbles: bubbles2,
       A: { ...A2, stand: [X02 + 13, DECK2 + 1, ZC3], bow: [X02 + LEN + 2, WL, ZC3], stern: [X02 - 2, WL, ZC3], top: [X02 + 20, DECK2 + 30, ZC3], keel: [X02 + 20, 0, ZC3] },
       pivot: [X02 + LEN / 2, WL],
       flagScale: 0.6,
@@ -63866,7 +64168,7 @@ kmlmk..
     const m = new VoxelModel(72, 56, 24);
     const p = aeroPal(m, paint9, trim);
     const X02 = 12, LEN = 46, ZC3 = 12, WL = 3, DECK2 = 4;
-    const A2 = {}, spin = [], bubbles = [];
+    const A2 = {}, spin = [], bubbles2 = [];
     const beam = (u) => u < 30 ? 7.4 : 7.4 * Math.sqrt(Math.max(0, 1 - ((u - 30) / 16.5) ** 2));
     hull(m, { x0: X02, len: LEN, zc: ZC3, vee: 0.4, keel: (u) => 0.6 + 2.6 * Math.pow(sm3(30, 46, u), 1.6), sheer: () => 5, beam: (u) => beam(u) * 0.9, deck: () => DECK2, skin: (y) => y < 2 ? p.bottom : p.paintD, deckC: (x) => x % 3 ? p.deck : p.deckD });
     for (let u = 0; u <= LEN; u += 0.5) {
@@ -63886,7 +64188,7 @@ kmlmk..
       m.line(X02 + 1, 8, ZC3 - 5, X02 + 1, 22, ZC3 - 5, p.chrome, 0);
       A2.flag = [X02 + 1.5, 22.5, ZC3 - 4.5];
     }
-    engine(m, p, parts.engine, X02, DECK2 + 3, ZC3, A2, spin, bubbles, { x0: X02 + 4, x1: X02 + 22, h: 18, poleH: 16 });
+    engine(m, p, parts.engine, X02, DECK2 + 3, ZC3, A2, spin, bubbles2, { x0: X02 + 4, x1: X02 + 22, h: 18, poleH: 16 });
     const front = twinFront(m, [p.white, p.paint, p.paintL], (x, y, z) => z >= ZC3 + 3 && y >= 5);
     return finish5({
       m,
@@ -63894,7 +64196,7 @@ kmlmk..
       wl: WL,
       zc: ZC3,
       spin,
-      bubbles,
+      bubbles: bubbles2,
       A: { ...A2, stand: [X02 + 13, DECK2 + 1, ZC3], bow: [X02 + LEN, WL, ZC3], stern: [X02 - 2, WL, ZC3], top: [X02 + 20, 22, ZC3], keel: [X02 + 20, 0, ZC3] },
       pivot: [X02 + LEN / 2, WL],
       flagScale: 0.7,
@@ -63906,7 +64208,7 @@ kmlmk..
     const m = new VoxelModel(86, 56, 24);
     const p = aeroPal(m, paint9, trim);
     const X02 = 12, LEN = 60, ZC3 = 12, WL = 3, DECK2 = 6;
-    const A2 = {}, spin = [], bubbles = [];
+    const A2 = {}, spin = [], bubbles2 = [];
     const s = {
       x0: X02,
       len: LEN,
@@ -63938,7 +64240,7 @@ kmlmk..
     m.set(X02 + LEN - 6, 13, ZC3 + 7, p.ledG);
     m.set(X02 + LEN - 6, 13, ZC3 - 7, p.ledR);
     if (parts.sail !== "none") A2.flag = mastSail(m, p, parts.sail, X02 + 44, DECK2 + 1, DECK2 + 28, ZC3, 12);
-    engine(m, p, parts.engine, X02, DECK2 + 2, ZC3, A2, spin, bubbles, { x0: X02 + 6, x1: X02 + 26, h: 18, poleH: 16 });
+    engine(m, p, parts.engine, X02, DECK2 + 2, ZC3, A2, spin, bubbles2, { x0: X02 + 6, x1: X02 + 26, h: 18, poleH: 16 });
     const front = twinFront(m, [p.white, p.trim, p.paint, p.chrome, p.aqua, p.paintL, p.paintD], (x, y, z) => z >= ZC3 + 5 && y > DECK2);
     return finish5({
       m,
@@ -63946,7 +64248,7 @@ kmlmk..
       wl: WL,
       zc: ZC3,
       spin,
-      bubbles,
+      bubbles: bubbles2,
       A: { ...A2, stand: [X02 + 20, DECK2 + 1, ZC3], bow: [X02 + LEN, WL, ZC3], stern: [X02 - 2, WL, ZC3], top: [X02 + 30, DECK2 + 22, ZC3], keel: [X02 + 30, 0, ZC3], lantern: [X02 + LEN - 5.5, 13.5, ZC3 + 7.5] },
       pivot: [X02 + LEN / 2, WL],
       flagScale: 0.8,
@@ -63958,7 +64260,7 @@ kmlmk..
     const m = new VoxelModel(92, 56, 28);
     const p = aeroPal(m, paint9, trim);
     const X02 = 12, LEN = 64, ZC3 = 14, WL = 4, LIFT = 7, DECK2 = LIFT + 6;
-    const A2 = {}, spin = [], bubbles = [];
+    const A2 = {}, spin = [], bubbles2 = [];
     const s = {
       x0: X02,
       len: LEN,
@@ -63991,7 +64293,7 @@ kmlmk..
     A2.flag = [X02 + 1.5, DECK2 + 20.5, ZC3 - 6.5];
     m.set(X02 + LEN - 4, LIFT + 7, ZC3 + 6, p.led);
     m.set(X02 + LEN - 4, LIFT + 7, ZC3 - 6, p.led);
-    engine(m, p, parts.engine, X02, DECK2 + 2, ZC3, A2, spin, bubbles, { x0: X02 + 6, x1: X02 + 26, h: 16, poleH: 14 });
+    engine(m, p, parts.engine, X02, DECK2 + 2, ZC3, A2, spin, bubbles2, { x0: X02 + 6, x1: X02 + 26, h: 16, poleH: 14 });
     const front = twinFront(m, [p.white, p.trim, p.whiteD, p.aqua], (x, y, z) => z >= ZC3 + 6 && y > DECK2 && x < cx - 1);
     return finish5({
       m,
@@ -63999,7 +64301,7 @@ kmlmk..
       wl: WL,
       zc: ZC3,
       spin,
-      bubbles,
+      bubbles: bubbles2,
       A: { ...A2, stand: [X02 + 20, DECK2 + 1, ZC3], bow: [X02 + LEN, WL, ZC3], stern: [X02 - 2, WL, ZC3], top: [X02 + 30, DECK2 + 18, ZC3], keel: [X02 + 30, 0, ZC3], under: [X02 + 30, 2, ZC3 + 10], lantern: [X02 + LEN - 3.5, LIFT + 7.5, ZC3 + 6.5] },
       pivot: [X02 + LEN / 2, WL],
       flagScale: 0.8,
@@ -64011,7 +64313,7 @@ kmlmk..
     const m = new VoxelModel(116, 72, 30);
     const p = aeroPal(m, paint9, trim);
     const X02 = 14, LEN = 86, ZC3 = 15, WL = 5, DECK2 = 12;
-    const A2 = {}, spin = [], bubbles = [];
+    const A2 = {}, spin = [], bubbles2 = [];
     const s = {
       x0: X02,
       len: LEN,
@@ -64061,7 +64363,7 @@ kmlmk..
     A2.flag = [X02 - 0.5, DECK2 + 16.5, ZC3 + 0.5];
     if (parts.sail !== "none") A2.flag = mastSail(m, p, parts.sail, X02 + 74, DECK2 + 1, DECK2 + 40, ZC3, 12);
     for (let u = 10; u < 80; u += 8) m.set(X02 + u, WL - 1, Math.round(ZC3 + s.beam(u) * 0.95), p.led);
-    engine(m, p, parts.engine, X02 + 2, DECK2 + 1, ZC3, A2, spin, bubbles, { x0: X02 + 2, x1: X02 + 20, h: 20, poleH: 20 });
+    engine(m, p, parts.engine, X02 + 2, DECK2 + 1, ZC3, A2, spin, bubbles2, { x0: X02 + 2, x1: X02 + 20, h: 20, poleH: 20 });
     const front = twinFront(m, [p.white, p.chrome, p.whiteD], (x, y, z) => z >= ZC3 + 8 && y > DECK2 && x < bx0 - 4);
     return finish5({
       m,
@@ -64069,7 +64371,7 @@ kmlmk..
       wl: WL,
       zc: ZC3,
       spin,
-      bubbles,
+      bubbles: bubbles2,
       A: { ...A2, stand: [X02 + 17, DECK2 + 1, ZC3 + 2], bow: [X02 + LEN, WL, ZC3], stern: [X02 - 2, WL, ZC3], top: [X02 + 40, DECK2 + 30, ZC3], keel: [X02 + 40, 0, ZC3], cabin: [(bx0 + bx1) / 2, DECK2 + 6, ZC3 + 10], under: [X02 + 40, WL - 1, ZC3 + 11] },
       pivot: [X02 + LEN / 2, WL],
       flagScale: 0.9,
@@ -64081,7 +64383,7 @@ kmlmk..
     const m = new VoxelModel(104, 76, 36);
     const p = aeroPal(m, paint9, trim);
     const X02 = 14, LEN = 74, ZC3 = 18, WL = 4, DECK2 = 10;
-    const A2 = {}, spin = [], bubbles = [];
+    const A2 = {}, spin = [], bubbles2 = [];
     for (const sd of [-1, 1]) {
       const zc = ZC3 + sd * 10;
       hull(m, {
@@ -64121,7 +64423,7 @@ kmlmk..
     }
     m.set(X02 + LEN - 6, DECK2, ZC3 + 14, p.ledG);
     m.set(X02 + LEN - 6, DECK2, ZC3 - 14, p.ledR);
-    engine(m, p, parts.engine === "turbine" ? "none" : parts.engine, X02, DECK2 + 1, ZC3, A2, spin, bubbles, { x0: X02 + 4, x1: X02 + 18, h: 16, poleH: 16 });
+    engine(m, p, parts.engine === "turbine" ? "none" : parts.engine, X02, DECK2 + 1, ZC3, A2, spin, bubbles2, { x0: X02 + 4, x1: X02 + 18, h: 16, poleH: 16 });
     const front = twinFront(m, [p.white, p.trim, p.leafL], (x, y, z) => z >= ZC3 + 7 && y > DECK2 && x >= cx0 - 1);
     return finish5({
       m,
@@ -64129,7 +64431,7 @@ kmlmk..
       wl: WL,
       zc: ZC3,
       spin,
-      bubbles,
+      bubbles: bubbles2,
       A: { ...A2, stand: [X02 + 15, DECK2 + 1, ZC3 + 1], bow: [X02 + LEN, WL, ZC3], stern: [X02 - 2, WL, ZC3], top: [X02 + 40, DECK2 + 46, ZC3], keel: [X02 + 40, 0, ZC3], cabin: [(cx0 + cx1) / 2, DECK2 + 5, ZC3 + 8], lantern: [X02 + LEN - 5.5, DECK2 + 0.5, ZC3 + 14.5] },
       pivot: [X02 + LEN / 2, WL],
       flagScale: 0.9,
@@ -64141,7 +64443,7 @@ kmlmk..
     const m = new VoxelModel(112, 64, 36);
     const p = aeroPal(m, paint9, trim);
     const X02 = 14, LEN = 84, ZC3 = 18, WL = 9, CY2 = 7, R8 = 8.6;
-    const A2 = {}, spin = [], bubbles = [];
+    const A2 = {}, spin = [], bubbles2 = [];
     shapeIn2(m, X02 - 2, 0, ZC3 - 10, X02 + LEN + 2, CY2 + R8 + 1, ZC3 + 10, (x, y, z) => {
       const u = (x - X02) / LEN;
       if (u < 0 || u > 1) return false;
@@ -64170,10 +64472,10 @@ kmlmk..
     for (let a = 0; a < TAU; a += 0.2) m.set(X02 - 2, CY2 + Math.sin(a) * 3.6, ZC3 + Math.cos(a) * 3.6, p.chrome);
     m.sphere(X02 + LEN, CY2 + 1, ZC3, 1.6, p.lamp);
     A2.flag = [dx + 24.5, dTop + 8.5, ZC3 - 1.5];
-    if (parts.engine !== "none") engine(m, p, parts.engine === "outboard" ? "bubble" : parts.engine, X02 + 1, CY2 + R8 - 2, ZC3, A2, spin, bubbles, { x0: X02 + 10, x1: X02 + 22, h: 12, poleH: 14 });
+    if (parts.engine !== "none") engine(m, p, parts.engine === "outboard" ? "bubble" : parts.engine, X02 + 1, CY2 + R8 - 2, ZC3, A2, spin, bubbles2, { x0: X02 + 10, x1: X02 + 22, h: 12, poleH: 14 });
     if (!A2.bubbles0) {
       A2.bubbles0 = [X02 - 3, CY2, ZC3 + 0.5];
-      bubbles.push("bubbles0");
+      bubbles2.push("bubbles0");
     }
     const front = twinFront(m, [p.chrome], (x, y, z) => z > ZC3 + 1.5 && y > dTop);
     return finish5({
@@ -64182,7 +64484,7 @@ kmlmk..
       wl: WL,
       zc: ZC3,
       spin,
-      bubbles,
+      bubbles: bubbles2,
       A: { ...A2, stand: [dx, dTop + 1, ZC3], bow: [X02 + LEN, WL, ZC3], stern: [X02 - 3, WL, ZC3], top: [dx, dTop + 15, ZC3], keel: [X02 + 40, 0, ZC3], sub: [X02 + LEN, CY2 + 1, ZC3 + 2], under: [X02 + 40, CY2, ZC3 + 10], lantern: [X02 + LEN + 0.5, CY2 + 1.5, ZC3 + 1.5] },
       pivot: [X02 + LEN / 2, WL],
       flagScale: 0.8,
@@ -66436,7 +66738,11 @@ kmlmk..
       const bx = x - ox, by = y - oy;
       if (body(bx, by)) return true;
       if (inTri2(bx + 0.5, by + 0.5)) return true;
-      return circles.some(([cx, cy, r]) => Math.abs(bx + 0.5 - cx) <= r && Math.abs(by + 0.5 - cy) <= r);
+      return circles.some(([cx, cy, r]) => {
+        const d = Math.max(3, Math.round(r * 2)), x0 = Math.round(cx - d / 2), y0 = Math.round(cy - d / 2), ins = circleInsets(d);
+        const yy = by - y0, xx = bx - x0;
+        return yy >= 0 && yy < d && xx >= ins[yy] && xx < d - ins[yy];
+      });
     };
     const edgeOf = (m, x, y) => !m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1);
     const b = new PixelBuffer(CW, CH);
@@ -66518,10 +66824,9 @@ kmlmk..
       ctx3.fillStyle = "rgba(191,244,255,0.55)";
       ctx3.fillRect(kx - 5, y, 11, 15);
     }
-    ctx3.drawImage(aeroCached(`sthumb|${hot ? 1 : 0}|${opts.down ? 1 : 0}`, () => aeroSurface(9, 13, { tone: hot ? "white" : "frost", top: "#ffffff", bot: hot ? "#bfeaff" : "#9fd4f0", edge: "#0a3e74", r: 2, gloss: 0.5, glossH: 5, rim: 1, glow: 0.2 })), kx - 4, y + 1 + (opts.down ? 1 : 0));
-    ctx3.fillStyle = "#5a9ec4";
-    ctx3.fillRect(kx - 1, y + 5 + (opts.down ? 1 : 0), 3, 1);
-    ctx3.fillRect(kx - 1, y + 8 + (opts.down ? 1 : 0), 3, 1);
+    const thumbT = { ...toneOf("white"), bot: hot ? "#bfeaff" : "#a8d8f0", edge: "#0a3e74" };
+    if (opts.down) ctx3.drawImage(pixelBubbleCanvas(15, 12, { tone: thumbT }), kx - 7, y + 2);
+    else ctx3.drawImage(pixelBubbleCanvas(13, 13, { tone: thumbT }), kx - 6, y + 1);
     return { knob: { x: kx - 6, y: y + 1, w: 13, h: 13 }, x, y, w, h: SLIDER_H };
   }
   function drawToggle(ctx3, x, y, on, opts = {}) {
@@ -66531,17 +66836,17 @@ kmlmk..
     const c = aeroCached(`toggle|${!!on}|${hov}`, () => {
       const cc = makeCanvas(TOGGLE_W, TOGGLE_H);
       const g = ctxOf(cc);
-      const tone5 = on ? hov ? { ...toneOf("green"), top: "#eaffc0" } : "green" : hov ? { ...toneOf("glass"), bot: "#a8d8f0" } : { ...toneOf("glass"), bot: "#9cc4dc", mid: "#d4ecf8" };
-      g.drawImage(aeroSurface(TOGGLE_W, 14, { tone: tone5, r: "pill", gloss: 0.7, glossH: 6, curve: 1, rim: 0.7, glow: 0.6, inset: !on }), 0, 4);
-      g.fillStyle = on ? "rgba(255,255,255,0.9)" : "rgba(60,111,136,0.7)";
+      const tone5 = on ? hov ? { ...toneOf("green"), top: "#eaffc0" } : "green" : { ...toneOf("glass"), top: hov ? "#f4fcff" : "#e4f4fc", mid: hov ? "#c4e4f6" : "#b4d4e8", bot: hov ? "#94c4e0" : "#86b4d0", edge: "#2a5a80" };
+      g.drawImage(pixelBubbleCanvas(TOGGLE_W, 14, { tone: tone5, iris: false }), 0, 4);
+      g.fillStyle = on ? "rgba(255,255,255,0.95)" : "rgba(60,111,136,0.75)";
       if (on) g.fillRect(8, 8, 1, 6);
       else {
-        g.fillRect(17, 8, 3, 1);
-        g.fillRect(17, 13, 3, 1);
-        g.fillRect(16, 9, 1, 4);
-        g.fillRect(20, 9, 1, 4);
+        g.fillRect(18, 8, 3, 1);
+        g.fillRect(18, 13, 3, 1);
+        g.fillRect(17, 9, 1, 4);
+        g.fillRect(21, 9, 1, 4);
       }
-      g.drawImage(aeroSurface(12, 12, { tone: "white", bot: on ? "#d8f4ff" : "#c4dcea", edge: on ? "#1a5e12" : "#3a6a8a", r: 2, gloss: 0.5, glossH: 5, rim: 1, glow: 0.2 }), on ? TOGGLE_W - 13 : 1, 5);
+      g.drawImage(pixelBubbleCanvas(16, 16, { tone: { ...toneOf("white"), bot: on ? "#c8ecff" : "#b4cede", edge: on ? "#1a5e12" : "#3a6a8a", glow: on ? "#eaffb4" : "#ffffff" }, iris: true }), on ? TOGGLE_W - 16 : 0, 3);
       return cc;
     });
     ctx3.drawImage(c, x, y);
@@ -66571,6 +66876,14 @@ kmlmk..
     tx = clamp(tx, 3, Math.max(3, CW - w - 3));
     ty = clamp(ty, 3, Math.max(3, CH - h - 4));
     const c = aeroCached(`tip|${w}|${h}`, () => withShadow(aeroSurface(w, h, { tone: "frost", r: Math.min(big ? 8 : 6, Math.floor(h / 2)), gloss: 0.45, glossH: Math.min(big ? 11 : 9, Math.round(h * 0.45)), curve: 1, rim: 0.9, glow: 0.35, glowColor: "#bfeaff" }), 1, 2, 0.25));
+    if (!opts.noTrail) {
+      const cx2 = x < tx ? tx : tx + w, cy2 = y < ty ? ty : ty + h;
+      const dx = cx2 - x, dy = cy2 - y;
+      if (Math.abs(dx) + Math.abs(dy) > 10) {
+        pixelBubble2(ctx3, x + dx * 0.36, y + dy * 0.36, 2, { tone: "frost" });
+        pixelBubble2(ctx3, x + dx * 0.72, y + dy * 0.72, 3, { tone: "frost" });
+      }
+    }
     ctx3.drawImage(c, tx, ty);
     const px4 = big ? 10 : 7, py = big ? 6 : 6;
     lines.forEach((l, i) => drawText(ctx3, l, tx + px4, ty + py + i * lh, { font, color: UI_COLORS.ink, shadow: big ? "#ffffff" : null }));
@@ -73010,7 +73323,7 @@ kmlmk..
     }
     const pink = P7("#ff7aa8", { jitter: 0.12 }, o), pinkD = P7("#d8507e", {}, o), orange = P7("#ff9a44", { jitter: 0.12 }, o), orangeL = P7("#ffc87a", {}, o);
     const purple = P7("#b46aff", { jitter: 0.12 }, o), yellow = P7("#ffd84a", { jitter: 0.12 }, o), grass = P7("#48b45a", { jitter: 0.15 }, o);
-    const star2 = P7("#ff6a3a", {}, o), anem = P7("#5ad8b8", {}, o), anemT = P7("#ff8ad0", {}, o);
+    const star = P7("#ff6a3a", {}, o), anem = P7("#5ad8b8", {}, o), anemT = P7("#ff8ad0", {}, o);
     const placed2 = [];
     for (let n2 = 0, tries = 0; n2 < 34 && tries < 400; tries++) {
       const a = rng2.float(0, TAU), r = rng2.float(12.5, 27);
@@ -73054,10 +73367,10 @@ kmlmk..
     }
     for (const [u, w] of [[33, 30], [8, 36], [30, 8]]) {
       const gy = ground(u, w) + 1, x = X(u), z = Z(w);
-      m.set(x, gy, z, star2);
+      m.set(x, gy, z, star);
       for (let k = 0; k < 5; k++) {
         const a = k / 5 * TAU;
-        for (let r = 1; r <= 2; r++) m.put(Math.round(x + Math.cos(a) * r), gy, Math.round(z + Math.sin(a) * r), star2);
+        for (let r = 1; r <= 2; r++) m.put(Math.round(x + Math.cos(a) * r), gy, Math.round(z + Math.sin(a) * r), star);
       }
     }
   }
@@ -75585,8 +75898,8 @@ kmlmk..
               g.water?.splash?.(boat.x, 0.5, 20);
             }
             boat.pose = "idle";
-            const W22 = W11;
-            s.xEnd = Math.min(W22 - 90, Math.max(s.x0 + 50, Math.min(W22 * 0.8, Math.max(s.x0 + W22 * 0.25, W22 * 0.7))));
+            const W23 = W11;
+            s.xEnd = Math.min(W23 - 90, Math.max(s.x0 + 50, Math.min(W23 * 0.8, Math.max(s.x0 + W23 * 0.25, W23 * 0.7))));
           }
           s.jobs = this.jobs(s);
           const a = g.audio;
@@ -79842,14 +80155,6 @@ kmlmk..
     d[j + 2] = rgb3[2];
     d[j + 3] = a;
   }
-  function blend2(rgb3, w, k) {
-    return [rgb3[0] + (w[0] - rgb3[0]) * k, rgb3[1] + (w[1] - rgb3[1]) * k, rgb3[2] + (w[2] - rgb3[2]) * k];
-  }
-  function sdRR(x, y, cx, cy, hw, hh, r) {
-    const qx = Math.abs(x - cx) - (hw - r), qy = Math.abs(y - cy) - (hh - r);
-    const ox = Math.max(qx, 0), oy = Math.max(qy, 0);
-    return Math.sqrt(ox * ox + oy * oy) + Math.min(Math.max(qx, qy), 0) - r;
-  }
   function ringOf(inside, w, h, i, rad) {
     const x = i % w, y = i / w | 0;
     for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
@@ -79858,218 +80163,6 @@ kmlmk..
       if (X >= 0 && Y >= 0 && X < w && Y < h && inside[Y * w + X]) return true;
     }
     return false;
-  }
-  function specOf(mini, D2) {
-    const S15 = mini ? WALLET_ART.MINI : WALLET_ART.FULL;
-    if (D2 >= 2) return S15;
-    let v = SPEC1.get(S15);
-    if (!v) SPEC1.set(S15, v = { ...S15, font: "normal", cap: 7 });
-    return v;
-  }
-  function layoutOf(S15, aw, gw) {
-    const H8 = S15.H, cy = H8 / 2;
-    const dA = cy;
-    const chAx = dA + S15.dimR + S15.gap, chAw = aw + 5 + S15.padR;
-    const grooveX = chAx + chAw + 1.7;
-    const dG = grooveX + 1.7 + S15.dimR;
-    const chGx = dG + S15.dimR + S15.gap, chGw = gw + 5 + S15.padR;
-    const W11 = Math.ceil(chGx + chGw + S15.B + 0.8);
-    return { W: W11, H: H8, cy, dA, dG, chAx, chAw, chGx, chGw, grooveX, chY: cy + 0.4 - S15.chH / 2 };
-  }
-  function slabHeight(S15, L4, u, v) {
-    const d0 = sdRR(u, v, L4.W / 2, L4.H / 2, L4.W / 2, L4.H / 2, L4.H / 2);
-    if (d0 > 0) return 0;
-    const k = clamp4(-d0 / S15.B, 0, 1), e = 1 - k;
-    let h = S15.B * Math.sqrt(1 - e * e);
-    const R22 = S15.dimR * S15.dimR, dv2 = (v - L4.cy) * (v - L4.cy);
-    let r2 = ((u - L4.dA) * (u - L4.dA) + dv2) / R22;
-    if (r2 < 1) h -= S15.dimDep * Math.sqrt(1 - r2);
-    r2 = ((u - L4.dG) * (u - L4.dG) + dv2) / R22;
-    if (r2 < 1) h -= S15.dimDep * Math.sqrt(1 - r2);
-    const chc = L4.chY + S15.chH / 2, chr = S15.chH / 2;
-    let dc = sdRR(u, v, L4.chAx + L4.chAw / 2, chc, L4.chAw / 2, chr, chr);
-    if (dc < 0) {
-      const kc = clamp4(-dc / S15.chB, 0, 1), ec = 1 - kc;
-      h -= S15.chDep * Math.sqrt(1 - ec * ec);
-    }
-    dc = sdRR(u, v, L4.chGx + L4.chGw / 2, chc, L4.chGw / 2, chr, chr);
-    if (dc < 0) {
-      const kc = clamp4(-dc / S15.chB, 0, 1), ec = 1 - kc;
-      h -= S15.chDep * Math.sqrt(1 - ec * ec);
-    }
-    const dg = sdRR(u, v, L4.grooveX, L4.cy, 0.75, L4.H / 2 - S15.B - 0.6, 0.75);
-    if (dg < 0) {
-      const kg = clamp4(-dg / 0.75, 0, 1), eg = 1 - kg;
-      h -= 1.1 * Math.sqrt(1 - eg * eg);
-    }
-    return h;
-  }
-  function cloudAt(u, v, cx, cy, s) {
-    for (let k = 0; k < PUFFS.length; k += 3) {
-      const dx = u - cx - PUFFS[k] * s, dy = v - cy - PUFFS[k + 1] * s, r = PUFFS[k + 2] * s;
-      if (dx * dx + dy * dy < r * r) return true;
-    }
-    return false;
-  }
-  function bakeSlab(S15, aw, gw, D2) {
-    return cached3(`slab|${S15.H}|${aw}|${gw}|${D2}`, () => {
-      const L4 = layoutOf(S15, aw, gw);
-      const shU = 2, ol = D2 >= 4 ? 2 : 1, P7 = ol;
-      const w = Math.ceil(L4.W * D2) + P7 * 2, h = Math.ceil((L4.H + shU) * D2) + P7;
-      const { c, g, im } = newImg(w, h);
-      const inside = new Uint8Array(w * h), glass2 = new Uint8Array(w * h);
-      const sd = (u, v) => sdRR(u, v, L4.W / 2, L4.H / 2, L4.W / 2, L4.H / 2, L4.H / 2);
-      const gw2 = w + 2, hgt = new Float32Array(gw2 * (h + 2));
-      for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) hgt[(y + 1) * gw2 + x + 1] = slabHeight(S15, L4, (x - P7 + 0.5) / D2, (y - P7 + 0.5) / D2);
-      const lens = { x: L4.H * 0.42, y: S15.B * 0.92, w: L4.W - L4.H * 0.84, h: L4.H * 0.36 };
-      const lamFlat = LIT[2];
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const i = y * w + x, u = (x - P7 + 0.5) / D2, v = (y - P7 + 0.5) / D2;
-        const d0 = sd(u, v);
-        if (d0 >= 0) continue;
-        inside[i] = 1;
-        const sec = u > L4.grooveX ? 1 : 0, R8 = sec ? LILAC : AQUA2;
-        const gi = (y + 1) * gw2 + x + 1;
-        const hx3 = hgt[gi + 1] - hgt[gi - 1], hy = hgt[gi + gw2] - hgt[gi - gw2];
-        let nx = -hx3 * D2 / 2, ny = -hy * D2 / 2, nz = 1;
-        const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
-        nx /= nl;
-        ny /= nl;
-        nz /= nl;
-        const lam = nx * LIT[0] + ny * LIT[1] + nz * LIT[2];
-        const vv = v / L4.H, edge = clamp4(-d0 / S15.B, 0, 1);
-        let T5 = 2.75 + 2.1 * sstep(0.5, 1, vv) - 0.35 * sstep(0.15, 0.45, vv);
-        T5 += (lam - lamFlat) * 3.4;
-        if (ny > 0.2 && edge < 1) T5 += 1.5 * ny;
-        const inCh = sdRR(u, v, L4.chAx + L4.chAw / 2, L4.chY + S15.chH / 2, L4.chAw / 2, S15.chH / 2, S15.chH / 2) < 0 || sdRR(u, v, L4.chGx + L4.chGw / 2, L4.chY + S15.chH / 2, L4.chGw / 2, S15.chH / 2, S15.chH / 2) < 0;
-        if (inCh) T5 -= 1.35;
-        const inDim = (u - L4.dA) ** 2 + (v - L4.cy) ** 2 < S15.dimR ** 2 || (u - L4.dG) ** 2 + (v - L4.cy) ** 2 < S15.dimR ** 2;
-        if (inDim) T5 += 0.3 + 0.35 * sstep(0.5, 0.9, vv);
-        const outer = -d0 < 1 / D2 + 0.02;
-        if (-d0 < 1.1 / D2 + 0.35 && nx + ny > 0.15) T5 += 1.4;
-        let idx = clamp4(Math.floor(T5), 0, 6);
-        if (outer && nx + ny < -0.2) idx = 6;
-        if (ny < -0.3 && edge < 0.95) idx = clamp4(idx, 3, 4);
-        const spec = nx * HV[0] + ny * HV[1] + nz * HV[2];
-        if (spec > 0.975) idx = 7;
-        else if (spec > 0.94 && idx < 6) idx = 6;
-        let col = R8[idx];
-        let a = 232;
-        const dl = sdRR(u, v, lens.x + lens.w / 2, lens.y + lens.h / 2, lens.w / 2, lens.h / 2, lens.h / 2);
-        if (dl < 0 && !inCh) {
-          const lv = (v - lens.y) / lens.h;
-          let k = lv < 0.34 ? 0.8 : lv < 0.68 ? 0.52 : 0.28;
-          if (cloudAt(u, v, lens.x + 6, lens.y + lens.h * 0.62, S15.H * 0.09) || cloudAt(u, v, lens.x + lens.w * 0.62, lens.y + lens.h * 0.7, S15.H * 0.075)) k += 0.2;
-          if (inDim) k *= 0.55;
-          col = blend2(col, WHITE5, k);
-          a = 244;
-        } else if (dl < 0 && inCh) {
-          col = blend2(col, WHITE5, (v - lens.y) / lens.h < 0.42 ? 0.2 : 0.1);
-        }
-        put(im, i, col, a);
-        glass2[i] = 1;
-      }
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        if (inside[i]) continue;
-        const u = (x - P7 + 0.5) / D2, v = (y - P7 + 0.5) / D2;
-        if (ringOf(inside, w, h, i, ol)) {
-          put(im, i, u > L4.grooveX ? INK4.g : INK4.a, 255);
-          continue;
-        }
-        if (sd(u - 0.3, v - 1.1) < 0) put(im, i, [4, 30, 60], 92);
-        else if (sd(u - 0.5, v - 1.9) < 0) put(im, i, [4, 30, 60], 44);
-      }
-      const bub2 = [[L4.dA + S15.dimR * 0.95, L4.H - S15.B - 1.2], [L4.chAx + L4.chAw * 0.55, L4.H - S15.B - 0.4], [L4.dG - S15.dimR * 0.9, L4.H - S15.B - 1]];
-      for (const [bu, bv] of bub2) {
-        const x = Math.round(bu * D2) + P7, y = Math.round(bv * D2) + P7;
-        if (y < h && x < w && glass2[y * w + x]) {
-          put(im, y * w + x, [214, 250, 255], 255);
-          if (D2 >= 3 && glass2[y * w + x + 1]) put(im, y * w + x + 1, [150, 226, 250], 255);
-        }
-      }
-      g.putImageData(im, 0, 0);
-      c.L = L4;
-      c.glass = glass2;
-      c.D = D2;
-      c.P = P7;
-      return c;
-    });
-  }
-  function slabMask(slab4) {
-    if (slab4.mask) return slab4.mask;
-    const w = slab4.width, h = slab4.height;
-    const { c, g, im } = newImg(w, h);
-    for (let i = 0; i < w * h; i++) if (slab4.glass[i]) put(im, i, WHITE5, 255);
-    g.putImageData(im, 0, 0);
-    return slab4.mask = c;
-  }
-  function causticFrame(slab4, f) {
-    const fr = slab4.cau || (slab4.cau = []);
-    return fr[f] || (fr[f] = (() => {
-      const w = slab4.width, h = slab4.height, D2 = slab4.D, L4 = slab4.L;
-      const { c, g, im } = newImg(w, h);
-      const ph = f / 8 * Math.PI * 2;
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        if (!slab4.glass[i]) continue;
-        const u = (x - slab4.P + 0.5) / D2, v = (y - slab4.P + 0.5) / D2, vv = v / L4.H;
-        if (vv < 0.55 || vv > 0.9) continue;
-        const a = Math.sin(u * 0.55 + Math.sin(v * 0.9 + ph) * 1.4 + ph) + Math.sin(u * 0.31 - v * 0.7 - ph * 0.5 + 1.3);
-        if (Math.abs(a) < 0.16 + 0.05 * (vv - 0.55) * 4) put(im, i, [190, 246, 255], 120);
-      }
-      g.putImageData(im, 0, 0);
-      return c;
-    })());
-  }
-  function bakeLeaf(D2, len, wid, angDeg) {
-    return cached3(`leaf|${D2}|${len}|${wid}|${angDeg}`, () => {
-      const a = angDeg * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
-      const ext2 = len + 2;
-      const w = Math.ceil(ext2 * 2 * D2), h = w;
-      const { c, g, im } = newImg(w, h);
-      const inside = new Uint8Array(w * h);
-      const o = ext2;
-      const hgt = (s, t) => {
-        if (s < 0 || s > len) return -1;
-        const hw = wid * Math.pow(Math.sin(Math.PI * s / len), 0.75) * (s < len * 0.5 ? 1 : 1 - 0.15 * (s / len - 0.5));
-        const q = Math.abs(t) / Math.max(1e-3, hw);
-        if (q >= 1) return -1;
-        return Math.sqrt(1 - q * q) * wid * 0.55 - 0.45 * Math.max(0, 1 - Math.abs(t) / 0.5);
-      };
-      const e = 0.5 / D2;
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const u = (x + 0.5) / D2 - o, v = (y + 0.5) / D2 - o;
-        const s = u * ca + v * sa, t = -u * sa + v * ca;
-        const h0 = hgt(s, t);
-        if (h0 < 0) continue;
-        const i = y * w + x;
-        inside[i] = 1;
-        const H8 = (uu, vv2) => {
-          const ss = uu * ca + vv2 * sa, tt = -uu * sa + vv2 * ca, r = hgt(ss, tt);
-          return r < 0 ? 0 : r;
-        };
-        let nx = -(H8(u + e, v) - H8(u - e, v)) / (2 * e), ny = -(H8(u, v + e) - H8(u, v - e)) / (2 * e), nz = 1;
-        const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
-        nx /= nl;
-        ny /= nl;
-        nz /= nl;
-        const lam = nx * LIT[0] + ny * LIT[1] + nz * LIT[2];
-        let T5 = 3.1 + (lam - LIT[2]) * 3.6 + s / len * 0.5;
-        if (Math.abs(t) < 0.45 && s > 0.8 && s < len - 1) T5 = Math.max(T5, 4.6);
-        let idx = clamp4(Math.floor(T5), 0, 6);
-        const sp = nx * HV[0] + ny * HV[1] + nz * HV[2];
-        if (sp > 0.97) idx = 7;
-        else if (sp > 0.93 && idx < 6) idx = 6;
-        put(im, i, LEAF[idx], 255);
-      }
-      const ol = D2 >= 4 ? 2 : 1;
-      for (let i = 0; i < w * h; i++) if (!inside[i] && ringOf(inside, w, h, i, ol)) put(im, i, INK4.leaf, 255);
-      g.putImageData(im, 0, 0);
-      c.ox = o * D2;
-      c.oy = o * D2;
-      return c;
-    });
   }
   function sdDrop(x, y, r1, r2, hh) {
     x = Math.abs(x);
@@ -80153,23 +80246,6 @@ kmlmk..
         put(im, y * n2 + x, WATER8[idx], 255);
       }
       for (let i = 0; i < n2 * n2; i++) if (!inside[i] && ringOf(inside, n2, n2, i, 1)) put(im, i, [18, 72, 150], 235);
-      g.putImageData(im, 0, 0);
-      return c;
-    });
-  }
-  function bakeBubble(D2, ru) {
-    return cached3(`bub|${D2}|${ru}`, () => {
-      const r = Math.max(1.5, ru * D2), n2 = Math.ceil(r * 2 + 1);
-      const { c, g, im } = newImg(n2, n2);
-      const cx = n2 / 2;
-      for (let y = 0; y < n2; y++) for (let x = 0; x < n2; x++) {
-        const dx = (x + 0.5 - cx) / r, dy = (y + 0.5 - cx) / r, q = Math.sqrt(dx * dx + dy * dy);
-        if (q >= 1) continue;
-        const i = y * n2 + x;
-        if (q > 1 - 1.2 / r) put(im, i, dx + dy < 0 ? [236, 252, 255] : [120, 214, 246], 230);
-        else if (dx < -0.15 && dy < -0.15 && q < 0.62 && q > 0.25) put(im, i, WHITE5, 255);
-        else put(im, i, [170, 236, 255], 60);
-      }
       g.putImageData(im, 0, 0);
       return c;
     });
@@ -80277,41 +80353,121 @@ kmlmk..
       return c;
     });
   }
-  function bakeGlyph(ch, font, D2, tone5, flash) {
-    return cached3(`dig|${ch}|${font}|${D2}|${tone5}|${flash ? 1 : 0}`, () => {
-      const cap2 = font === "big" ? 9 : 7;
-      const gw = Math.max(1, measureText(ch, font)), m = makeCanvas(gw, cap2);
-      drawText(m.getContext("2d"), ch, 0, 0, { font, color: "#ffffff" });
-      const md = m.getContext("2d").getImageData(0, 0, gw, cap2).data;
-      const rim = D2 >= 5 ? 2 : D2 >= 2 ? 1 : 0, ink = 1, sh = Math.max(1, Math.round(D2 * 0.75));
-      const M6 = rim + ink;
-      const w = gw * D2 + M6 * 2, h = cap2 * D2 + M6 * 2 + sh;
+  function faceOf2(S15, H8) {
+    const lim = Math.max(9, H8 * S15.capK);
+    let f = FACES2[0];
+    for (const F3 of FACES2) if (F3.cap <= lim) f = F3;
+    return f;
+  }
+  function glyphBits(ch, F3) {
+    const key = ch + "|" + F3.font + "|" + F3.s;
+    let v = bitsMemo.get(key);
+    if (v) return v;
+    const art4 = F3.font === "d13" ? D13_ART[ch] : null;
+    if (art4) {
+      const s = F3.s, w = art4[0].length * s, h = art4.length * s, bits = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) bits[y * w + x] = art4[y / s | 0][x / s | 0] === "#" ? 1 : 0;
+      v = { w, h, bits };
+    } else {
+      const font = "big", s = F3.font === "big" ? F3.s : Math.max(1, Math.round(F3.cap / 9));
+      const gw = Math.max(1, measureText(ch, font, s)), gh = (isDigit(ch) ? 9 : 12) * s, m = makeCanvas(gw, gh), g = m.getContext("2d");
+      drawText(g, ch, 0, 0, { font, color: "#ffffff", scale: s });
+      const d = g.getImageData(0, 0, gw, gh).data, bits = new Uint8Array(gw * gh);
+      for (let i = 0; i < gw * gh; i++) bits[i] = d[i * 4 + 3] > 128 ? 1 : 0;
+      v = { w: gw, h: gh, bits };
+    }
+    bitsMemo.set(key, v);
+    return v;
+  }
+  function layoutOf(H8, aw, gw, F3) {
+    const m = H8 < 22 ? 1 : Math.max(2, Math.round(H8 * 0.09)), Db = H8 - m * 2;
+    let Hc = Math.max(F3.cap + 6, Math.round(H8 * 0.62));
+    if ((H8 - Hc) % 2) Hc++;
+    const cy0 = (H8 - Hc) / 2, gap = Math.max(1, Math.round(H8 * 0.05)), pad = Math.max(3, Math.round(Hc * 0.36));
+    const dA = { x: m, y: m, d: Db };
+    const chA = { x: m + Db + gap, y: cy0, w: aw + pad * 2, h: Hc };
+    const seam = chA.x + chA.w + Math.max(2, Math.round(H8 * 0.1));
+    const dG = { x: seam + Math.max(2, Math.round(H8 * 0.09)), y: m, d: Db };
+    const chG = { x: dG.x + Db + gap, y: cy0, w: gw + pad * 2, h: Hc };
+    const W11 = chG.x + chG.w + cy0;
+    return { W: W11, H: H8, m, Db, dA, dG, chA, chG, seam, pad, F: F3 };
+  }
+  function layoutFor(ui, mini, p) {
+    const S15 = mini ? WALLET_ART.MINI : WALLET_ART.FULL;
+    const H8 = Math.max(12, Math.round(S15.H * p)), F3 = faceOf2(S15, H8);
+    const t = texts(ui, S15, F3);
+    return { S: S15, L: layoutOf(H8, t.aw, t.gw, F3), ...t };
+  }
+  function drawWell(g, x, y, w, h, side) {
+    const C6 = WELL[side], ins = circleInsets(h);
+    const row3 = (yy, col, k = 0) => {
+      const i = ins[yy] + k;
+      if (w - i * 2 > 0) {
+        g.fillStyle = col;
+        g.fillRect(x + i, y + yy, w - i * 2, 1);
+      }
+    };
+    for (let yy = 0; yy < h; yy++) row3(yy, C6.ink);
+    for (let yy = 1; yy < h - 1; yy++) row3(yy, yy < h * 0.55 ? C6.fill : C6.fill2, 1 + (ins[yy - 1] > ins[yy] || ins[yy + 1] > ins[yy] ? 0 : 0));
+    g.fillStyle = C6.top;
+    for (let yy = 1; yy < 3 && yy < h - 1; yy++) {
+      const i = Math.max(ins[yy - 1], ins[yy], ins[yy + 1] ?? 0) + 1;
+      g.fillRect(x + i, y + yy, w - i * 2, 1);
+    }
+    g.fillStyle = C6.bev;
+    {
+      const yy = h - 2, i = Math.max(ins[yy - 1], ins[yy], ins[yy + 1]) + 1;
+      g.fillRect(x + i + 1, y + yy, w - i * 2 - 2, 1);
+    }
+  }
+  function bakeBody(L4, mini) {
+    return cached3(`body|${L4.W}|${L4.H}|${L4.chA.w}|${L4.chG.w}|${mini ? 1 : 0}`, () => {
+      const { W: W11, H: H8 } = L4;
+      const c = makeCanvas(W11, H8 + 1), g = c.getContext("2d");
+      const half = (x0, x1) => [Math.round(x0 + (x1 - x0) * 0.08), Math.round(x0 + (x1 - x0) * 0.55)];
+      const sA = half(L4.chA.x, L4.seam), sG = half(L4.dG.x + L4.Db * 0.5, W11 - H8 / 2);
+      g.drawImage(pixelBubbleCanvas(W11, H8, { tone: AQUA_T, tone2: VIO_T, split: L4.seam, shadow: 1, glossSpans: [sA, [sA[1] + 2, sA[1] + 5], sG, [sG[1] + 2, sG[1] + 4]] }), 0, 0);
+      drawWell(g, L4.chA.x, L4.chA.y, L4.chA.w, L4.chA.h, "a");
+      drawWell(g, L4.chG.x, L4.chG.y, L4.chG.w, L4.chG.h, "g");
+      g.drawImage(pixelBubbleCanvas(L4.Db, L4.Db, { glass: true, tone: { top: "#ffffff", mid: "#9ff0ff", bot: "#38b8e8", edge: "#06284a", glow: "#e0ffff" }, fill: "#c8f6ff" }), L4.dA.x, L4.dA.y);
+      g.drawImage(pixelBubbleCanvas(L4.Db, L4.Db, { glass: true, tone: { top: "#ffffff", mid: "#d4ccff", bot: "#8c7cf4", edge: "#170f4e", glow: "#f0ecff" }, fill: "#e4defe" }), L4.dG.x, L4.dG.y);
+      c.mask = null;
+      return c;
+    });
+  }
+  function bodyMask(L4) {
+    return cached3(`mask|${L4.W}|${L4.H}`, () => {
+      const c = makeCanvas(L4.W, L4.H), g = c.getContext("2d"), ins = circleInsets(L4.H);
+      g.fillStyle = "#ffffff";
+      for (let y = 1; y < L4.H - 1; y++) {
+        const i = ins[y] + 1;
+        g.fillRect(i, y, L4.W - i * 2, 1);
+      }
+      return c;
+    });
+  }
+  function glyphArt(ch, F3, tone5, flash) {
+    return cached3(`dig|${ch}|${F3.font}|${F3.s}|${tone5}|${flash ? 1 : 0}`, () => {
+      const B2 = glyphBits(ch, F3), w = B2.w + 2, h = B2.h + 3;
       const { c, g, im } = newImg(w, h);
       const solid3 = new Uint8Array(w * h);
-      for (let y = 0; y < cap2 * D2; y++) for (let x = 0; x < gw * D2; x++) if (md[((y / D2 | 0) * gw + (x / D2 | 0)) * 4 + 3] > 128) solid3[(y + M6) * w + x + M6] = 1;
-      const near = (i, r) => ringOf(solid3, w, h, i, r);
-      const rimC = flash ? hexRGB3("#c6ff6a") : RIM[tone5], inkC = INK4[tone5];
-      const loC = hexRGB3(tone5 === "g" ? "#e6e4ff" : "#cdf6ff");
+      for (let y = 0; y < B2.h; y++) for (let x = 0; x < B2.w; x++) if (B2.bits[y * B2.w + x]) solid3[(y + 1) * w + x + 1] = 1;
+      const ink = tone5 === "g" ? hexRGB3("#170f4e") : hexRGB3("#06284a");
+      const lo = hexRGB3(flash ? "#fff0a0" : tone5 === "g" ? "#e2deff" : "#c8f4ff");
       for (let y = h - 1; y >= 0; y--) for (let x = 0; x < w; x++) {
         const i = y * w + x;
         if (solid3[i]) {
-          const t = (y - M6) / (cap2 * D2);
-          put(im, i, flash ? t < 0.5 ? WHITE5 : hexRGB3("#fffbe0") : t < 0.52 ? WHITE5 : loC, 255);
+          put(im, i, (y - 1) / B2.h < 0.52 ? WHITE5 : lo, 255);
           continue;
         }
-        if (near(i, rim)) {
-          put(im, i, rimC, 255);
+        if (ringOf(solid3, w, h, i, 1)) {
+          put(im, i, ink, 255);
           continue;
         }
-        if (near(i, rim + ink)) {
-          put(im, i, inkC, 255);
-          continue;
-        }
-        const up = i - sh * w;
-        if (up >= 0 && ringOf(solid3, w, h, up, rim + ink)) put(im, i, [2, 20, 44], 150);
+        const up = i - w;
+        if (up >= 0 && (solid3[up] || ringOf(solid3, w, h, up, 1))) put(im, i, [2, 20, 44], 120);
       }
       g.putImageData(im, 0, 0);
-      c.M = M6;
       return c;
     });
   }
@@ -80343,9 +80499,9 @@ kmlmk..
     }
     W11.gemSpin = (W11.gemSpin || 0) + dt * ((ui.gemBump || 0) * 5.5);
     if (!W11.warm && (ui.time || 0) > 3) {
-      const D2 = HI_ON.on ? 2 : 1, M6 = specOf(true, D2), { aw, gw } = texts(ui, M6);
-      W11.warm = [() => bakeSlab(M6, aw, gw, D2), () => bakeDrop(D2, 14, 0), () => bakeGem(D2, 12.5, 0, false), () => bakeGem(D2, 12.5, 0, true)];
-      for (const ch of "0123456789,") for (const tone5 of ["a", "g"]) W11.warm.push(() => bakeGlyph(ch, M6.font, D2, tone5, false));
+      const p = walletP(ui.game?.state?.settings?.uiScale || "big"), { L: L4 } = layoutFor(ui, true, p), F3 = L4.F;
+      W11.warm = [() => bakeBody(L4, true), () => bakeDrop(1, dropHOf(L4), 0), () => bakeGem(1, gemWOf(L4), 0, false), () => bakeGem(1, gemWOf(L4), 0, true)];
+      for (const ch of "0123456789,") for (const tone5 of ["a", "g"]) W11.warm.push(() => glyphArt(ch, F3, tone5, false));
     }
     if (W11.warm?.length) {
       try {
@@ -80355,67 +80511,32 @@ kmlmk..
       }
     }
   }
-  function texts(ui, S15) {
+  function texts(ui, S15, F3) {
     const aTxt = fmtShort(Math.floor(ui.coinShown || 0)), gTxt = String(Math.floor(ui.gemShown || 0));
-    const aw = Math.max(textW(aTxt, S15.font), textW(S15.minA, S15.font)), gw = Math.max(textW(gTxt, S15.font), textW("00", S15.font));
+    const aw = Math.max(textW(aTxt, F3), textW(S15.minA, F3)), gw = Math.max(textW(gTxt, F3), textW("00", F3));
     return { aTxt, gTxt, aw, gw };
-  }
-  function star(ctx3, x, y, arm, s, col, th = 1) {
-    if (arm < 1) return;
-    const q = 1 / s, t = th * q, A2 = arm * q;
-    ctx3.fillStyle = "rgba(60,20,140,0.55)";
-    ctx3.fillRect(x - t / 2 + q, y - t / 2 - A2 + q, t, A2 * 2 + t);
-    ctx3.fillRect(x - t / 2 - A2 + q, y - t / 2 + q, A2 * 2 + t, t);
-    ctx3.fillStyle = col;
-    ctx3.fillRect(x - t / 2, y - t / 2 - A2, t, A2 * 2 + t);
-    ctx3.fillRect(x - t / 2 - A2, y - t / 2, A2 * 2 + t, t);
-    if (arm >= 3) {
-      ctx3.fillStyle = "#ffffff";
-      ctx3.fillRect(x - t / 2 - q, y - t / 2 - q, t + 2 * q, t + 2 * q);
-    }
   }
   function drawWalletPlaque(ctx3, ui, o = {}) {
     const p = o.p || 1, t = ui.time || 0;
-    const s = isHi(ctx3) || 1, D2 = Math.max(1, Math.round(p * s));
-    const S15 = specOf(o.mini, D2);
-    const q = 1 / s;
-    const sn = (v) => Math.round(v * s) / s;
     const rm = !!ui.game?.state?.settings?.reducedMotion;
     const fx = ui.walletFx || { sweep: -1, gemSpin: 0 };
-    const { aTxt, gTxt, aw, gw } = texts(ui, S15);
-    const slab4 = bakeSlab(S15, aw, gw, D2), L4 = slab4.L;
-    const W11 = L4.W * p, H8 = L4.H * p;
-    const x0 = sn(o.right - W11), y0 = sn(o.y - (o.hov ? q * Math.max(1, D2 >> 1) : 0));
-    const blit3 = (c, ux, uy, dx = 0, dy2 = 0) => {
-      ctx3.drawImage(c, sn(x0 + ux * p - (c.ox || 0) * q) + dx * q, sn(y0 + uy * p - (c.oy || 0) * q) + dy2 * q, c.width * q, c.height * q);
-    };
+    const { S: S15, L: L4, aTxt, gTxt } = layoutFor(ui, o.mini, p);
+    const F3 = L4.F, W11 = L4.W, H8 = L4.H;
+    const x0 = Math.round(o.right - W11), y0 = Math.round(o.y) - (o.hov ? 1 : 0);
+    const blit3 = (c, cx, cy, dy = 0) => ctx3.drawImage(c, x0 + Math.round(cx - (c.ox || 0)), y0 + Math.round(cy - (c.oy || 0)) + dy);
     const sm4 = ctx3.imageSmoothingEnabled;
     ctx3.imageSmoothingEnabled = false;
-    if (S15.leaf) {
-      const sway = rm ? 0 : Math.round(Math.sin(t * 1.4) * 0.6);
-      blit3(bakeLeaf(D2, 10, 3.2, -158), L4.H * 0.3, L4.H * 0.16, 0, sway);
-      blit3(bakeLeaf(D2, 8, 2.6, -118), L4.H * 0.42, L4.H * 0.12, 0, sway);
-    }
-    const sx0 = x0 - slab4.P * q, sy0 = y0 - slab4.P * q;
-    ctx3.drawImage(slab4, sx0, sy0, slab4.width * q, slab4.height * q);
+    if (S15.leaf) drawLeafSprig(ctx3, x0 + Math.round(H8 * 0.42), y0 + 3, "tl", "S", 1, { t, phase: 0.7 });
+    const body = bakeBody(L4, o.mini);
+    ctx3.drawImage(body, x0, y0);
     if (!rm) {
-      const ph = t * 1.1 % 8, f0 = Math.floor(ph), k = ph - f0, a0 = ctx3.globalAlpha;
-      ctx3.globalAlpha = a0 * (1 - k);
-      ctx3.drawImage(causticFrame(slab4, f0), sx0, sy0, slab4.width * q, slab4.height * q);
-      ctx3.globalAlpha = a0 * k;
-      ctx3.drawImage(causticFrame(slab4, (f0 + 1) % 8), sx0, sy0, slab4.width * q, slab4.height * q);
-      ctx3.globalAlpha = a0;
-    } else ctx3.drawImage(causticFrame(slab4, 0), sx0, sy0, slab4.width * q, slab4.height * q);
-    if (!rm) {
-      const bub2 = bakeBubble(D2, o.mini ? 1 : 1.3);
-      for (const [bx, per, ph] of [[L4.chAx + 2.2, 5.2, 0], [L4.chGx + L4.chGw - 3, 6.4, 2.7]]) {
+      const bub2 = pixelBubbleCanvas(H8 >= 30 ? 5 : 4, H8 >= 30 ? 5 : 4, { glass: true, tone: { top: "#ffffff", mid: "#c8f6ff", bot: "#62dcf6", edge: "#1a6aa8" }, gloss: false });
+      for (const [ch, per, ph] of [[L4.chA, 5.2, 0], [L4.chG, 6.4, 2.7]]) {
         const k = (t + ph) % per / per;
-        if (k > 0.8) continue;
-        const kk = k / 0.8, by = L4.H - S15.B - 1 - kk * (L4.H - S15.B * 2 - 2);
-        const a0 = ctx3.globalAlpha;
-        ctx3.globalAlpha = a0 * (kk > 0.85 ? (1 - kk) / 0.15 : 1);
-        ctx3.drawImage(bub2, sn(x0 + (bx + Math.sin(t * 3 + ph) * 0.5) * p - bub2.width * q / 2), sn(y0 + by * p - bub2.height * q / 2), bub2.width * q, bub2.height * q);
-        ctx3.globalAlpha = a0;
+        if (k > 0.75) continue;
+        const kk = k / 0.75;
+        const bx = ch.x + Math.round(ch.h * 0.45) + Math.round(Math.sin(t * 3 + ph) * 0.6), by = ch.y + ch.h - 2 - bub2.height - Math.round(kk * (ch.h - 4 - bub2.height));
+        ctx3.drawImage(bub2, x0 + bx, y0 + by);
       }
     }
     let sw = fx.sweep;
@@ -80424,119 +80545,106 @@ kmlmk..
       if (k < 1) sw = k;
     }
     if (sw >= 0 || o.hov) {
-      const mask = slabMask(slab4), w = slab4.width, h = slab4.height;
-      if (!sweepC || sweepC.width < w || sweepC.height < h) sweepC = makeCanvas(Math.max(w, sweepC?.width || 0), Math.max(h, sweepC?.height || 0));
-      const g = sweepC.getContext("2d");
+      if (!fxC || fxC.width < W11 || fxC.height < H8) fxC = makeCanvas(Math.max(W11, fxC?.width || 0), Math.max(H8, fxC?.height || 0));
+      const g = fxC.getContext("2d");
       g.globalCompositeOperation = "source-over";
-      g.clearRect(0, 0, sweepC.width, sweepC.height);
+      g.clearRect(0, 0, fxC.width, fxC.height);
       if (o.hov) {
-        g.fillStyle = "rgba(255,255,255,0.13)";
-        g.fillRect(0, 0, w, h);
+        g.fillStyle = "rgba(255,255,255,0.14)";
+        g.fillRect(0, 0, W11, H8);
       }
       if (sw >= 0) {
-        const bw = Math.max(6, h * 0.35), xx = Math.round(-h - bw + sw * (w + h + bw * 2));
-        g.fillStyle = "rgba(255,255,255,0.42)";
-        g.beginPath();
-        g.moveTo(xx + h, 0);
-        g.lineTo(xx + h + bw, 0);
-        g.lineTo(xx + bw, h);
-        g.lineTo(xx, h);
-        g.closePath();
-        g.fill();
-        const b2 = Math.max(2, bw * 0.28), x2 = xx + bw + b2 * 1.5;
-        g.fillStyle = "rgba(255,255,255,0.3)";
-        g.beginPath();
-        g.moveTo(x2 + h, 0);
-        g.lineTo(x2 + h + b2, 0);
-        g.lineTo(x2 + b2, h);
-        g.lineTo(x2, h);
-        g.closePath();
-        g.fill();
+        const bw = Math.max(3, Math.round(H8 * 0.22)), xx = Math.round(-H8 - bw + sw * (W11 + H8 + bw * 2));
+        for (let y = 0; y < H8; y++) {
+          const sx2 = xx + Math.round((H8 - y) * 0.5);
+          g.fillStyle = "rgba(255,255,255,0.4)";
+          g.fillRect(sx2, y, bw, 1);
+          g.fillStyle = "rgba(255,255,255,0.28)";
+          g.fillRect(sx2 + bw + 2, y, Math.max(1, bw >> 2), 1);
+        }
       }
       g.globalCompositeOperation = "destination-in";
-      g.drawImage(mask, 0, 0);
-      ctx3.drawImage(sweepC, 0, 0, w, h, sx0, sy0, w * q, h * q);
+      g.drawImage(bodyMask(L4), 0, 0);
+      ctx3.drawImage(fxC, 0, 0, W11, H8, x0, y0, W11, H8);
     }
-    const dropH = o.mini ? 14 : 17.5;
+    const dcx = L4.dA.x + L4.Db / 2, dcy = L4.dA.y + L4.Db / 2;
+    const dropH = dropHOf(L4);
     let lvl = 0;
     if (ui.coinBump > 0) {
       const u = 1 - ui.coinBump;
       lvl = Math.round(Math.sin(u * Math.PI * 3) * 3 * ui.coinBump);
     }
-    const bob = rm ? 0 : Math.round(Math.sin(t * 1.6) * Math.max(1, D2 / 2));
-    const dropC2 = bakeDrop(D2, dropH, clamp4(lvl, -3, 3));
-    const dropY = L4.cy - (o.mini ? 0.2 : 0.4);
-    blit3(dropC2, L4.dA, dropY, 0, bob - (ui.coinBump > 0 ? Math.round(Math.sin(ui.coinBump * Math.PI) * D2) : 0));
+    const bob = rm ? 0 : Math.round(Math.sin(t * 1.6) * 0.6);
+    const hopD = ui.coinBump > 0 ? Math.round(Math.sin(ui.coinBump * Math.PI) * Math.max(1, H8 * 0.06)) : 0;
+    blit3(bakeDrop(1, dropH, Math.max(-3, Math.min(3, lvl))), dcx, dcy + 0.5, bob - hopD);
     if (ui.coinBump > 0.02) {
-      const u = Math.min(1, (1 - ui.coinBump) * 1.5), sc = o.mini ? 0.6 : 1;
-      const big = bakeBead(D2, o.mini ? 0.9 : 1.2), sml = bakeBead(D2, o.mini ? 0.6 : 0.8);
+      const u = Math.min(1, (1 - ui.coinBump) * 1.5), sc = H8 / 24;
+      const big = bakeBead(1, H8 >= 30 ? 1.6 : 1.2), sml = bakeBead(1, H8 >= 30 ? 1.1 : 0.8);
       for (const [vx2, vy2, b] of [[-5, 24, 1], [6, 26, 1], [-12, 19, 0], [13, 20, 0], [-17, 13, 0], [18, 14, 0], [1, 30, 0]]) {
-        const ux = L4.dA + vx2 * u * sc, uy = dropY - dropH * 0.3 - (vy2 * u - 34 * u * u) * sc;
-        const c = b && u < 0.7 ? big : sml;
         if (u >= 1) break;
+        const ux = dcx + vx2 * u * sc, uy = dcy - dropH * 0.3 - (vy2 * u - 34 * u * u) * sc;
+        const c = b && u < 0.7 ? big : sml;
         const a0 = ctx3.globalAlpha;
-        if (u > 0.75) ctx3.globalAlpha = a0 * (1 - u) * 4;
-        ctx3.drawImage(c, sn(x0 + ux * p - c.width * q / 2), sn(y0 + uy * p - c.height * q / 2), c.width * q, c.height * q);
+        if (u > 0.75) ctx3.globalAlpha = a0 * (u > 0.88 ? 0.33 : 0.66);
+        ctx3.drawImage(c, x0 + Math.round(ux - c.width / 2), y0 + Math.round(uy - c.height / 2));
         ctx3.globalAlpha = a0;
       }
     }
-    const gemW = o.mini ? 12.5 : 16.5;
+    const gcx = L4.dG.x + L4.Db / 2, gcy = L4.dG.y + L4.Db / 2;
+    const gemW = gemWOf(L4);
     let spin = fx.gemSpin || 0;
     if (!rm) {
       const k = t % 5.5 / 0.9;
-      if (k < 1) spin += sstep(0, 1, k) * 2;
+      if (k < 1) spin += k * k * (3 - 2 * k) * 2;
     }
-    const gf = Math.floor(spin * GEM_FRAMES) % GEM_FRAMES;
-    const gemC2 = bakeGem(D2, gemW, (gf + GEM_FRAMES) % GEM_FRAMES, false);
-    const hopG = ui.gemBump > 0 ? Math.round(Math.sin(ui.gemBump * Math.PI) * D2) : 0;
-    blit3(gemC2, L4.dG, L4.cy - 0.2, 0, -hopG);
+    const gf = (Math.floor(spin * GEM_FRAMES) % GEM_FRAMES + GEM_FRAMES) % GEM_FRAMES;
+    const hopG = ui.gemBump > 0 ? Math.round(Math.sin(ui.gemBump * Math.PI) * Math.max(1, H8 * 0.06)) : 0;
+    const bright = ui.gemBump > 0.5 && (t * 12 | 0) % 3 !== 2;
+    blit3(bakeGem(1, gemW, gf, bright), gcx, gcy - 0.5, -hopG);
+    const sk = H8 >= 30 ? 3 : 2;
     if (ui.gemBump > 0.05) {
-      const a0 = ctx3.globalAlpha;
-      ctx3.globalAlpha = a0 * Math.min(1, ui.gemBump * 1.4);
-      blit3(bakeGem(D2, gemW, (gf + GEM_FRAMES) % GEM_FRAMES, true), L4.dG, L4.cy - 0.2, 0, -hopG);
-      ctx3.globalAlpha = a0;
       const u = 1 - ui.gemBump;
-      star(ctx3, sn(x0 + (L4.dG + gemW * 0.45) * p), sn(y0 + (L4.cy - gemW * 0.42) * p), Math.round(Math.sin(Math.min(1, u * 2) * Math.PI) * D2 * 1.8), s, "#ffffff", D2 >= 3 ? 2 : 1);
-      star(ctx3, sn(x0 + (L4.dG - gemW * 0.5) * p), sn(y0 + (L4.cy + gemW * 0.18) * p), Math.round(Math.sin(clamp4(u * 2 - 0.4, 0, 1) * Math.PI) * D2 * 1.1), s, "#e8d4ff");
-      star(ctx3, sn(x0 + (L4.dG + gemW * 0.15) * p), sn(y0 + (L4.cy - gemW * 0.75 - u * 3) * p), Math.round(Math.sin(clamp4(u * 2 - 0.2, 0, 1) * Math.PI) * D2 * 0.9), s, "#9ff8ff");
+      const tw = (a, b2) => Math.max(0, Math.round(Math.sin(Math.max(0, Math.min(1, u * 2 - a)) * Math.PI) * b2));
+      const s1 = tw(0, sk), s2 = tw(0.4, sk - 1), s3 = tw(0.2, sk - 1);
+      if (s1) drawSparkle(ctx3, x0 + Math.round(gcx + gemW * 0.45), y0 + Math.round(gcy - gemW * 0.42), s1, 1, "#ffffff");
+      if (s2) drawSparkle(ctx3, x0 + Math.round(gcx - gemW * 0.5), y0 + Math.round(gcy + gemW * 0.18), s2, 1, "#e8d4ff");
+      if (s3) drawSparkle(ctx3, x0 + Math.round(gcx + gemW * 0.15), y0 + Math.round(gcy - gemW * 0.75 - u * 3), s3, 1, "#9ff8ff");
     } else if (!rm && t % 3.3 < 0.22) {
-      star(ctx3, sn(x0 + (L4.dG - gemW * 0.22) * p), sn(y0 + (L4.cy - gemW * 0.3) * p), Math.max(1, D2 >> 1), s, "#ffffff");
+      drawSparkle(ctx3, x0 + Math.round(gcx - gemW * 0.22), y0 + Math.round(gcy - gemW * 0.3), 1, 1, "#ffffff");
     }
-    const dy = L4.chY + (S15.chH - S15.cap) / 2;
-    const digits = (txt, chX, chW, tone5, st, flash) => {
-      let ax = chX + chW - S15.padR - 1.5 - textW(txt, S15.font);
+    const hopPx = Math.max(1, Math.round(S15.hop * p));
+    const digits = (txt, ch, tone5, st, flash) => {
+      let ax = ch.x + ch.w - L4.pad - textW(txt, F3);
+      const dy = ch.y + Math.round((ch.h - F3.cap) / 2);
       for (let i = 0; i < txt.length; i++) {
-        const ch = txt[i], hp = st.hop[i] || 0;
-        const lift = hp > 0 ? Math.round(Math.sin(hp * Math.PI) * S15.hop * D2) : 0;
-        const inset = isDigit(ch) ? Math.floor((measureText("0", S15.font) - measureText(ch, S15.font)) / 2) : 0;
-        const gc = bakeGlyph(ch, S15.font, D2, tone5, flash && hp > 0.4);
-        ctx3.drawImage(gc, sn(x0 + (ax + inset) * p) - gc.M * q, sn(y0 + dy * p) - gc.M * q - lift * q, gc.width * q, gc.height * q);
-        ax += advOf(ch, S15.font);
+        const c = txt[i], hp = st.hop[i] || 0;
+        const lift = hp > 0 ? Math.round(Math.sin(hp * Math.PI) * hopPx) : 0;
+        const inset = isDigit(c) ? Math.floor((glyphBits("0", F3).w - glyphBits(c, F3).w) / 2) : 0;
+        const gc = glyphArt(c, F3, tone5, flash && hp > 0.4);
+        ctx3.drawImage(gc, x0 + ax + inset - 1, y0 + dy - 1 - lift);
+        ax += advOf(c, F3);
       }
     };
     const id2 = o.id || "hud";
-    digits(aTxt, L4.chAx, L4.chAw, "a", hopState(ui, id2 + "a", aTxt), ui.coinBump > 0.2);
-    digits(gTxt, L4.chGx, L4.chGw, "g", hopState(ui, id2 + "g", gTxt), ui.gemBump > 0.2);
+    digits(aTxt, L4.chA, "a", hopState(ui, id2 + "a", aTxt), ui.coinBump > 0.2);
+    digits(gTxt, L4.chG, "g", hopState(ui, id2 + "g", gTxt), ui.gemBump > 0.2);
     ctx3.imageSmoothingEnabled = sm4;
-    const split = sn(x0 + L4.grooveX * p);
+    const split = x0 + L4.seam;
     return {
       x: x0,
       y: y0,
       w: W11,
       h: H8,
       p,
-      drop: { x: Math.round(x0 + L4.dA * p), y: Math.round(y0 + L4.cy * p) },
-      gem: { x: Math.round(x0 + L4.dG * p), y: Math.round(y0 + L4.cy * p) },
+      drop: { x: Math.round(x0 + dcx), y: Math.round(y0 + dcy) },
+      gem: { x: Math.round(x0 + gcx), y: Math.round(y0 + gcy) },
       a: { x: x0, y: y0, w: split - x0, h: H8 },
       g: { x: split, y: y0, w: x0 + W11 - split, h: H8 }
     };
   }
   function walletSize(ui, o = {}) {
-    const p = o.p || 1;
-    const S15 = specOf(o.mini, Math.round(p * (HI_ON.on ? 2 : 1)));
-    const { aw, gw } = texts(ui, S15);
-    const L4 = layoutOf(S15, aw, gw);
-    return { w: L4.W * p, h: L4.H * p };
+    const { L: L4 } = layoutFor(ui, o.mini, o.p || 1);
+    return { w: L4.W, h: L4.H };
   }
   function walletTip(ui, onGem) {
     const st = ui.game?.state || {};
@@ -80559,7 +80667,7 @@ Water-droplet money from fish and your tank.`;
     if (HI_ON.on) return mode2 === "huge" ? 2 : mode2 === "normal" ? 1 : 1.5;
     return mode2 === "huge" ? 3 : mode2 === "normal" ? 1 : 2;
   }
-  var clamp4, sstep, hexRGB3, ramp4, AQUA2, LILAC, WATER8, VIOLET, LEAF, INK4, RIM, LIT, HV, cache15, WHITE5, WALLET_ART, SPEC1, isDigit, advOf, textW, PUFFS, GEM_N, GEM_FRAMES, fmtShort, sweepC;
+  var clamp4, sstep, hexRGB3, ramp4, AQUA2, LILAC, WATER8, VIOLET, LEAF, INK4, RIM, LIT, HV, cache15, WHITE5, GEM_N, GEM_FRAMES, WALLET_ART, D13_ART, FACES2, isDigit, bitsMemo, advOf, textW, WELL, AQUA_T, VIO_T, fmtShort, dropHOf, gemWOf, fxC;
   var init_walletglass = __esm({
     "src/ui/walletglass.js"() {
       init_canvas();
@@ -80594,23 +80702,46 @@ Water-droplet money from fish and your tank.`;
       })();
       cache15 = /* @__PURE__ */ new Map();
       WHITE5 = [255, 255, 255];
-      WALLET_ART = {
-        FULL: { H: 24, B: 3.4, dimR: 8.1, dimDep: 2.4, chH: 15, chDep: 1.5, chB: 1.4, font: "big", cap: 9, padR: 2.4, gap: 1.2, minA: "0000", hop: 2, leaf: true },
-        MINI: { H: 19, B: 2.4, dimR: 6.7, dimDep: 1.8, chH: 13.6, chDep: 1.1, chB: 1.1, font: "big", cap: 9, padR: 1.8, gap: 0.8, minA: "000", hop: 1, leaf: false }
-      };
-      SPEC1 = /* @__PURE__ */ new Map();
-      isDigit = (ch) => ch >= "0" && ch <= "9";
-      advOf = (ch, font) => measureText(isDigit(ch) ? "0" : ch, font) + 1;
-      textW = (s, font) => {
-        let w = 0;
-        for (const ch of s) w += advOf(ch, font);
-        return Math.max(0, w - 1);
-      };
-      PUFFS = [0, 0, 1, 1.1, -0.35, 1.25, 2.3, 0.05, 0.95, -1, 0.25, 0.75];
       GEM_N = 8;
       GEM_FRAMES = 8;
+      WALLET_ART = {
+        FULL: { H: 24, minA: "0000", hop: 2, leaf: true, capK: 0.42 },
+        MINI: { H: 19, minA: "000", hop: 1, leaf: false, capK: 0.47 }
+      };
+      D13_ART = {
+        0: ["..####..", ".######.", "###..###", "##....##", "##....##", "##....##", "##....##", "##....##", "##....##", "##....##", "###..###", ".######.", "..####.."],
+        1: ["...##...", "..###...", ".####...", ".#.##...", "...##...", "...##...", "...##...", "...##...", "...##...", "...##...", "...##...", ".######.", ".######."],
+        2: ["..####..", ".######.", "###..###", "##....##", "......##", ".....###", "....###.", "...###..", "..###...", ".###....", "###.....", "########", "########"],
+        3: ["..####..", ".######.", "###..###", "##....##", "......##", "....###.", "....###.", "......##", "......##", "##....##", "###..###", ".######.", "..####.."],
+        4: ["....###.", "...####.", "..##.##.", ".##..##.", "##...##.", "##...##.", "########", "########", ".....##.", ".....##.", ".....##.", ".....##.", ".....##."],
+        5: ["########", "########", "##......", "##......", "######..", "#######.", ".....###", "......##", "......##", "......##", "##...###", ".######.", "..####.."],
+        6: ["..####..", ".######.", "###..###", "##......", "##......", "######..", "#######.", "###..###", "##....##", "##....##", "###..###", ".######.", "..####.."],
+        7: ["########", "########", "......##", ".....###", ".....##.", "....###.", "....##..", "...###..", "...##...", "...##...", "...##...", "...##...", "...##..."],
+        8: ["..####..", ".######.", "###..###", "##....##", "###..###", ".######.", ".######.", "###..###", "##....##", "##....##", "###..###", ".######.", "..####.."],
+        9: ["..####..", ".######.", "###..###", "##....##", "##....##", "###..###", ".#######", "..######", "......##", "......##", "###..###", ".######.", "..####.."],
+        ",": ["..", "..", "..", "..", "..", "..", "..", "..", "..", "##", "##", ".#", "#."],
+        ".": ["..", "..", "..", "..", "..", "..", "..", "..", "..", "..", "..", "##", "##"],
+        M: ["##......##", "###....###", "####..####", "##.####.##", "##..##..##", "##......##", "##......##", "##......##", "##......##", "##......##", "##......##", "##......##", "##......##"]
+      };
+      FACES2 = [{ cap: 9, font: "big", s: 1 }, { cap: 13, font: "d13", s: 1 }, { cap: 18, font: "big", s: 2 }, { cap: 26, font: "d13", s: 2 }, { cap: 27, font: "big", s: 3 }];
+      isDigit = (ch) => ch >= "0" && ch <= "9";
+      bitsMemo = /* @__PURE__ */ new Map();
+      advOf = (ch, F3) => glyphBits(isDigit(ch) ? "0" : ch, F3).w + F3.s;
+      textW = (s, F3) => {
+        let w = 0;
+        for (const ch of s) w += advOf(ch, F3);
+        return Math.max(0, w - F3.s);
+      };
+      WELL = {
+        a: { ink: "#06284a", top: "#063a66", fill: "#0c548e", fill2: "#0e62a0", bev: "#62dcf6" },
+        g: { ink: "#170f4e", top: "#1a1050", fill: "#2e2282", fill2: "#382a94", bev: "#b4a4ff" }
+      };
+      AQUA_T = { top: "#b4f4ff", mid: "#38c4ec", bot: "#1886cc", edge: "#06284a", glow: "#9ff8ff" };
+      VIO_T = { top: "#e0d8ff", mid: "#8c7cf4", bot: "#5a44cc", edge: "#170f4e", glow: "#e4dcff" };
       fmtShort = (n2) => n2 >= 1e6 ? (n2 / 1e6).toFixed(n2 >= 1e7 ? 1 : 2) + "M" : fmtAero(n2);
-      sweepC = null;
+      dropHOf = (L4) => Math.max(8, Math.round(L4.Db * (L4.Db < 20 ? 0.8 : 0.7)));
+      gemWOf = (L4) => Math.max(8, Math.round(L4.Db * (L4.Db < 20 ? 0.76 : 0.64)));
+      fxC = null;
     }
   });
 
@@ -81412,6 +81543,7 @@ Water-droplet money from fish and your tank.`;
               const plate = aeroCached(`toastplate|${pw}|${ph}|${pal3 === "coral" ? "c" : "d"}`, () => aeroSurface(pw, ph, { tone: ptone, a: [0.9, 0.94], r: 8, gloss: 0.35, glossH: Math.round(ph * 0.4), rim: 0.9, glow: 0.4, depth: 2, bubbles: pw > 120 ? 2 : 0, seed: pw }));
               ctx3.drawImage(plate, Math.round(x - 13), Math.round(cy - ph / 2 + (1 - Math.min(1, pk5)) * 4));
             }
+            pixelBubble2(ctx3, x + D2 / 2, cy, D2 / 2 + 3, { glass: true, tint: pal3 === "coral" ? "#ff8aa8" : "#3ab0ff", fill: pal3 === "coral" ? "#7a2a44" : "#1c5a9e" });
             const icon3 = getUiIcon(t.icon)?.__icon3d ? t.icon : "info";
             if (!drawIcon3D(ctx3, icon3, x + D2 / 2, cy, D2, { t: t.t + this.time, hover: t.t < 0.9 ? 1 : 0, phase: t.max })) {
               const ic = getUiIcon(t.icon) || getUiIcon("info");
@@ -89038,17 +89170,15 @@ Water-droplet money from fish and your tank.`;
           if (this.tab === "boat") btns.length = 1;
           let x = b.x;
           for (const o of btns) {
-            const rr4 = { x, y: b.y, w: 26, h: 22 };
+            const rr4 = { x, y: b.y, w: 22, h: 22 };
             const hov = ui.hover(rr4);
-            drawAeroButton(ctx3, rr4.x, rr4.y, rr4.w, rr4.h, { tone: o.tone, state: hov ? "hover" : "normal", radius: 6 });
-            const ic = o.icon();
-            if (ic) ctx3.drawImage(ic, Math.round(x + 13 - ic.width / 2), Math.round(b.y + 11 - ic.height / 2) - (hov ? 1 : 0));
+            drawAeroButton(ctx3, rr4.x, rr4.y, rr4.w, rr4.h, { tone: o.tone, icon: o.icon(), bubble: true, state: hov ? ui.inp.down ? "down" : "hover" : "normal" });
             if (hov) ui.tip = o.tip;
             if (ui.clicked(rr4)) {
               g.audio?.play?.("ui_click");
               o.act();
             }
-            x += 30;
+            x += 27;
           }
         }
         // ---------------------------------------------------------------- right column
@@ -89199,12 +89329,7 @@ Water-droplet money from fish and your tank.`;
           ctx3.globalAlpha = a0;
           if (worn) checkBadge(ctx3, c.x + c.w - 12, c.y + 2 + lift);
           else if (this.isNew(it2)) {
-            const tw = measureText("NEW", "small") + 4;
-            ctx3.fillStyle = AERO.ink;
-            ctx3.fillRect(c.x + c.w - tw - 3, c.y + 2 + lift, tw + 2, 9);
-            ctx3.fillStyle = this.t * 2 % 1 < 0.5 ? "#ff5a6a" : "#ff7a86";
-            ctx3.fillRect(c.x + c.w - tw - 2, c.y + 3 + lift, tw, 7);
-            drawText(ctx3, "NEW", c.x + c.w - tw, c.y + 4 + lift, { font: "small", color: "#ffffff" });
+            pixelBubbleTag(ctx3, c.x + c.w - 2, c.y + 2 + lift - (this.t * 2 % 1 < 0.5 ? 0 : 1), "NEW", { align: "right" });
           }
           if (!own2) {
             if (gp != null) {
@@ -90008,14 +90133,14 @@ Water-droplet money from fish and your tank.`;
         const m = tk.model(13, 30, 19);
         const ax = 6, az = 9, gy = 2;
         const shaft2 = tk.gloss("#f4f8ff", { spec: 1.4 }), wrap = tk.gloss("#5ad0ff"), gold = tk.gloss("#ffd23a", { spec: 1.5 });
-        const pink = tk.gloss("#ff8ae0", { spec: 1.6, specPow: 10 }), pinkD = tk.gloss("#c85ab8"), pinkL = tk.glow("#ffe0f8", 0.75), star2 = tk.glow("#fff6a0", 0.95);
+        const pink = tk.gloss("#ff8ae0", { spec: 1.6, specPow: 10 }), pinkD = tk.gloss("#c85ab8"), pinkL = tk.glow("#ffe0f8", 0.75), star = tk.glow("#fff6a0", 0.95);
         for (let y = 0; y <= 21; y++) m.cylinder(ax, az, y, y, y < 7 ? 1.2 : 0.9, y < 7 ? y % 2 ? wrap : shaft2 : y % 4 === 0 ? gold : shaft2);
         m.cylinder(ax, az, 21, 22, 1.7, gold);
         for (let z = az - 7; z <= az + 7; z++) {
           const r = 3 - Math.abs(z - az) * 0.2;
           m.cylinder(ax, 25, z, z, Math.max(1, r), z >= az + 6 ? pinkL : (z + 25) % 3 === 0 ? pinkD : pink, "z");
         }
-        for (const [dx, dy] of [[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]]) m.set(ax + dx, 29 + dy, az - 5, star2);
+        for (const [dx, dy] of [[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]]) m.set(ax + dx, 29 + dy, az - 5, star);
         return { m, pivot: [ax, gy, az], anchors: { head: [ax + 0.5, 25, az + 7.5], grip2: [ax, gy + 5, az] } };
       });
       R4 = ([x, y, z]) => [-7.3 + (x + 4.9) / 0.7, 11.4 + (y - 6.9) / 0.7, -0.2 + z / 0.7];
@@ -90596,7 +90721,7 @@ Water-droplet money from fish and your tank.`;
     const B2 = builder(40, 46, 40), { col, put: put3 } = B2;
     const g = col("#f0b83c", { ...METAL3, spec: 1.6 }), gL = col("#fff2b8", METAL3), gD = col("#b07a1c", METAL3);
     const glass2 = col("#6a4ad0", { ...GLOSS, emissive: 0.25 }), glassD = col("#3a2490", { ...GLOSS, emissive: 0.2 }), glassL = col("#a68aff", { ...GLOSS, emissive: 0.3 });
-    const sw = [col("#ff8ae8", { emissive: 0.9, jitter: 0 }), col("#8ae8ff", { emissive: 0.9, jitter: 0 })], star2 = col("#ffffff", { emissive: 1, jitter: 0 });
+    const sw = [col("#ff8ae8", { emissive: 0.9, jitter: 0 }), col("#8ae8ff", { emissive: 0.9, jitter: 0 })], star = col("#ffffff", { emissive: 1, jitter: 0 });
     const C6 = [20, 23, 20], Rr = 14;
     for (let y = 0; y < 46; y++) for (let z = 0; z < 40; z++) for (let x = 0; x < 40; x++) {
       const dx = x + 0.5 - C6[0], dy = y + 0.5 - C6[1], dz = z + 0.5 - C6[2], d = Math.hypot(dx, dy, dz);
@@ -90606,7 +90731,7 @@ Water-droplet money from fish and your tank.`;
       let c = glass2;
       if (s > 0.8) c = sw[Math.floor((dy + 20) / 6) % 2];
       else if (s < -0.62) c = glassD;
-      else if (h310(x, y, z, 3) < 0.035) c = star2;
+      else if (h310(x, y, z, 3) < 0.035) c = star;
       else if (dy > 4 && s > 0.45) c = glassL;
       put3(x, y, z, c, 7);
     }
@@ -109584,12 +109709,12 @@ void main() {
             const gname = glossText(d.sp.name, nameScale, pal3);
             ctx3.drawImage(gname.c, Math.round(pcx - gname.w / 2 - gname.ox), Math.round(ny - gname.oy));
           } else drawText(ctx3, d.sp.name, pcx, ny + 3, { align: "center", color: "#ffffff", outline: INK11 });
-          const star2 = getUiIcon("star"), starE = getUiIcon("star_empty");
-          if (star2) {
+          const star = getUiIcon("star"), starE = getUiIcon("star_empty");
+          if (star) {
             for (let i = 0; i < 5; i++) {
               const kk = ease.outBack(clamp012((t - 0.35 - i * 0.08) * 4));
               if (kk <= 0) continue;
-              const ic = i < rar.stars ? star2 : starE;
+              const ic = i < rar.stars ? star : starE;
               const sx2 = Math.round(pcx + (i * 13 - 31) * ts), sy2 = ny + 8 + nameScale * 8;
               ctx3.save();
               ctx3.translate(sx2 + ic.width * ts / 2, sy2 + ic.height * ts / 2);
@@ -112531,7 +112656,7 @@ void main() {
       const C6 = (c, o = {}) => m.color(c, { jitter: 0.07, ...o });
       const sand = [C6("#d2ae7c"), C6("#e6c896"), C6("#f4deb0"), C6("#fdecc8"), C6("#fff8e4", { light: 0.3 })];
       const wet = C6("#c09a68"), peb = [C6("#8a92b0"), C6("#a4aec8"), C6("#6e7898")], shellC = [C6("#ffd0dc", { spec: 0.6 }), C6("#ffffff", { spec: 0.8 }), C6("#ffb48a", { spec: 0.6 })];
-      const star2 = [C6("#ff7a3a"), C6("#ff5a8a"), C6("#b07aff")], starL = C6("#ffd0a0"), grass = [C6("#2e8a3e"), C6("#58b84a"), C6("#9ae070")], rubble = [C6("#ff9ab4"), C6("#ffd0a0"), C6("#c8a0ff")];
+      const star = [C6("#ff7a3a"), C6("#ff5a8a"), C6("#b07aff")], starL = C6("#ffd0a0"), grass = [C6("#2e8a3e"), C6("#58b84a"), C6("#9ae070")], rubble = [C6("#ff9ab4"), C6("#ffd0a0"), C6("#c8a0ff")];
       const urch = C6("#3a2a5a", { spec: 0.4 }), urchS = C6("#6a4a9a"), urchT = C6("#c8a0ff"), dollar = C6("#f4ecd8"), dollarM = C6("#d8c8a8");
       const r = new RNG(seed);
       const hAt = new Float32Array(nx * nz);
@@ -112567,7 +112692,7 @@ void main() {
         for (let k = -2; k <= 2; k++) for (let j = 0; j <= 2 - Math.abs(k) * 0.5; j++) m.set(x + k, y + (j > 1 ? 1 : 0), z + j, c);
       }
       for (let i = 0; i < nx * nz * 3e-4; i++) {
-        const x = r.float(6, nx - 7), z = r.float(5, nz - 6), y = ground(x, z), a0 = r.float(0, TAU), sc = r.pick(star2);
+        const x = r.float(6, nx - 7), z = r.float(5, nz - 6), y = ground(x, z), a0 = r.float(0, TAU), sc = r.pick(star);
         for (let a = 0; a < 5; a++) {
           const ang = a0 + a / 5 * TAU;
           for (let k = 0; k < 4.5; k += 0.5) m.set(Math.round(x + Math.cos(ang) * k), y, Math.round(z + Math.sin(ang) * k * 0.8), k < 1.5 ? starL : sc);
@@ -112631,7 +112756,7 @@ void main() {
       return { canvas: rr4.canvas, ox: Math.round(ax), oy: Math.round(ay) };
     });
   }
-  function causticFrame2(TW2, TH2, f, n2) {
+  function causticFrame(TW2, TH2, f, n2) {
     const W11 = TW2 * HI, H8 = TH2 * HI, c = makeCanvas(W11, H8), g = ctxOf(c);
     const img = g.createImageData(W11, H8), d = img.data;
     const CX3 = 7, CY2 = Math.max(4, Math.round(H8 * 2.4 / (W11 / 7))), cw = W11 / CX3, ch = H8 * 2.4 / CY2;
@@ -112975,7 +113100,7 @@ void main() {
     {
       const TH2 = Math.round(h + 20 - S15.floorY), TW2 = 128, n2 = 16, fr = [];
       for (let f = 0; f < n2; f++) {
-        fr.push(causticFrame2(TW2, TH2, f, n2));
+        fr.push(causticFrame(TW2, TH2, f, n2));
         yield;
       }
       S15.caus = { frames: fr, TW: TW2, TH: TH2 };
@@ -113365,17 +113490,17 @@ void main() {
       for (const [dx, dy] of [[0, 1], [2, 1], [1, 0], [1, 2], [0, 0], [2, 0], [0, 2], [2, 2], [1, 3], [0, 3], [2, 3]]) g.drawImage(o, dx, dy - box2.top);
       g.drawImage(w0, 1, 1 - box2.top);
       return withHi(c, () => {
-        const W22 = alagardBitmap(text, { size: size * 2, color }), O2 = alagardBitmap(text, { size: size * 2, color: outline });
+        const W23 = alagardBitmap(text, { size: size * 2, color }), O2 = alagardBitmap(text, { size: size * 2, color: outline });
         const hc = makeCanvas(c.width * HI, c.height * HI), hg = ctxOf(hc), top = box2.top * 2;
         for (let dy = -2; dy <= 4; dy++) for (let dx = -2; dx <= 2; dx++) {
           if (dx * dx + Math.min(dy, 2) ** 2 > 5 && dy <= 2) continue;
           hg.drawImage(O2, 2 + dx, 2 + dy - top);
         }
-        hg.drawImage(W22, 2, 2 - top);
+        hg.drawImage(W23, 2, 2 - top);
         hg.globalCompositeOperation = "source-atop";
         hg.fillStyle = "rgba(255,255,255,0.5)";
         const tmp2 = makeCanvas(hc.width, hc.height), tg = ctxOf(tmp2);
-        tg.drawImage(W22, 2, 2 - top);
+        tg.drawImage(W23, 2, 2 - top);
         tg.globalCompositeOperation = "source-in";
         tg.fillStyle = "#e8fbff";
         tg.fillRect(0, 0, tmp2.width, Math.round(h * 2 * 0.32) + 2);
@@ -115593,19 +115718,19 @@ void main() {
               for (const [dx, dy] of [[0, 3], [1, 3], [2, 3], [0, 1], [2, 1], [1, 0], [1, 2], [0, 0], [2, 0], [0, 2], [2, 2]]) g2.drawImage(o, dx, dy);
               g2.drawImage(w0, 1, 1);
               return withHi(c, () => {
-                const W22 = alagardBitmap(title3, { size: 44, color: "#ffffff" }), O2 = alagardBitmap(title3, { size: 44, color: "#0a3a6e" });
+                const W23 = alagardBitmap(title3, { size: 44, color: "#ffffff" }), O2 = alagardBitmap(title3, { size: 44, color: "#0a3a6e" });
                 const h = document.createElement("canvas");
                 h.width = c.width * 2;
                 h.height = c.height * 2;
                 const hg = h.getContext("2d");
                 hg.imageSmoothingEnabled = false;
                 for (let dy = -2; dy <= 6; dy++) for (let dx = -2; dx <= 2; dx++) if (dx * dx + Math.min(dy, 2) ** 2 <= 5 || dy > 2) hg.drawImage(O2, 2 + dx, 2 + dy);
-                hg.drawImage(W22, 2, 2);
+                hg.drawImage(W23, 2, 2);
                 const L4 = document.createElement("canvas");
                 L4.width = h.width;
                 L4.height = h.height;
                 const lg = L4.getContext("2d");
-                lg.drawImage(W22, 2, 2);
+                lg.drawImage(W23, 2, 2);
                 lg.globalCompositeOperation = "source-in";
                 lg.fillStyle = "#d8f6ff";
                 lg.fillRect(0, Math.round(h.height * 0.55), h.width, h.height);
@@ -122326,7 +122451,7 @@ void main() {
             ctx3.globalAlpha = a0 * (s.a ?? 1) * ease.outCubic(kin);
             const ir = Math.round((RHt - 8) / 2);
             const isPin = q === pin;
-            ctx3.drawImage(aeroSurface(ir * 2, ir * 2, { tone: done || book2.isReady(q.id) ? "green" : isPin ? "orange" : "white", r: "pill", gloss: 0.7, glossH: ir, curve: 1, rim: 0.8, glow: 0.5 }), x, y + 2);
+            pixelBubble2(ctx3, x + ir, y + 2 + ir, ir, { tone: done || book2.isReady(q.id) ? "green" : isPin ? "orange" : "white" });
             drawAnimIcon(ctx3, o.icon, x + ir, y + 2 + ir, Math.round(ir * 1.5), t, i * 1.3, {});
             const tx = x + ir * 2 + 5, tw = r.x + w - 6 - tx;
             let name = q.title;
@@ -124570,7 +124695,7 @@ void main() {
                 ctx3.fillRect(x + TW2 - 11, y + 5, 3, 2);
               }
               if (!st.workshop.seen[rc.id] && !owned) {
-                drawText(ctx3, "NEW", x + 5, y + 4, { font: "small", color: "#ff5a3a", shadow: "#ffffff" });
+                pixelBubbleTag(ctx3, x + 3, y + 3, "NEW");
               }
               if (rc.time) drawText(ctx3, fmtT(rc.time), x + 5, y + TH2 - 34, { font: "small", color: INK_SOFT6 });
             }
@@ -135406,8 +135531,73 @@ ${hearts} ${status}
   __export(pixui_exports, {
     run: () => run25
   });
+  function bubbles(g, t) {
+    const y0 = 262;
+    g.fillStyle = "#0c2c56";
+    g.fillRect(0, y0, W22, 70);
+    g.fillStyle = "#dff3fc";
+    g.fillRect(0, y0 + 70, W22, 68);
+    drawText(g, "pixelBubble 3..40 px", 4, y0 + 2, { font: "small", color: "#bff4ff" });
+    let x = 6;
+    for (const d of [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 24, 28]) {
+      pixelBubble2(g, x + d / 2, y0 + 30, d / 2, { tone: "aqua" });
+      x += d + 3;
+    }
+    x = 6;
+    for (const d of [7, 10, 14, 18, 24, 32, 40]) {
+      pixelBubble2(g, x + d / 2, y0 + 70 + 4 + 20, d / 2, { glass: true });
+      x += d + 4;
+    }
+    const tones = ["red", "orange", "green", "purple", "white", "grey"];
+    tones.forEach((tn, i) => pixelBubble2(g, 300 + i * 24, y0 + 22, 10, { tone: tn }));
+    tones.forEach((tn, i) => pixelBubble2(g, 300 + i * 24, y0 + 50, 6.5, { tone: tn }));
+    pixelBubbleCapsule(g, 300, y0 + 80, 60, 15, { tone: "aqua" });
+    pixelBubbleCapsule(g, 366, y0 + 80, 44, 11, { tone: "green" });
+    pixelBubbleCapsule(g, 416, y0 + 78, 56, 20, { glass: true });
+    drawText(g, "NEW", 381, y0 + 83, { font: "small", color: "#ffffff", shadow: "#1c5a0e" });
+    const st = ["normal", "hover", "down", "disabled"];
+    st.forEach((s, i) => pixelBubbleButton(g, 200 + i * 22, y0 + 104, 9, { tone: "red", glyph: "x", state: s }));
+    st.forEach((s, i) => pixelBubbleButton(g, 200 + i * 22, y0 + 126, 9, { tone: "aqua", glyph: i % 2 ? "-" : "+", state: s }));
+    drawAeroButton(g, 300, y0 + 104, 24, 24, { icon: null, label: "", bubble: true, tone: "green" });
+    pixelBubbleBadge(g, 360, y0 + 106, 3, t);
+    pixelBubbleBadge(g, 380, y0 + 106, "!", t);
+    pixelBubbleBadge(g, 410, y0 + 106, 27, t);
+    drawAeroBadge(g, 450, y0 + 106, 128, t);
+    pixelBubble2(g, 360, y0 + 128, 8, { tone: "white" });
+    pixelBubbleRing(g, 360, y0 + 128, 8, "#59c3ff", 1);
+    pixelGlassPlate(g, 400, y0 + 126, 22, {});
+    drawGlossOrb(g, 430, y0 + 126, 5, "#ff9d2e");
+    drawGlossOrb(g, 450, y0 + 126, 3, "#4cc83a");
+  }
+  function wallets(g, t) {
+    const y0 = 400;
+    g.fillStyle = "#0a2a52";
+    g.fillRect(0, y0, W22, 130);
+    fakeUi.time = t;
+    fakeUi.coinBump = Math.max(0, fakeUi.coinBump - 1 / 60 * 3);
+    fakeUi.gemBump = Math.max(0, fakeUi.gemBump - 1 / 60 * 2.2);
+    if (t % 4 < 1 / 60) {
+      fakeUi.coinShown += 125;
+      fakeUi.coinBump = 1;
+      fakeUi.gemShown += 1;
+      fakeUi.gemBump = 1;
+    }
+    walletTick(fakeUi, 1 / 60);
+    drawWalletPlaque(g, fakeUi, { right: 150, y: y0 + 6, p: 1 });
+    drawWalletPlaque(g, fakeUi, { right: 150, y: y0 + 40, p: 1, mini: true, id: "m" });
+    drawWalletPlaque(g, fakeUi, { right: 470, y: y0 + 4, p: 1.5, id: "b" });
+    drawWalletPlaque(g, fakeUi, { right: 300, y: y0 + 40, p: 1.5, mini: true, id: "bm" });
+    const keep = [fakeUi.coinBump, fakeUi.gemBump, fakeUi.time];
+    [0.92, 0.75, 0.5].forEach((k, i) => {
+      fakeUi.coinBump = k;
+      fakeUi.gemBump = k;
+      fakeUi.time = 1;
+      drawWalletPlaque(g, fakeUi, { right: 150 + i * 160, y: y0 + 98, p: 1, id: "f" + i });
+    });
+    [fakeUi.coinBump, fakeUi.gemBump, fakeUi.time] = keep;
+  }
   function run25() {
-    const W11 = 480, H8 = 270, S15 = 4;
+    const W11 = 480, H8 = 530, S15 = 3;
     const cv = document.getElementById("screen");
     cv.width = W11;
     cv.height = H8;
@@ -135451,17 +135641,23 @@ ${hearts} ${status}
       drawBubble(g, 280, 170, 120, 30, { tailX: 270, tailY: 215 });
       drawText(g, "speech bubble", 290, 180, { color: "#0c3a52" });
       drawTooltip(g, 20, 170, "A pixel tooltip\nwith two lines", {});
+      bubbles(g, t);
+      wallets(g, t);
       requestAnimationFrame(draw);
     }
     draw();
     window.__galleryReady = true;
   }
+  var W22, fakeUi;
   var init_pixui2 = __esm({
     "src/dev/pixui.js"() {
       init_canvas();
       init_font();
       init_aero();
       init_panels();
+      init_gemui();
+      W22 = 480;
+      fakeUi = { time: 0, coinShown: 12480, gemShown: 37, coinBump: 0, gemBump: 0, game: { state: { settings: {}, coins: 12480, gems: 37 } }, hover: () => false };
     }
   });
 

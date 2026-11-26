@@ -1021,6 +1021,8 @@ detailed". Supersedes the [cur26] wallet drawing and the voxel / rotated leaf or
   then frozen as strings; edit the strings directly.
 
 ## Pixel-art UI chrome, no rounded shapes [pixui30]
+([bubble34] brings back ROUND accents as pixel-art bubbles: orbs, badges, glows, glass plates, icon-only buttons, toggles
+and slider thumbs are hand-stepped pixel circles now. Panels / windows / text buttons stay square as below.)
 User direction: "UI all is 100 percent pixel art, no round" and "no ugly UI". Supersedes the glossy-glass / voxel-slab
 chrome of [phase8:ui] / [phase9:ui] / [phase10:ui] (icons, voxel ornaments and 3D pop-up text are unchanged).
 - Central rasteriser (`src/ui/aero.js` `pixelSurface`, behind the unchanged `aeroSurface` / `drawAeroSurface` /
@@ -1194,6 +1196,8 @@ User direction: "make game polish". Presentation only (no gameplay / balance / s
 - Text: "Need more Aero Bucks...", the chapter 1 cutscene line says Nano Tank (was "goldfish jar").
 
 ## Wallet as a glossy 3D Frutiger-Aero glass slab [wallet33]
+(The wallet DRAWING below is SUPERSEDED by [bubble34]: a pixel-art bubble capsule in src/ui/walletglass.js; the API,
+placement, slide-away, flight-target, header-wallet and motion rules still apply.)
 User direction: "new money and gem UI more like Frutiger Aero and 3D" (the [wallet32] brass pixel plaque was rejected).
 Supersedes the [wallet32] wallet DRAWING; its placement / slide-away / flight-target / header-wallet rules are unchanged.
 - Code: `src/ui/walletglass.js` (gemui.js re-exports `drawWalletPlaque`, `walletSize`, `walletTip`, `walletTick`,
@@ -1241,3 +1245,60 @@ Supersedes the [wallet32] wallet DRAWING; its placement / slide-away / flight-ta
   hollow glossy bubble (`bakeBubble`) rises in each half, the gem turns two facets every ~5.5 s with a twinkle, the
   droplet bobs 1 device px. Reduced motion freezes all of it. No light-ray fans, no expanding rings. Tooltips per half.
 
+## Round pixel-art bubble UI [bubble34]
+User direction: "have some round bubble UI but make it pixel art". Round Frutiger-Aero soap-bubble accents, drawn as
+crisp pixel art on the same grid as the [pixui30] chrome (art at the LOGICAL resolution; the `.hi` twin for the 2x UI
+layer is the same pixels scaled by nearest neighbour). Big panels / windows / text buttons stay square; bubbles are
+accents. No animated rings, no light-ray fans; 3D voxel pop-up text is unchanged.
+- Kit (`src/ui/aero.js`, PIXEL BUBBLE KIT at the bottom; preview: `node tools/build.mjs --dev pixui`, the bottom strips):
+  - `circleInsets(d)`: the pixel circle of diameter d as per-row insets; d <= 17 are HAND-TUNED tables (so 7-17 px
+    circles read round, not octagonal), larger ones computed. Every bubble mask, ring and puff uses it.
+  - `pixelBubbleCanvas(w, h, o)` (cached, `.hi` twin): a disc (w === h) or a capsule (w > h, end caps = the h-px circle).
+    Raster: 4-neighbour depth from the outside; depth 1 = 1 px dark outline (a deep shade of the tone's edge); depth 2
+    = rim band (light on the lit upper-left side, faint iridescent aqua / pink / lilac / lime pixel bands by angle on
+    the far side, mixed 42 % into the body on opaque bubbles); body = 4 tones in classic pixel-sphere crescents (rings
+    around a hot spot up-left); a reflected-light crescent one band inside the bottom rim (from 11 px); a broken white
+    gloss arc top-left (on the rim band below 14 px, one band inside from 14, thicker from 20, a 1 px dot after a gap
+    from 15; capsules: a long stroke + a short dash along the straight top, or `glossSpans`); a white glint cluster
+    (1 px / L-shape / 2x2 by size). Options: `tone` (AERO_TONES name or object) / `tint` (hex -> toneFrom), `glass`
+    (translucent soap bubble: banded alpha body in `fill`, full iridescent rim), `iris`, `gloss`, `shadow` (hard drop
+    rows baked in), `tone2` + `split` (two-tone capsule with a dark / light seam), `glossSpans`, `alpha`.
+  - `pixelBubble(ctx, cx, cy, r, o)`, `pixelBubbleCapsule(ctx, x, y, w, h, o)`, `pixelBubbleRing(ctx, cx, cy, r, col, a)`
+    (static 1 px ring hugging a bubble), `pixelBubbleTag(ctx, x, y, text, {tone, font, align})` (text in a capsule).
+  - `pixelBubbleButton(ctx, cx, cy, r, {state, tone, icon, glyph: 'x' | '+' | '-'})`: a solid base disc 2 px under it,
+    hover = lighter tone, 1 px lift and a pale 1 px ring; down = SQUASHED to a (d + 2) x (d - 2) capsule resting on the
+    base (pixel steps, no scaling); disabled = grey. `drawAeroButton` draws any ICON-ONLY near-square button
+    (|w - h| <= 3, >= 11 px) this way (`o.bubble` forces it on / off); the icon / 3D icon logic is shared.
+  - `pixelBubbleBadge(ctx, right, top, value, t)`: round count badge (capsule for 2+ chars, '!' orange, 1 px drop);
+    `drawAeroBadge` routes here (the old stepped square is `drawAeroBadgeSquare`).
+- Converted centrally: `drawGlossOrb` / `pixelOrbCanvas` (orbs and knobs: Lab tree node knobs, multiplayer dots and
+  emote orbs, reveal orb, ecoart globe) = tinted pixel bubbles; `pixelGlassPlate` ('item in a bubble': bait shop,
+  satchel bait) = a translucent soap bubble; `drawAeroGlow` = three dithered ROUND pixel bands (was octagons; the
+  hotbar hover halo and every glow); all badges (hotbar, Lab tabs / Go-to bar, quests, workshop); every icon-only
+  square button: window close X (`drawButton` 'cross', Quests / Lab / FishDex / Satchel / Settings / Workshop / Map /
+  Wardrobe / Bait / fish manager headers), Lab zoom + / - / home, the Lab card close.
+- Converted at call sites: Settings toggles (`drawToggle`: a bubble-capsule track, green on / blue-grey off, and a
+  16 px round bubble knob), slider thumbs (`drawSlider`: a 13 px bubble, squashed 15 x 12 while dragged), tooltips (two
+  little pixel bubbles trail from the pointer to the tooltip corner; `noTrail` opts out), thought-bubble puffs (round
+  pixel masks), toast icons sit in a translucent soap bubble (ui.js), quest tracker objective icons sit in a round
+  bubble (white / orange pinned / green ready), Wardrobe stage buttons (emote / shuffle / reset = 22 px bubble buttons
+  with hover lift and press squash), the NEW tags (Wardrobe cards, Workshop recipes) are `pixelBubbleTag` capsules.
+  Judged and left square / as is: panels, windows, text buttons, tabs, bars, the hotbar tiles, the fishing HUD (its own
+  water palette; the SHOCK lamps / rarity diamonds stay), the voxel ornaments.
+- Wallet (`src/ui/walletglass.js`, same API / placement / slide-away / flight targets / header-wallet rules as
+  [wallet32] / [wallet33]): PIXEL ART in the bubble language, authored at the logical resolution and sized per UI
+  mode (height = round(spec.H * walletP(mode)); FULL 24 / MINI 19 units) instead of scaling a small sprite, so its
+  pixels match the chrome. `bakeBody` (once per size / digit-field widths): a two-tone bubble capsule (aqua Aero Bucks
+  half, periwinkle-violet Byte Gems half, seam, gloss strokes over each half, 1 px drop shadow), recessed pixel number
+  wells (stepped capsule, dark top rows, light bottom bevel), and the droplet / gem each in a round translucent soap
+  bubble. The droplet (`bakeDrop(1, ...)`, 7 squash levels) and the gem (`bakeGem(1, ...)`, 8 spin frames + bright
+  twin) are the [wallet33] cel rasterisers run at 1 px per art px (pixel art; ink outline, banded ramps). Digits
+  (`glyphArt`): white with a pale-aqua / pale-lilac lower half, 1 px ink outline, a hard drop row, fixed-width cells;
+  face by height (`faceOf`): 'big' 9 px, a HAND-DRAWN 13 px face (`D13_ART`, 2 px strokes) on the default Big UI,
+  'big' x2 / x3 above that (the comma keeps its tail). Motion in whole pixels: droplet squash wobble + pixel beads
+  bursting out (fading in two alpha steps), gem hop + fast spin + hard-swapped bright twin + pixel twinkles
+  (`drawSparkle`), changed digits hop and flash pale gold, a stair-stepped (1:2) pixel gloss band sweeping the capsule
+  (gain and every ~7 s; masked to the capsule in one scratch canvas), a tiny glass pixel bubble rising in each number
+  well, the gem turning two facets every ~5.5 s with a twinkle, a 1 px droplet bob; hover = 1 px lift + a light wash.
+  The HUD wallet keeps a hand-drawn pixel leaf twig behind its left end. Reduced motion freezes it. `walletTick` still
+  warms the header wallet's bakes one job per frame ~3 s after boot.

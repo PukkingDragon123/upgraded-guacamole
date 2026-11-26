@@ -5,7 +5,10 @@
 // bottom-right, flat colour bands with checker-dithered seams (no smooth gradients) and hard pixel shadows, in the
 // Aero palette. Art is rasterised once at the logical resolution and cached (LRU); the `.hi` twin for the 2x UI layer
 // is the same pixels scaled by nearest neighbour, so chrome pixels match the pixel fonts. 'pill' / radius options
-// map to notches (notchOf). Orbs, badges and glows are stepped octagons / squares. See the PIXEL KIT at the bottom.
+// map to notches (notchOf). See the PIXEL KIT at the bottom.
+// [bubble34] Round accents are back as PIXEL BUBBLES (the PIXEL BUBBLE KIT at the very bottom): orbs / knobs, badges,
+// glows, glass plates, icon-only square buttons (close X, zoom, ...), toggles and slider thumbs are hand-stepped pixel
+// circles / capsules with a dark outline, banded shading, a gloss arc, a glint and a faint iridescent rim.
 //
 //   AERO                         palette tokens (sky, aqua, grass, glass, ink, gloss ...)
 //   AERO_TONES                   named surface tones ('aqua','green','orange','red','purple','glass','white','clear','sky','grass','dark','deep')
@@ -15,13 +18,13 @@
 //   drawAeroButton(ctx, x, y, w, h, {label, icon, state:'normal'|'hover'|'down'|'disabled', tone:'aqua'|'green'|'orange'|'glass'|..., font, align, radius})
 //   drawAeroBar(ctx, x, y, w, h, k, {color, back, gloss, segments})   glossy progress bar, k in 0..1
 //   drawAeroCoin(ctx, cx, cy, r, t)                           the Aero currency drop (glossy water drop; 3D from r >= 6)
-//   drawGlossOrb(ctx, cx, cy, r, color, t)                    generic glossy bubble/orb
+//   drawGlossOrb(ctx, cx, cy, r, color, t)                    generic orb ([bubble34] a tinted round pixel bubble)
 // Extras:
 //   aeroSurface(w, h, o) -> cached canvas   the raw surface rasteriser (see SURFACE OPTIONS below)
 //   drawAeroSurface(ctx, x, y, w, h, o)     blit of the above
 //   drawSparkle(ctx, x, y, size, alpha, color)  4-point lens-flare star (size 1..4)
 //   drawAeroBubble(ctx, cx, cy, r, alpha)   a clear soap/water bubble ring
-//   drawAeroBadge(ctx, right, top, value, t)    red glossy count pill ('!' = orange)
+//   drawAeroBadge(ctx, right, top, value, t)    red count badge ('!' = orange); [bubble34] a round pixel bubble
 //   drawAeroLabel(ctx, text, x, y, {align, tone, font}) -> rect   small glass pill with text (hover labels)
 //   drawAeroGlow(ctx, cx, cy, r, color, alpha)  soft round light (cached radial)
 //   aeroText(ctx, text, x, y, o)            drawText with a soft Aero glow halo (o.glow color, default white)
@@ -43,7 +46,7 @@ import { makeCanvas, ctxOf, tinted } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
 import { drawText, measureText, FONTS, setTextBump, faceOf } from '../gfx/font.js';
 import { hash1, bayer } from '../core/math.js';
-import { pixelBubble, pixelCloud } from '../gfx/pxsprites.js';
+import { pixelBubble as pxBubbleSprite, pixelCloud } from '../gfx/pxsprites.js';
 import { alagardReady, alagardBitmap, loadAlagard } from '../gfx/alagard.js';
 import { HI, withHi, hiArt, autoHi, fitHi, dualArt } from '../gfx/hires.js'; // [phase9:ui]
 import { drawPixLeaf, drawLeafCluster } from './pixleaves.js'; // [wallet32] hand-drawn pixel leaves
@@ -500,21 +503,29 @@ export function drawAeroButton(ctx, x, y, w, h, o = {}) {
   const r = o.radius ?? 'pill';
   const down = st === 'down';
   const n = notchOf(r, w, h);
-  // [pixui30] hover halo: a 1 px pale pixel ring hugging the stepped outline
-  if (st === 'hover') {
-    ctx.fillStyle = rgba(T.glow || '#bff4ff', 0.5);
-    ctx.fillRect(x + n, y - 2, w - n * 2, 1);
-    ctx.fillRect(x - 1, y + n - 1, 1, h - n * 2 + 1);
-    ctx.fillRect(x + w, y + n - 1, 1, h - n * 2 + 1);
+  // [bubble34] an icon-only square button is a round pixel BUBBLE button (o.bubble forces it on / off)
+  const bub = o.bubble ?? (!o.label && !!o.icon && Math.abs(w - h) <= 3 && Math.min(w, h) >= 11);
+  let lift;
+  if (bub) {
+    const d = Math.min(w, h);
+    lift = bubbleButtonBody(ctx, x + Math.floor((w - d) / 2), y + Math.floor((h - d) / 2), d, T, st);
+  } else {
+    // [pixui30] hover halo: a 1 px pale pixel ring hugging the stepped outline
+    if (st === 'hover') {
+      ctx.fillStyle = rgba(T.glow || '#bff4ff', 0.5);
+      ctx.fillRect(x + n, y - 2, w - n * 2, 1);
+      ctx.fillRect(x - 1, y + n - 1, 1, h - n * 2 + 1);
+      ctx.fillRect(x + w, y + n - 1, 1, h - n * 2 + 1);
+    }
+    const key = `btn|${w}|${h}|${r}|${typeof toneName === 'object' ? JSON.stringify(toneName) : toneName}|${st}`;
+    const c = aeroCached(key, () => surfaceTex(w, h, { tone: look, r, gloss: down ? 0.25 : 0.75, glossH: Math.max(2, Math.round(h * (down ? 0.3 : 0.42))), rim: down ? 0.35 : 0.9, glow: down ? 0.2 : 0.6, inset: false }));
+    // [phase8:ui] chunky pixel press: a solid 2 px base under the button; hover lifts the body 1 px, down sinks it
+    const base = aeroCached(key + '|base', () => tinted(c, st === 'disabled' ? '#6a7a8c' : shade(T.edge || '#0b4a8a', -0.1)));
+    lift = st === 'hover' ? -1 : down ? 1 : 0;
+    if (h >= 10) { const ga = ctx.globalAlpha; ctx.globalAlpha = ga * 0.85; ctx.drawImage(base, x, y + 2); ctx.globalAlpha = ga; }
+    ctx.drawImage(c, x, y + lift);
   }
-  const key = `btn|${w}|${h}|${r}|${typeof toneName === 'object' ? JSON.stringify(toneName) : toneName}|${st}`;
-  const c = aeroCached(key, () => surfaceTex(w, h, { tone: look, r, gloss: down ? 0.25 : 0.75, glossH: Math.max(2, Math.round(h * (down ? 0.3 : 0.42))), rim: down ? 0.35 : 0.9, glow: down ? 0.2 : 0.6, inset: false }));
-  // [phase8:ui] chunky pixel press: a solid 2 px base under the button; hover lifts the body 1 px, down sinks it
-  const base = aeroCached(key + '|base', () => tinted(c, st === 'disabled' ? '#6a7a8c' : shade(T.edge || '#0b4a8a', -0.1)));
-  const lift = st === 'hover' ? -1 : down ? 1 : 0;
-  if (h >= 10) { const ga = ctx.globalAlpha; ctx.globalAlpha = ga * 0.85; ctx.drawImage(base, x, y + 2); ctx.globalAlpha = ga; }
   y += lift;
-  ctx.drawImage(c, x, y);
   const ic = o.icon || null;
   const iw = ic ? ic.width + (o.label ? 4 : 0) : 0;
   let label = o.label || '';
@@ -607,13 +618,14 @@ function orbTex(r, color) {
 }
 
 // the cached pixel orb canvas itself (for callers that bake it into their own art)
-export function pixelOrbCanvas(r, color = AERO.aqua) { r = Math.max(1.5, Math.round(r * 2) / 2); return aeroCached(`orb30|${r}|${color}`, () => pixelArt(orbTex(r, color))); }
+// [bubble34] orbs / knobs are round PIXEL BUBBLES now (pixelBubbleCanvas tinted with the colour); orbTex (the stepped
+// octagon) is kept for reference only
+export function pixelOrbCanvas(r, color = AERO.aqua) { const d = Math.max(3, Math.round(r * 2)); return pixelBubbleCanvas(d, d, { tint: color }); }
 
 export function drawGlossOrb(ctx, cx, cy, r, color = AERO.aqua, t = 0) {
-  r = Math.max(1.5, Math.round(r * 2) / 2);
-  const c = aeroCached(`orb30|${r}|${color}`, () => pixelArt(orbTex(r, color)));
+  const c = pixelOrbCanvas(r, color);
   ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
-  void t;
+  void t; void orbTex;
 }
 
 function bubbleTex(r) {
@@ -634,7 +646,7 @@ function bubbleTex(r) {
   return b.toCanvas();
 }
 
-function hiBubble(r) { const c1 = pixelBubble(r); return withHi(c1, () => fitHi(c1, pixelBubble(r * HI))); }
+function hiBubble(r) { const c1 = pxBubbleSprite(r); return withHi(c1, () => fitHi(c1, pxBubbleSprite(r * HI))); }
 
 export function drawAeroBubble(ctx, cx, cy, r, alpha = 1) {
   r = Math.max(1.5, Math.round(r * 2) / 2);
@@ -746,7 +758,7 @@ export function drawSparkle(ctx, x, y, size = 2, alpha = 1, color = '#ffffff') {
   ctx.globalAlpha = ga;
 }
 
-// [pixui30] pixel light: three flat-alpha bands shaped as stepped octagons, ordered-dithered at each band edge
+// [pixui30] pixel light: three flat-alpha bands ([bubble34] round pixel discs), ordered-dithered at each band edge
 // (no smooth radial falloff)
 function glowTex(r, color) {
   const S = Math.ceil(r * 2), c = makeCanvas(S, S), g = ctxOf(c);
@@ -754,7 +766,8 @@ function glowTex(r, color) {
   const AL = [0.55, 0.3, 0.13];
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
     const dx = Math.abs(x + 0.5 - r), dy = Math.abs(y + 0.5 - r);
-    const d = Math.max(dx, dy, (dx + dy) * k2 * 1.04) / r;
+    const d = Math.hypot(dx, dy) / r; // [bubble34] round pixel bands (were stepped octagons)
+    void k2;
     if (d >= 1) continue;
     const q = d * 3 + (bayer(x, y) - 0.5) * 0.35;
     const i = q < 1 ? 0 : q < 2 ? 1 : q < 3 ? 2 : -1;
@@ -767,14 +780,16 @@ function glowTex(r, color) {
 
 export function drawAeroGlow(ctx, cx, cy, r, color = '#bff6ff', alpha = 0.5) {
   r = Math.max(2, Math.round(r));
-  const c = aeroCached(`glow30|${r}|${color}`, () => pixelArt(glowTex(r, color)));
+  const c = aeroCached(`glow34|${r}|${color}`, () => pixelArt(glowTex(r, color)));
   const ga = ctx.globalAlpha;
   ctx.globalAlpha = ga * Math.round(Math.min(1, alpha) * 8) / 8;
   ctx.drawImage(c, Math.round(cx - r), Math.round(cy - r));
   ctx.globalAlpha = ga;
 }
 
-export function drawAeroBadge(ctx, right, top, value, t = 0) {
+// [bubble34] badges are round pixel bubbles now (pixelBubbleBadge); the stepped-square body below is unused
+export function drawAeroBadge(ctx, right, top, value, t = 0) { return pixelBubbleBadge(ctx, right, top, value, t); }
+export function drawAeroBadgeSquare(ctx, right, top, value, t = 0) {
   if (value === null || value === undefined || value === 0 || value === false) return null;
   const txt = value === '!' ? '!' : typeof value === 'number' && value > 99 ? '99+' : String(value);
   const font = uiMode === 'huge' ? 'big' : uiFont('small'); // [phase6:ui]
@@ -1152,12 +1167,279 @@ function glassOctTex(S, tint, rim) {
   b.set(g0 - 1, gy + 1, packRGB(255, 255, 255));
   return b.toCanvas();
 }
+// [bubble34] the plate is a round translucent PIXEL SOAP BUBBLE now (glassOctTex kept for reference)
 export function pixelGlassPlate(ctx, cx, cy, size, o = {}) {
   const S = Math.max(6, Math.round(size));
   const tint = o.tint || '#e8fbff', rim = o.rim || '#2fb8e0';
-  const c = aeroCached(`gplate|${S}|${tint}|${rim}`, () => pixelArt(glassOctTex(S, tint, rim)));
+  void glassOctTex;
+  const c = pixelBubbleCanvas(S, S, { glass: true, tint: rim, fill: tint });
   const ga = ctx.globalAlpha;
   if (o.alpha != null) ctx.globalAlpha = ga * o.alpha;
   ctx.drawImage(c, Math.round(cx - S / 2), Math.round(cy - S / 2));
   ctx.globalAlpha = ga;
+}
+
+// ---------------------------------------------------------------- [bubble34] PIXEL BUBBLE KIT
+// User direction: "have some round bubble UI but make it pixel art". ROUND soap-bubble accents drawn as crisp pixel art
+// on the same logical grid as the [pixui30] chrome (the `.hi` twin is the same art scaled by nearest neighbour):
+// hand-stepped pixel circles / capsules (exact masks, hand-tuned small diameters so they read round, not octagonal),
+// no anti-aliasing, a 1 px dark outline, a 1 px rim band (light on the lit side, faint iridescent aqua / pink / lilac /
+// lime pixel bands on the far side), 4-tone banded body (top-left key light + a reflected glow low in the bubble), a
+// broken white gloss arc and a white glint cluster top-left. Big panels / windows stay square; bubbles are accents.
+//   circleInsets(d) -> [inset per row]                    the pixel circle of diameter d (row insets from each side)
+//   pixelBubbleCanvas(w, h, o) -> cached canvas (.hi)     a disc (w === h) or a capsule (w > h)
+//   pixelBubble(ctx, cx, cy, r, o)                         a round bubble centred on (cx, cy), diameter round(2r)
+//   pixelBubbleCapsule(ctx, x, y, w, h, o)                 a pill (end caps = the h-px pixel circle)
+//      o: {tone (AERO_TONES name | tone object), tint (any hex -> toneFrom), glass (translucent soap bubble), fill
+//          (glass body colour), iris (iridescent rim, default on from 9 px), gloss (default on), shadow (px of hard
+//          drop shadow baked under it), alpha, tone2 + split (two-tone capsule: x >= split uses tone2, with a seam),
+//          glossSpans ([[x0, x1]...] art-px runs of the gloss stroke along a capsule's straight top)}
+//   pixelBubbleButton(ctx, cx, cy, r, {state, tone, icon, glyph: 'x' | '+' | '-', alpha}) -> {x, y, w, h, lift}
+//      round bubble button: a solid base disc 2 px under it, hover lifts 1 px and lightens (+ a 1 px pale ring),
+//      down squashes to a (d + 2) x (d - 2) capsule resting on the base (pixel steps, no scaling)
+//   pixelBubbleBadge(ctx, right, top, value, t, {tone}) -> rect   round count badge (a capsule for 2+ chars); '!' = orange
+//   pixelBubbleRing(ctx, cx, cy, r, color, alpha)          a static 1 px ring hugging a d-px bubble (hover halo)
+//   pixelBubbleTag(ctx, x, y, text, {tone, font, align})   a small text tag ('NEW') in a bubble capsule -> rect
+//   drawAeroButton(..., {bubble}) draws an icon-only square button (|w - h| <= 3) as a bubble button by default.
+const CIRCLE_HALF = {
+  1: [0], 2: [0], 3: [1, 0], 4: [1, 0], 5: [1, 0, 0], 6: [1, 0, 0], 7: [2, 1, 0, 0], 8: [2, 1, 0, 0],
+  9: [3, 1, 1, 0, 0], 10: [3, 1, 1, 0, 0], 11: [3, 2, 1, 1, 0, 0], 12: [4, 2, 1, 1, 0, 0], 13: [4, 2, 1, 1, 0, 0, 0],
+  14: [5, 3, 2, 1, 1, 0, 0], 15: [5, 3, 2, 1, 1, 0, 0, 0], 16: [5, 3, 2, 1, 1, 0, 0, 0], 17: [6, 4, 3, 2, 1, 1, 0, 0, 0],
+};
+const circleMemo = new Map();
+export function circleInsets(d) {
+  d = Math.max(1, Math.round(d));
+  let v = circleMemo.get(d);
+  if (v) return v;
+  let half = CIRCLE_HALF[d];
+  if (!half) {
+    half = [];
+    const R = d / 2;
+    for (let y = 0; y < Math.ceil(d / 2); y++) { const dy = y + 0.5 - R; half.push(Math.max(0, Math.round(R - Math.sqrt(Math.max(0, R * R - dy * dy)) - 0.08))); }
+  }
+  v = [];
+  for (let y = 0; y < d; y++) v.push(half[Math.min(y, d - 1 - y)]);
+  circleMemo.set(d, v);
+  return v;
+}
+// iridescent rim hues by angle (deg, screen space: -90 = up): aqua, pink, lilac, lime, aqua
+const IRIS = [[-150, [150, 244, 255]], [-62, [255, 176, 232]], [8, [200, 178, 255]], [78, [206, 255, 132]], [150, [150, 244, 255]]];
+function irisAt(a) { let c = IRIS[0][1]; for (const [a0, col] of IRIS) if (a >= a0) c = col; return a < -150 ? IRIS[4][1] : c; }
+const BUB_LIGHT = (() => { const v = [-0.5, -0.62, 0.6], l = Math.hypot(...v); return v.map((q) => q / l); })();
+function bubTone(o) {
+  if (o.tone && typeof o.tone === 'object') return o.tone;
+  if (o.tint) return toneFrom(o.tint);
+  return toneOf(o.tone || (o.glass ? 'clear' : 'aqua'));
+}
+function bubKey(o) {
+  const t = o.tone && typeof o.tone === 'object' ? `${o.tone.top}${o.tone.mid}${o.tone.bot}${o.tone.edge}${o.tone.glow || ''}` : o.tint || o.tone || '';
+  const t2 = o.tone2 ? (typeof o.tone2 === 'object' ? `${o.tone2.top}${o.tone2.mid}${o.tone2.bot}${o.tone2.edge}` : o.tone2) + '@' + o.split : '';
+  return `${t}|${o.glass ? 1 : 0}|${o.iris ?? ''}|${o.gloss ?? ''}|${o.shadow || 0}|${o.fill || ''}|${o.outline || ''}|${t2}|${o.glossSpans ? o.glossSpans.join(';') : ''}`;
+}
+// the raster: w >= h; a disc when w === h
+function bubbleRaster(w, h, o) {
+  const T = bubTone(o);
+  const sh = o.shadow | 0;
+  const b = new PixelBuffer(w, h + sh);
+  const ins = circleInsets(h);
+  const inside = (x, y) => y >= 0 && y < h && x >= ins[y] && x < w - ins[y];
+  // 4-neighbour depth from the outside (1 = outline)
+  const dep = new Uint8Array(w * h), q = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!inside(x, y)) continue;
+    if (!inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1)) { dep[y * w + x] = 1; q.push(x, y); }
+  }
+  for (let i = 0; i < q.length; i += 2) {
+    const x = q[i], y = q[i + 1], d = dep[y * w + x];
+    for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+      if (!inside(nx, ny) || dep[ny * w + nx]) continue;
+      dep[ny * w + nx] = d + 1; q.push(nx, ny);
+    }
+  }
+  const glass = !!o.glass;
+  const palOf = (TT, outline) => {
+    const Lt = rgbOf(TT.top), Md = rgbOf(TT.mid), Sh = rgbOf(TT.bot), Ed = rgbOf(outline || TT.edge || '#0b4a8a'), Gl = rgbOf(TT.glow || '#ffffff');
+    const lightEdge = Ed[0] * 0.3 + Ed[1] * 0.59 + Ed[2] * 0.11 > 150;
+    const O = lightEdge ? mixC(Sh, [4, 20, 50], 0.62) : mixC(Ed, [4, 14, 36], 0.25);
+    const Dk = mixC(Sh, O, 0.4);
+    return { Lt, Md, Sh, Gl, O, tones: [Dk, Sh, Md, mixC(Md, Lt, 0.55)] };
+  };
+  // [bubble34] two-tone capsules (the wallet): pixels right of `split` use tone2, with a dark / light seam
+  const P1 = palOf(T, o.outline), P2 = o.tone2 ? palOf(typeof o.tone2 === 'object' ? o.tone2 : toneOf(o.tone2)) : null;
+  const split = P2 ? Math.round(o.split) : 1e9;
+  let { Lt, Md, Gl, O, tones } = P1;
+  const fill = glass ? rgbOf(o.fill || mix(T.mid, '#ffffff', 0.55)) : null;
+  const R = h / 2, c0 = R, c1 = w - R;
+  const iris = (o.iris ?? h >= 9) && h >= 7;
+  const gl = o.gloss !== false;
+  const gd = h >= 14 ? 3 : 2; // depth of the gloss arc (on the rim band below 14 px)
+  const straight = c1 - c0;
+  const put = (x, y, c, a = 255) => b.set(x, y, packRGB(Math.round(c[0]), Math.round(c[1]), Math.round(c[2]), Math.round(a)));
+  // the hard drop shadow first (the silhouette shifted down)
+  if (sh) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inside(x, y) && !inside(x, y + sh)) put(x, y + sh, [3, 24, 58], 90);
+  const glossAt = (px, qx, ny, a, d) => {
+    if (!gl || h < 6) return false;
+    if (d !== gd && !(h >= 20 && d === gd + 1 && a > -150 && a < -112)) return false;
+    if (qx === 0 && ny < 0 && straight > 0) { // the straight top of a capsule: a long stroke, a gap, a short dash
+      if (o.glossSpans) return o.glossSpans.some(([g0, g1]) => px >= g0 && px < g1);
+      const f = (px - c0) / straight;
+      return f < 0.42 || (f > 0.52 && f < 0.6);
+    }
+    if (qx > 0) return false;
+    if (a > -162 && a < -104) return true;
+    return h >= 15 && straight <= 0 && a > -94 && a < -82; // a 1 px break, then a dot
+  };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const d = dep[y * w + x];
+    if (!d) continue;
+    if (P2) ({ Lt, Md, Gl, O, tones } = x >= split ? P2 : P1);
+    if (P2 && d >= 2 && (x === split - 1 || x === split)) { put(x, y, x === split ? mixC(P2.Lt, WHITE, 0.2) : P1.O); continue; }
+    const px = x + 0.5, py = y + 0.5;
+    const qx = px - Math.max(c0, Math.min(c1, px)), qy = py - R;
+    const nx = qx / R, ny = qy / R, rr = Math.min(1, nx * nx + ny * ny), nz = Math.sqrt(1 - rr);
+    const a = (Math.atan2(qy, qx || (straight > 0 ? 0 : 1e-6)) * 180) / Math.PI;
+    if (d === 1) { put(x, y, O, glass ? 235 : 255); continue; }
+    if (glossAt(px, qx, ny, a, d)) { put(x, y, WHITE); continue; }
+    const lit = nx * BUB_LIGHT[0] + ny * BUB_LIGHT[1] + nz * BUB_LIGHT[2];
+    if (d === 2) { // the rim band
+      const litSide = a < -40 && a > -178;
+      if (glass) { put(x, y, iris && !litSide ? irisAt(a) : mixC(Lt, WHITE, 0.5), litSide ? 230 : 215); continue; }
+      if (litSide || !iris) { put(x, y, litSide ? mixC(Lt, WHITE, 0.25) : Md); continue; }
+      put(x, y, mixC(Md, irisAt(a), 0.42));
+      continue;
+    }
+    // reflected light low in the bubble (Aero glow), one band inside the rim
+    const lowGlow = d === 3 && h >= 11 && a > 28 && a < 152;
+    if (glass) {
+      if (lowGlow) { put(x, y, mixC(Gl, WHITE, 0.3), 150); continue; }
+      const k = lit > 0.55 ? 0 : lit > 0.15 ? 1 : 2;
+      put(x, y, k === 0 ? mixC(fill, WHITE, 0.5) : k === 1 ? fill : mixC(fill, Md, 0.35), [118, 92, 120][k]);
+      continue;
+    }
+    if (lowGlow) { put(x, y, mixC(Md, Gl, 0.6)); continue; }
+    // classic pixel sphere: crescent bands = rings around a hot spot up-left of the centre
+    const dd = Math.hypot(nx + 0.36, (ny + 0.4) * (straight > 0 ? 1.25 : 1));
+    const k = dd < 0.5 ? 3 : dd < 0.98 ? 2 : dd < 1.26 ? 1 : 0;
+    put(x, y, tones[k]);
+  }
+  // the glint cluster (inside the gloss arc)
+  if (gl && h >= 7) {
+    const gx = Math.round(c0 - R * 0.36 - 0.5 + (h >= 12 ? 0.5 : 0)), gy = Math.round(R - R * 0.4 - 0.5 + (h >= 12 ? 0.5 : 0));
+    const W1 = packRGB(255, 255, 255);
+    const ok = (xx, yy) => yy >= 0 && yy < h && dep[yy * w + xx] >= 2;
+    if (ok(gx, gy)) b.set(gx, gy, W1);
+    if (h >= 12) { if (ok(gx + 1, gy)) b.set(gx + 1, gy, W1); if (ok(gx, gy + 1)) b.set(gx, gy + 1, W1); }
+    if (h >= 18 && ok(gx + 1, gy + 1)) b.set(gx + 1, gy + 1, packRGB(225, 250, 255));
+  }
+  return b.toCanvas();
+}
+export function pixelBubbleCanvas(w, h, o = {}) {
+  h = Math.max(3, Math.round(h)); w = Math.max(h, Math.round(w));
+  return aeroCached(`pb34|${w}|${h}|${bubKey(o)}`, () => pixelArt(bubbleRaster(w, h, o)));
+}
+function blitA(ctx, c, x, y, a) {
+  if (a == null || a >= 1) { ctx.drawImage(c, x, y); return; }
+  const ga = ctx.globalAlpha; ctx.globalAlpha = ga * a; ctx.drawImage(c, x, y); ctx.globalAlpha = ga;
+}
+export function pixelBubble(ctx, cx, cy, r, o = {}) {
+  const d = Math.max(3, Math.round(r * 2));
+  const c = pixelBubbleCanvas(d, d, o);
+  const x = Math.round(cx - d / 2), y = Math.round(cy - d / 2);
+  blitA(ctx, c, x, y, o.alpha);
+  return { x, y, w: d, h: d };
+}
+export function pixelBubbleCapsule(ctx, x, y, w, h, o = {}) {
+  x = Math.round(x); y = Math.round(y);
+  blitA(ctx, pixelBubbleCanvas(w, h, o), x, y, o.alpha);
+}
+// a solid silhouette (base disc under buttons) and a 1 px ring hugging a bubble's outline
+function bubbleSolid(w, h, color) {
+  return aeroCached(`pbs34|${w}|${h}|${color}`, () => {
+    const c = makeCanvas(w, h), g = ctxOf(c), ins = circleInsets(h);
+    g.fillStyle = color;
+    for (let y = 0; y < h; y++) g.fillRect(ins[y], y, w - ins[y] * 2, 1);
+    return pixelArt(c);
+  });
+}
+function bubbleRingTex(w, h, color) {
+  return aeroCached(`pbr34|${w}|${h}|${color}`, () => {
+    const W = w + 2, H = h + 2, c = makeCanvas(W, H), g = ctxOf(c), iO = circleInsets(H), iI = circleInsets(h);
+    const inO = (x, y) => y >= 0 && y < H && x >= iO[y] && x < W - iO[y];
+    const inI = (x, y) => y >= 1 && y <= h && x >= 1 + iI[y - 1] && x < 1 + w - iI[y - 1];
+    g.fillStyle = color;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (inO(x, y) && !inI(x, y) && (inI(x - 1, y) || inI(x + 1, y) || inI(x, y - 1) || inI(x, y + 1) || inI(x - 1, y - 1) || inI(x + 1, y + 1) || inI(x - 1, y + 1) || inI(x + 1, y - 1))) g.fillRect(x, y, 1, 1);
+    return pixelArt(c);
+  });
+}
+export function pixelBubbleRing(ctx, cx, cy, r, color = '#ffffff', alpha = 0.6) {
+  const d = Math.max(3, Math.round(r * 2));
+  blitA(ctx, bubbleRingTex(d, d, color), Math.round(cx - d / 2) - 1, Math.round(cy - d / 2) - 1, alpha);
+}
+// pixel glyphs for icon-less bubble buttons (white with a dark drop row)
+function glyphTex(kind, s, ink) {
+  return aeroCached(`pbg34|${kind}|${s}|${ink}`, () => {
+    const t = s >= 7 ? 2 : 1;
+    if ((s - t) % 2) s++;
+    const c = makeCanvas(s, s + 1), g = ctxOf(c);
+    const plot = (col, dy) => {
+      g.fillStyle = col;
+      const m = Math.floor((s - t) / 2);
+      if (kind === '+' || kind === '-') { g.fillRect(0, m + dy, s, t); if (kind === '+') g.fillRect(m, dy, t, s); }
+      else for (let i = 0; i < s; i++) { g.fillRect(i, i + dy, t, 1); g.fillRect(s - t - i, i + dy, t, 1); }
+    };
+    plot(ink, 1); plot('#ffffff', 0);
+    return pixelArt(c);
+  });
+}
+// the body of a bubble button inscribed in a d-px square at (x, y); returns the content offset (lift)
+function bubbleButtonBody(ctx, x, y, d, T, st) {
+  const look = btnLook(T, st);
+  const down = st === 'down';
+  if (st === 'hover') blitA(ctx, bubbleRingTex(d, d, T.glow || '#bff4ff'), x - 1, y - 2, 0.6);
+  blitA(ctx, bubbleSolid(d, d, st === 'disabled' ? '#6a7a8c' : shade(T.edge || '#0b4a8a', -0.1)), x, y + 2, 0.85);
+  const o = { tone: look, iris: d >= 11 && st !== 'disabled' };
+  if (down) { ctx.drawImage(pixelBubbleCanvas(d + 2, d - 2, o), x - 1, y + 3); return 2; }
+  const lift = st === 'hover' ? -1 : 0;
+  ctx.drawImage(pixelBubbleCanvas(d, d, o), x, y + lift);
+  return lift;
+}
+export function pixelBubbleButton(ctx, cx, cy, r, o = {}) {
+  const d = Math.max(9, Math.round(r * 2));
+  const x = Math.round(cx - d / 2), y = Math.round(cy - d / 2);
+  const T = o.tone && typeof o.tone === 'object' ? o.tone : o.tint ? toneFrom(o.tint) : toneOf(o.tone || 'aqua');
+  const st = o.state || 'normal';
+  const ga = ctx.globalAlpha;
+  if (o.alpha != null) ctx.globalAlpha = ga * o.alpha;
+  const lift = bubbleButtonBody(ctx, x, y, d, T, st);
+  const ic = o.icon || (o.glyph ? glyphTex(o.glyph, Math.max(5, Math.round(d * 0.42)), mixHex(T.edge || '#0b4a8a')) : null);
+  if (ic) {
+    if (st === 'disabled') ctx.globalAlpha *= 0.55;
+    ctx.drawImage(ic, Math.round(x + (d - ic.width) / 2), Math.round(y + (d - ic.height) / 2) + lift);
+  }
+  ctx.globalAlpha = ga;
+  return { x, y, w: d, h: d, lift };
+}
+const mixHex = (e) => shade(e, -0.2);
+export function pixelBubbleBadge(ctx, right, top, value, t = 0, o = {}) {
+  if (value === null || value === undefined || value === 0 || value === false) return null;
+  const txt = value === '!' ? '!' : typeof value === 'number' && value > 99 ? '99+' : String(value);
+  const font = uiMode === 'huge' ? 'big' : uiFont('small');
+  const tw = measureText(txt, font), ch = capH(font);
+  const h = ch + 6 + (font === 'big' ? 2 : 0) + ((ch + 6) % 2 === 0 ? 1 : 0), w = Math.max(h, tw + 8);
+  const x = Math.round(right - w), y = Math.round(top + (Math.sin(t * 5) > 0.85 ? -1 : 0));
+  const tone = o.tone || (value === '!' ? 'orange' : 'red');
+  ctx.drawImage(pixelBubbleCanvas(w, h, { tone, shadow: 1, iris: false }), x, y);
+  const T = toneOf(tone);
+  drawText(ctx, txt, x + Math.round((w - tw) / 2), y + Math.round((h - ch) / 2), { font, color: '#ffffff', shadow: T.shadow });
+  return { x, y, w, h };
+}
+// a small text tag in a pixel bubble capsule ('NEW', counters): (x, y) = top-left, or top-right with align 'right'
+export function pixelBubbleTag(ctx, x, y, text, o = {}) {
+  const font = o.font || 'small', tw = measureText(text, font), ch = capH(font);
+  const h = ch + 6, w = Math.max(h, tw + 8 + (ch > 5 ? 2 : 0));
+  const tone = o.tone || 'red';
+  x = Math.round(o.align === 'right' ? x - w : x); y = Math.round(y);
+  ctx.drawImage(pixelBubbleCanvas(w, h, { tone, shadow: 1, iris: false }), x, y);
+  drawText(ctx, text, x + Math.round((w - tw) / 2), y + Math.round((h - ch) / 2), { font, color: '#ffffff', shadow: toneOf(tone).shadow || '#000000' });
+  return { x, y, w, h };
 }

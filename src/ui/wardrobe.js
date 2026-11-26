@@ -24,7 +24,7 @@ import {
   itemPreview, drawItemPreview, emotePose,
 } from '../gfx/character.js';
 import { BOAT_TIERS, BOAT_PARTS, BOAT_PART_SLOTS, renderBoatPreview, resolveParts, ensureBoat } from '../world/boatmodels.js';
-import { drawAeroButton, drawAeroSurface, aeroSurface, aeroCached, drawGlossOrb, drawAeroCoin, drawSparkle, drawTitle, fmtAero, AERO, CURRENCY } from './aero.js';
+import { drawAeroButton, drawAeroSurface, aeroSurface, aeroCached, drawGlossOrb, drawAeroCoin, drawSparkle, drawTitle, fmtAero, AERO, CURRENCY, pixelBubbleTag } from './aero.js';
 import { getBigIcon } from '../gfx/bigicons.js';
 import { unlocked as labUnlocked } from '../game/lab.js';
 import { gems, canSpendGems, spendGems, GEM_NAME } from '../game/gems.js';
@@ -424,14 +424,13 @@ export class WardrobePanel {
     if (this.tab === 'boat') btns.length = 1;
     let x = b.x;
     for (const o of btns) {
-      const rr = { x, y: b.y, w: 26, h: 22 };
+      // [bubble34] round pixel bubble buttons (hover lift, press squash)
+      const rr = { x, y: b.y, w: 22, h: 22 };
       const hov = ui.hover(rr);
-      drawAeroButton(ctx, rr.x, rr.y, rr.w, rr.h, { tone: o.tone, state: hov ? 'hover' : 'normal', radius: 6 });
-      const ic = o.icon();
-      if (ic) ctx.drawImage(ic, Math.round(x + 13 - ic.width / 2), Math.round(b.y + 11 - ic.height / 2) - (hov ? 1 : 0));
+      drawAeroButton(ctx, rr.x, rr.y, rr.w, rr.h, { tone: o.tone, icon: o.icon(), bubble: true, state: hov ? (ui.inp.down ? 'down' : 'hover') : 'normal' });
       if (hov) ui.tip = o.tip;
       if (ui.clicked(rr)) { g.audio?.play?.('ui_click'); o.act(); }
-      x += 30;
+      x += 27;
     }
   }
 
@@ -560,10 +559,7 @@ export class WardrobePanel {
     // states: equipped check, NEW tag, price (Aero or gems), padlock
     if (worn) checkBadge(ctx, c.x + c.w - 12, c.y + 2 + lift);
     else if (this.isNew(it)) {
-      const tw = measureText('NEW', 'small') + 4;
-      ctx.fillStyle = AERO.ink; ctx.fillRect(c.x + c.w - tw - 3, c.y + 2 + lift, tw + 2, 9);
-      ctx.fillStyle = (this.t * 2) % 1 < 0.5 ? '#ff5a6a' : '#ff7a86'; ctx.fillRect(c.x + c.w - tw - 2, c.y + 3 + lift, tw, 7);
-      drawText(ctx, 'NEW', c.x + c.w - tw, c.y + 4 + lift, { font: 'small', color: '#ffffff' });
+      pixelBubbleTag(ctx, c.x + c.w - 2, c.y + 2 + lift - ((this.t * 2) % 1 < 0.5 ? 0 : 1), 'NEW', { align: 'right' }); // [bubble34]
     }
     if (!own) {
       if (gp != null) {

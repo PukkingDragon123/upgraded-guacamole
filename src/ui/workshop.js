@@ -20,7 +20,7 @@ import {
 } from '../build/workshop.js';
 import { ROD_BY_ID, ROD_STAT_KEYS, TACKLE_BY_ID, TACKLE_SLOTS, TACKLE_SLOT_NAMES, PERKS, ensureRods, equipRod, equipTackle, ownsRod, ownsTackle, rodStatsOf, rodLevel, MAX_ROD_LEVEL } from '../game/rods.js';
 import { lineLabel } from '../fishing/line.js'; // [crate26] line length
-import { aeroSurface, aeroCached, drawAeroFrame, drawAeroCard, drawAeroCoin, fmtAero, drawAeroGlow, drawAeroBadge } from './aero.js';
+import { aeroSurface, aeroCached, drawAeroFrame, drawAeroCard, drawAeroCoin, fmtAero, drawAeroGlow, drawAeroBadge, pixelBubbleTag } from './aero.js';
 import { panelRect } from './ui.js';
 import { gemSkipButton } from './gemui.js'; // [cur26]
 import { wsSkipCost, wsSkip } from '../game/skips.js'; // [cur26]
@@ -229,7 +229,7 @@ export class WorkshopPanel {
         if (owned) { const ic = getUiIcon('check'); if (ic) ctx.drawImage(ic, x + TW - 14, y + 4); }
         else if (chk.queued) { const ic = getUiIcon('clock'); if (ic) ctx.drawImage(ic, x + TW - 14, y + 4); }
         else if (chk.ok) { ctx.fillStyle = '#4cd06a'; ctx.fillRect(x + TW - 11, y + 5, 6, 6); ctx.fillStyle = '#c8ffb0'; ctx.fillRect(x + TW - 11, y + 5, 3, 2); }
-        if (!st.workshop.seen[rc.id] && !owned) { drawText(ctx, 'NEW', x + 5, y + 4, { font: 'small', color: '#ff5a3a', shadow: '#ffffff' }); }
+        if (!st.workshop.seen[rc.id] && !owned) { pixelBubbleTag(ctx, x + 3, y + 3, 'NEW'); } // [bubble34]
         if (rc.time) drawText(ctx, fmtT(rc.time), x + 5, y + TH - 34, { font: 'small', color: INK_SOFT });
       }
       if (hov && inp.pressed) { inp.pressed = false; this.sel = rc.id; st.workshop.seen[rc.id] = 1; g.audio.play('ui_click'); }

@@ -15,7 +15,7 @@ import { getUiIcon } from '../gfx/uiicons.js';
 import { alagardReady, alagardBitmap, loadAlagard } from '../gfx/alagard.js';
 import * as NPC from '../gfx/npcs.js';
 import * as CHAR from '../gfx/character.js';
-import { aeroSurface, aeroCached, drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroCoin, drawAeroBar, drawLeafSprig, drawAeroBadge, drawAeroButton, drawPixelBrackets, toneOf, AERO, pixelRectPath } from './aero.js';
+import { aeroSurface, aeroCached, drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroCoin, drawAeroBar, drawLeafSprig, drawAeroBadge, drawAeroButton, drawPixelBrackets, toneOf, AERO, pixelRectPath, pixelBubble } from './aero.js';
 import { icon, pill, iconBudget, INK, INK_SOFT, OK } from './labkit.js';
 import { drawGem, drawHeaderWallet } from './gemui.js'; // [cur26] Byte Gems, [wallet32] header wallet
 import { drawAnimIcon, drawPadlock } from './labrows.js';
@@ -427,7 +427,7 @@ class QuestHud {
       // the objective icon in a little glass bubble (a pinned quest gets a gold one)
       const ir = Math.round((RHt - 8) / 2);
       const isPin = q === pin;
-      ctx.drawImage(aeroSurface(ir * 2, ir * 2, { tone: done || book.isReady(q.id) ? 'green' : isPin ? 'orange' : 'white', r: 'pill', gloss: 0.7, glossH: ir, curve: 1, rim: 0.8, glow: 0.5 }), x, y + 2);
+      pixelBubble(ctx, x + ir, y + 2 + ir, ir, { tone: done || book.isReady(q.id) ? 'green' : isPin ? 'orange' : 'white' }); // [bubble34]
       drawAnimIcon(ctx, o.icon, x + ir, y + 2 + ir, Math.round(ir * 1.5), t, i * 1.3, {});
       const tx = x + ir * 2 + 5, tw = r.x + w - 6 - tx;
       let name = q.title;

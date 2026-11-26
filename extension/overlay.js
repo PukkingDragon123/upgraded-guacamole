@@ -6777,7 +6777,8 @@
     const AL = [0.55, 0.3, 0.13];
     for (let y = 0; y < S12; y++) for (let x = 0; x < S12; x++) {
       const dx = Math.abs(x + 0.5 - r), dy = Math.abs(y + 0.5 - r);
-      const d = Math.max(dx, dy, (dx + dy) * k2 * 1.04) / r;
+      const d = Math.hypot(dx, dy) / r;
+      void k2;
       if (d >= 1) continue;
       const q = d * 3 + (bayer(x, y) - 0.5) * 0.35;
       const i = q < 1 ? 0 : q < 2 ? 1 : q < 3 ? 2 : -1;
@@ -6789,7 +6790,7 @@
   }
   function drawAeroGlow(ctx2, cx, cy, r, color = "#bff6ff", alpha = 0.5) {
     r = Math.max(2, Math.round(r));
-    const c = aeroCached(`glow30|${r}|${color}`, () => pixelArt(glowTex(r, color)));
+    const c = aeroCached(`glow34|${r}|${color}`, () => pixelArt(glowTex(r, color)));
     const ga = ctx2.globalAlpha;
     ctx2.globalAlpha = ga * Math.round(Math.min(1, alpha) * 8) / 8;
     ctx2.drawImage(c, Math.round(cx - r), Math.round(cy - r));
@@ -6875,7 +6876,7 @@
     }
     return g;
   }
-  var AERO, AERO_TONES, TONE_ALIAS, customTones, tex, rgbCache2, NOTCHES, mixC, WHITE, coin3d, decor3d, icon3dDraw;
+  var AERO, AERO_TONES, TONE_ALIAS, customTones, tex, rgbCache2, NOTCHES, mixC, WHITE, coin3d, decor3d, icon3dDraw, BUB_LIGHT;
   var init_aero = __esm({
     "src/ui/aero.js"() {
       init_color();
@@ -6939,6 +6940,10 @@
       coin3d = null;
       decor3d = null;
       icon3dDraw = null;
+      BUB_LIGHT = (() => {
+        const v = [-0.5, -0.62, 0.6], l = Math.hypot(...v);
+        return v.map((q) => q / l);
+      })();
     }
   });
 

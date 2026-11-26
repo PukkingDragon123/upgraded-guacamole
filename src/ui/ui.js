@@ -11,7 +11,7 @@ import { rgba } from '../core/color.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { drawButton, drawSlider, drawToggle, drawTooltip, drawTab, TOGGLE_W, TOGGLE_H } from './panels.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { AERO, CURRENCY, fmtAero, aeroSurface, aeroCached, drawAeroCoin, drawSparkle, drawAeroGlow, drawAeroLeaf, uiK, uiFont, capH, setUiScale, uiScaleMode } from './aero.js';
+import { AERO, CURRENCY, fmtAero, aeroSurface, aeroCached, drawAeroCoin, drawSparkle, drawAeroGlow, drawAeroLeaf, uiK, uiFont, capH, setUiScale, uiScaleMode, pixelBubble } from './aero.js';
 import { iconFrame } from '../gfx/bigicons.js';
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { drawPop3D, text3dCanvas, POP_PALETTE } from './pop3d.js'; // [phase9:ui]
@@ -460,6 +460,8 @@ export class UI {
         const plate = aeroCached(`toastplate|${pw}|${ph}|${pal === 'coral' ? 'c' : 'd'}`, () => aeroSurface(pw, ph, { tone: ptone, a: [0.9, 0.94], r: 8, gloss: 0.35, glossH: Math.round(ph * 0.4), rim: 0.9, glow: 0.4, depth: 2, bubbles: pw > 120 ? 2 : 0, seed: pw }));
         ctx.drawImage(plate, Math.round(x - 13), Math.round(cy - ph / 2 + (1 - Math.min(1, pk)) * 4)); // [pixui30] no squash
       }
+      // [bubble34] the icon sits in a round translucent pixel soap bubble
+      pixelBubble(ctx, x + D / 2, cy, D / 2 + 3, { glass: true, tint: pal === 'coral' ? '#ff8aa8' : '#3ab0ff', fill: pal === 'coral' ? '#7a2a44' : '#1c5a9e' });
       // the 3D icon spins in, then rocks gently
       const icon = getUiIcon(t.icon)?.__icon3d ? t.icon : 'info';
       if (!drawIcon3D(ctx, icon, x + D / 2, cy, D, { t: t.t + this.time, hover: t.t < 0.9 ? 1 : 0, phase: t.max })) { const ic = getUiIcon(t.icon) || getUiIcon('info'); ctx.drawImage(ic, Math.round(x + D / 2 - ic.width / 2), Math.round(cy - ic.height / 2)); }

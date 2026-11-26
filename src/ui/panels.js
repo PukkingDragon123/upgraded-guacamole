@@ -34,7 +34,7 @@ import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import {
   AERO, aeroSurface, aeroCached, drawAeroButton, drawAeroBar, drawAeroBubble, drawGlossOrb, toneOf, toneFrom, aeroText, drawSparkle,
-  uiFont, fitFont, capH,
+  uiFont, fitFont, capH, pixelBubble, pixelBubbleCanvas, circleInsets,
 } from './aero.js';
 
 const SKY = ['#0b3f74', '#1a68b0', '#2f8fdc', '#5cc0f4', '#9ee2ff', '#e4f8ff'];
@@ -285,7 +285,11 @@ function bubbleTex(w, h, tx, ty, style) {
     const bx = x - ox, by = y - oy;
     if (body(bx, by)) return true;
     if (inTri(bx + 0.5, by + 0.5)) return true;
-    return circles.some(([cx, cy, r]) => Math.abs(bx + 0.5 - cx) <= r && Math.abs(by + 0.5 - cy) <= r); // [pixui30] square thought puffs
+    return circles.some(([cx, cy, r]) => { // [bubble34] round pixel thought puffs (pixel circle masks)
+      const d = Math.max(3, Math.round(r * 2)), x0 = Math.round(cx - d / 2), y0 = Math.round(cy - d / 2), ins = circleInsets(d);
+      const yy = by - y0, xx = bx - x0;
+      return yy >= 0 && yy < d && xx >= ins[yy] && xx < d - ins[yy];
+    });
   };
   const edgeOf = (m, x, y) => !m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1);
   const b = new PixelBuffer(CW, CH);
@@ -373,9 +377,10 @@ export function drawSlider(ctx, x, y, w, value, opts = {}) {
     ctx.fillStyle = 'rgba(191,244,255,0.55)';
     ctx.fillRect(kx - 5, y, 11, 15);
   }
-  // [pixui30] a stepped pixel thumb (9 x 13, 1 px notches) with a grip line
-  ctx.drawImage(aeroCached(`sthumb|${hot ? 1 : 0}|${opts.down ? 1 : 0}`, () => aeroSurface(9, 13, { tone: hot ? 'white' : 'frost', top: '#ffffff', bot: hot ? '#bfeaff' : '#9fd4f0', edge: '#0a3e74', r: 2, gloss: 0.5, glossH: 5, rim: 1, glow: 0.2 })), kx - 4, y + 1 + (opts.down ? 1 : 0));
-  ctx.fillStyle = '#5a9ec4'; ctx.fillRect(kx - 1, y + 5 + (opts.down ? 1 : 0), 3, 1); ctx.fillRect(kx - 1, y + 8 + (opts.down ? 1 : 0), 3, 1);
+  // [bubble34] a round pixel bubble thumb (13 px; squashed one pixel row while dragged)
+  const thumbT = { ...toneOf('white'), bot: hot ? '#bfeaff' : '#a8d8f0', edge: '#0a3e74' };
+  if (opts.down) ctx.drawImage(pixelBubbleCanvas(15, 12, { tone: thumbT }), kx - 7, y + 2);
+  else ctx.drawImage(pixelBubbleCanvas(13, 13, { tone: thumbT }), kx - 6, y + 1);
   return { knob: { x: kx - 6, y: y + 1, w: 13, h: 13 }, x, y, w, h: SLIDER_H };
 }
 
@@ -389,14 +394,14 @@ export function drawToggle(ctx, x, y, on, opts = {}) {
   const c = aeroCached(`toggle|${!!on}|${hov}`, () => {
     const cc = makeCanvas(TOGGLE_W, TOGGLE_H);
     const g = ctxOf(cc);
-    const tone = on ? (hov ? { ...toneOf('green'), top: '#eaffc0' } : 'green') : (hov ? { ...toneOf('glass'), bot: '#a8d8f0' } : { ...toneOf('glass'), bot: '#9cc4dc', mid: '#d4ecf8' });
-    g.drawImage(aeroSurface(TOGGLE_W, 14, { tone, r: 'pill', gloss: 0.7, glossH: 6, curve: 1, rim: 0.7, glow: 0.6, inset: !on }), 0, 4);
+    const tone = on ? (hov ? { ...toneOf('green'), top: '#eaffc0' } : 'green') : { ...toneOf('glass'), top: hov ? '#f4fcff' : '#e4f4fc', mid: hov ? '#c4e4f6' : '#b4d4e8', bot: hov ? '#94c4e0' : '#86b4d0', edge: '#2a5a80' };
+    // [bubble34] a pixel bubble capsule track and a round pixel bubble knob
+    g.drawImage(pixelBubbleCanvas(TOGGLE_W, 14, { tone, iris: false }), 0, 4);
     // tiny on/off glyphs
-    g.fillStyle = on ? 'rgba(255,255,255,0.9)' : 'rgba(60,111,136,0.7)';
+    g.fillStyle = on ? 'rgba(255,255,255,0.95)' : 'rgba(60,111,136,0.75)';
     if (on) g.fillRect(8, 8, 1, 6);
-    else { g.fillRect(17, 8, 3, 1); g.fillRect(17, 13, 3, 1); g.fillRect(16, 9, 1, 4); g.fillRect(20, 9, 1, 4); }
-    // [pixui30] a stepped square knob (no orb)
-    g.drawImage(aeroSurface(12, 12, { tone: 'white', bot: on ? '#d8f4ff' : '#c4dcea', edge: on ? '#1a5e12' : '#3a6a8a', r: 2, gloss: 0.5, glossH: 5, rim: 1, glow: 0.2 }), on ? TOGGLE_W - 13 : 1, 5);
+    else { g.fillRect(18, 8, 3, 1); g.fillRect(18, 13, 3, 1); g.fillRect(17, 9, 1, 4); g.fillRect(21, 9, 1, 4); }
+    g.drawImage(pixelBubbleCanvas(16, 16, { tone: { ...toneOf('white'), bot: on ? '#c8ecff' : '#b4cede', edge: on ? '#1a5e12' : '#3a6a8a', glow: on ? '#eaffb4' : '#ffffff' }, iris: true }), on ? TOGGLE_W - 16 : 0, 3);
     return cc;
   });
   ctx.drawImage(c, x, y);
@@ -434,6 +439,12 @@ export function drawTooltip(ctx, x, y, text, opts = {}) {
   tx = clamp(tx, 3, Math.max(3, CW - w - 3));
   ty = clamp(ty, 3, Math.max(3, CH - h - 4));
   const c = aeroCached(`tip|${w}|${h}`, () => withShadow(aeroSurface(w, h, { tone: 'frost', r: Math.min(big ? 8 : 6, Math.floor(h / 2)), gloss: 0.45, glossH: Math.min(big ? 11 : 9, Math.round(h * 0.45)), curve: 1, rim: 0.9, glow: 0.35, glowColor: '#bfeaff' }), 1, 2, 0.25));
+  // [bubble34] two little pixel bubbles trail from the pointer to the tooltip's nearest corner
+  if (!opts.noTrail) {
+    const cx2 = x < tx ? tx : tx + w, cy2 = y < ty ? ty : ty + h;
+    const dx = cx2 - x, dy = cy2 - y;
+    if (Math.abs(dx) + Math.abs(dy) > 10) { pixelBubble(ctx, x + dx * 0.36, y + dy * 0.36, 2, { tone: 'frost' }); pixelBubble(ctx, x + dx * 0.72, y + dy * 0.72, 3, { tone: 'frost' }); }
+  }
   ctx.drawImage(c, tx, ty);
   const px = big ? 10 : 7, py = big ? 6 : 6;
   lines.forEach((l, i) => drawText(ctx, l, tx + px, ty + py + i * lh, { font, color: UI_COLORS.ink, shadow: big ? '#ffffff' : null }));
