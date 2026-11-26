@@ -21781,7 +21781,7 @@ void main() {
     const top = new TTpl();
     const col = (k) => rgb01(sp[k]);
     const BASE2 = col("base"), DARK = col("dark"), OLV = col("olive"), AMB2 = col("amber"), OCH = col("ochre"), SEAM = col("seam");
-    const RIM2 = col("rimEdge"), UND = col("under"), PL = col("plast"), PLS = col("plastSeam");
+    const RIM = col("rimEdge"), UND = col("under"), PL = col("plast"), PLS = col("plastSeam");
     const NA = 168, NR = 44;
     const seamAt = (x, z, d) => {
       const s0 = S12.at(x, z).id;
@@ -21825,7 +21825,7 @@ void main() {
         else if (fl < -0.6) c = tmix(c, OCH, 0.5);
       }
       if (band) c = tmix(c, OCH, 0.22);
-      if (q.kind === 2 && q.rho > 0.965) c = tmix(c, RIM2, 0.55);
+      if (q.kind === 2 && q.rho > 0.965) c = tmix(c, RIM, 0.55);
       return tclampC(toneRGB(c, (hash2(Math.floor(x * 1.9), Math.floor(z * 1.9), 77) - 0.5) * 0.12));
     };
     for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) {
@@ -21863,7 +21863,7 @@ void main() {
     }
     for (let j = 0; j < NA; j++) {
       const a = V2[NR][j], b = V2[NR][j + 1], c2 = U2[NR][j + 1], d = U2[NR][j];
-      const k = tmix(RIM2, DARK, 0.25 + 0.2 * hash2(j, 1, 79));
+      const k = tmix(RIM, DARK, 0.25 + 0.2 * hash2(j, 1, 79));
       top.quad(a, b, c2, d, Math.round(j / NA * 25 * 2) % 2 ? k : tmix(k, SEAM, 0.35));
     }
     return { tpl: top, S: S12 };
@@ -40059,7 +40059,7 @@ kmlmk..
   });
 
   // src/ui/walletglass.js
-  var hexRGB2, ramp3, AQUA, LILAC, WATER, VIOLET, LEAF, INK6, RIM, LIT, HV;
+  var hexRGB2, ramp3, WATER, VIOLET, INK6, LIT, HV;
   var init_walletglass = __esm({
     "src/ui/walletglass.js"() {
       init_canvas();
@@ -40072,13 +40072,9 @@ kmlmk..
         return [n2 >> 16 & 255, n2 >> 8 & 255, n2 & 255];
       };
       ramp3 = (arr) => arr.map(hexRGB2);
-      AQUA = ramp3(["#06436a", "#08648f", "#0a88b2", "#12aacc", "#2ccadc", "#74e6e4", "#c4faee", "#ffffff"]);
-      LILAC = ramp3(["#1e1868", "#2c278e", "#3d3cae", "#5155cc", "#6e74e2", "#9a9ef2", "#d2d4fc", "#ffffff"]);
       WATER = ramp3(["#072a72", "#0b46a6", "#1168d0", "#1c8eec", "#38b2f8", "#78d6fc", "#c6f2ff", "#ffffff"]);
       VIOLET = ramp3(["#2a0a66", "#43129a", "#6020c4", "#8236e6", "#a35cf8", "#c890ff", "#ecd6ff", "#ffffff"]);
-      LEAF = ramp3(["#0c3e22", "#13602e", "#1f863a", "#3aac3c", "#70cc44", "#aee868", "#e2fbb0", "#ffffff"]);
-      INK6 = { a: hexRGB2("#06284a"), g: hexRGB2("#170f4e"), drop: hexRGB2("#061d52"), gem: hexRGB2("#1c0646"), leaf: hexRGB2("#08311a") };
-      RIM = { a: hexRGB2("#8af0ff"), g: hexRGB2("#c2c4ff") };
+      INK6 = { drop: hexRGB2("#061d52"), gem: hexRGB2("#1c0646") };
       LIT = (() => {
         const v = [-0.5, -0.72, 0.85], l = Math.hypot(...v);
         return v.map((c) => c / l);

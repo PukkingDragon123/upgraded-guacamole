@@ -20654,7 +20654,7 @@ void main() {
     const top = new TTpl();
     const col = (k) => rgb01(sp[k]);
     const BASE2 = col("base"), DARK2 = col("dark"), OLV = col("olive"), AMB2 = col("amber"), OCH = col("ochre"), SEAM = col("seam");
-    const RIM2 = col("rimEdge"), UND = col("under"), PL = col("plast"), PLS = col("plastSeam");
+    const RIM = col("rimEdge"), UND = col("under"), PL = col("plast"), PLS = col("plastSeam");
     const NA2 = 168, NR = 44;
     const seamAt = (x, z, d) => {
       const s0 = S15.at(x, z).id;
@@ -20698,7 +20698,7 @@ void main() {
         else if (fl < -0.6) c = tmix(c, OCH, 0.5);
       }
       if (band) c = tmix(c, OCH, 0.22);
-      if (q.kind === 2 && q.rho > 0.965) c = tmix(c, RIM2, 0.55);
+      if (q.kind === 2 && q.rho > 0.965) c = tmix(c, RIM, 0.55);
       return tclampC(toneRGB(c, (hash2(Math.floor(x * 1.9), Math.floor(z * 1.9), 77) - 0.5) * 0.12));
     };
     for (let i = 0; i < NR; i++) for (let j = 0; j < NA2; j++) {
@@ -20736,7 +20736,7 @@ void main() {
     }
     for (let j = 0; j < NA2; j++) {
       const a = V2[NR][j], b = V2[NR][j + 1], c2 = U2[NR][j + 1], d = U2[NR][j];
-      const k = tmix(RIM2, DARK2, 0.25 + 0.2 * hash2(j, 1, 79));
+      const k = tmix(RIM, DARK2, 0.25 + 0.2 * hash2(j, 1, 79));
       top.quad(a, b, c2, d, Math.round(j / NA2 * 25 * 2) % 2 ? k : tmix(k, SEAM, 0.35));
     }
     return { tpl: top, S: S15 };
@@ -80408,7 +80408,7 @@ kmlmk..
       }
     };
     for (let yy = 0; yy < h; yy++) row3(yy, C6.ink);
-    for (let yy = 1; yy < h - 1; yy++) row3(yy, yy < h * 0.55 ? C6.fill : C6.fill2, 1 + (ins[yy - 1] > ins[yy] || ins[yy + 1] > ins[yy] ? 0 : 0));
+    for (let yy = 1; yy < h - 1; yy++) row3(yy, yy < h * 0.55 ? C6.fill : C6.fill2, 1);
     g.fillStyle = C6.top;
     for (let yy = 1; yy < 3 && yy < h - 1; yy++) {
       const i = Math.max(ins[yy - 1], ins[yy], ins[yy + 1] ?? 0) + 1;
@@ -80431,7 +80431,6 @@ kmlmk..
       drawWell(g, L4.chG.x, L4.chG.y, L4.chG.w, L4.chG.h, "g");
       g.drawImage(pixelBubbleCanvas(L4.Db, L4.Db, { glass: true, tone: { top: "#ffffff", mid: "#9ff0ff", bot: "#38b8e8", edge: "#06284a", glow: "#e0ffff" }, fill: "#c8f6ff" }), L4.dA.x, L4.dA.y);
       g.drawImage(pixelBubbleCanvas(L4.Db, L4.Db, { glass: true, tone: { top: "#ffffff", mid: "#d4ccff", bot: "#8c7cf4", edge: "#170f4e", glow: "#f0ecff" }, fill: "#e4defe" }), L4.dG.x, L4.dG.y);
-      c.mask = null;
       return c;
     });
   }
@@ -80667,7 +80666,7 @@ Water-droplet money from fish and your tank.`;
     if (HI_ON.on) return mode2 === "huge" ? 2 : mode2 === "normal" ? 1 : 1.5;
     return mode2 === "huge" ? 3 : mode2 === "normal" ? 1 : 2;
   }
-  var clamp4, sstep, hexRGB3, ramp4, AQUA2, LILAC, WATER8, VIOLET, LEAF, INK4, RIM, LIT, HV, cache15, WHITE5, GEM_N, GEM_FRAMES, WALLET_ART, D13_ART, FACES2, isDigit, bitsMemo, advOf, textW, WELL, AQUA_T, VIO_T, fmtShort, dropHOf, gemWOf, fxC;
+  var clamp4, sstep, hexRGB3, ramp4, WATER8, VIOLET, INK4, LIT, HV, cache15, WHITE5, GEM_N, GEM_FRAMES, WALLET_ART, D13_ART, FACES2, isDigit, bitsMemo, advOf, textW, WELL, AQUA_T, VIO_T, fmtShort, dropHOf, gemWOf, fxC;
   var init_walletglass = __esm({
     "src/ui/walletglass.js"() {
       init_canvas();
@@ -80685,13 +80684,9 @@ Water-droplet money from fish and your tank.`;
         return [n2 >> 16 & 255, n2 >> 8 & 255, n2 & 255];
       };
       ramp4 = (arr) => arr.map(hexRGB3);
-      AQUA2 = ramp4(["#06436a", "#08648f", "#0a88b2", "#12aacc", "#2ccadc", "#74e6e4", "#c4faee", "#ffffff"]);
-      LILAC = ramp4(["#1e1868", "#2c278e", "#3d3cae", "#5155cc", "#6e74e2", "#9a9ef2", "#d2d4fc", "#ffffff"]);
       WATER8 = ramp4(["#072a72", "#0b46a6", "#1168d0", "#1c8eec", "#38b2f8", "#78d6fc", "#c6f2ff", "#ffffff"]);
       VIOLET = ramp4(["#2a0a66", "#43129a", "#6020c4", "#8236e6", "#a35cf8", "#c890ff", "#ecd6ff", "#ffffff"]);
-      LEAF = ramp4(["#0c3e22", "#13602e", "#1f863a", "#3aac3c", "#70cc44", "#aee868", "#e2fbb0", "#ffffff"]);
-      INK4 = { a: hexRGB3("#06284a"), g: hexRGB3("#170f4e"), drop: hexRGB3("#061d52"), gem: hexRGB3("#1c0646"), leaf: hexRGB3("#08311a") };
-      RIM = { a: hexRGB3("#8af0ff"), g: hexRGB3("#c2c4ff") };
+      INK4 = { drop: hexRGB3("#061d52"), gem: hexRGB3("#1c0646") };
       LIT = (() => {
         const v = [-0.5, -0.72, 0.85], l = Math.hypot(...v);
         return v.map((c) => c / l);
@@ -110303,7 +110298,7 @@ void main() {
     return ["#" + h2(q[0]) + h2(q[1]) + h2(q[2]), q[3] ?? 1];
   }
   function pill2(ctx3, x, y, w, h, o = {}) {
-    const c = hexA(o.color || AQUA3)[0];
+    const c = hexA(o.color || AQUA2)[0];
     const ga = ctx3.globalAlpha;
     if (o.alpha !== void 0) ctx3.globalAlpha = ga * o.alpha;
     const r = o.r ?? "pill";
@@ -110324,7 +110319,7 @@ void main() {
     pixelRect(ctx3, Math.round(cx - s / 2), Math.round(cy - s / 2) + bob, s, s, s >= 18 ? 12 : 4, c, { outline: shade(c, -0.55), hi: shade(c, 0.45), lo: shade(c, -0.2) });
     drawText(ctx3, text, Math.round(cx), Math.round(cy - 3) + bob, { align: "center", font: o.font || "small", color: o.ink || "#ffffff", shadow: rgba(shade(c, -0.5), 0.8) });
   }
-  function tag(ctx3, x, y, text, color = AQUA3, ink = "#ffffff") {
+  function tag(ctx3, x, y, text, color = AQUA2, ink = "#ffffff") {
     const w = measureText(text, "small") + 7;
     pill2(ctx3, x, y, w, faceOf("small") === "small" ? 9 : 11, { color, r: 3 });
     drawText(ctx3, text, x + 4, y + 2, { font: "small", color: ink });
@@ -110398,7 +110393,7 @@ void main() {
     }
     return false;
   }
-  var INK12, INK_SOFT3, AQUA3, GRASS3, WA;
+  var INK12, INK_SOFT3, AQUA2, GRASS3, WA;
   var init_aerokit2 = __esm({
     "src/store/aerokit.js"() {
       init_font();
@@ -110408,7 +110403,7 @@ void main() {
       init_aero();
       INK12 = "#0c3a52";
       INK_SOFT3 = "#3c6f88";
-      AQUA3 = "#2fd3e8";
+      AQUA2 = "#2fd3e8";
       GRASS3 = "#5cc832";
       WA = /* @__PURE__ */ new Map();
     }
@@ -111133,7 +111128,7 @@ void main() {
     const c = makeCanvas(S15, S15), g = ctxOf(c);
     const cx = S15 / 2, cy = S15 / 2;
     const a = ang * Math.PI / 180, wid = len * 0.36;
-    const P7 = LEAF2[tone5 % LEAF2.length];
+    const P7 = LEAF[tone5 % LEAF.length];
     g.translate(cx, cy);
     g.rotate(a);
     const path = () => {
@@ -111355,7 +111350,7 @@ void main() {
     }
     return false;
   }
-  var TAU10, LEAF2;
+  var TAU10, LEAF;
   var init_ecoart = __esm({
     "src/store/ecoart.js"() {
       init_canvas();
@@ -111363,7 +111358,7 @@ void main() {
       init_aero();
       init_pxsprites();
       TAU10 = Math.PI * 2;
-      LEAF2 = [["#d8ff8a", "#7ed83a", "#2f9a1c", "#1d6312"], ["#e8ffa8", "#9ae84a", "#46b22a", "#22701a"], ["#c8f870", "#5cc832", "#24861a", "#165a10"]];
+      LEAF = [["#d8ff8a", "#7ed83a", "#2f9a1c", "#1d6312"], ["#e8ffa8", "#9ae84a", "#46b22a", "#22701a"], ["#c8f870", "#5cc832", "#24861a", "#165a10"]];
     }
   });
 
